@@ -6695,7 +6695,12 @@ trait Types extends api.Types { self: SymbolTable =>
       case tv@TypeVar(_, constr) =>
         if (tv.instValid) stripType(constr.inst)
         else if (tv.untouchable) tv
-        else abort("trying to do lub/glb of typevar "+tp)
+        else {
+          // SI-5559: for now, just don't crash
+          debugwarn(s"trying to do lub/glb of typevar $tp (ts= $ts)")
+          // avoid throwing exception as this is hot code, prefer to quickly traverse list again
+          ErrorType
+        }
       case t => t
     }
     val strippedTypes = ts mapConserve stripType
@@ -6803,13 +6808,20 @@ trait Types extends api.Types { self: SymbolTable =>
             lubType
           case None =>
             lubResults((depth, ts)) = AnyClass.tpe
-            val res = if (depth < 0) AnyClass.tpe else lub1(ts)
+
+            val res =
+              if (depth < 0) AnyClass.tpe
+              else {
+                val (ts, tparams) = stripExistentialsAndTypeVars(ts0)
+                if (ts contains ErrorType) AnyClass.tpe
+                else lub1(ts, tparams)
+              }
+
             lubResults((depth, ts)) = res
             res
         }
     }
-    def lub1(ts0: List[Type]): Type = {
-      val (ts, tparams) = stripExistentialsAndTypeVars(ts0)
+    def lub1(ts: List[Type], tparams: List[Symbol]): Type = {
       val lubBaseTypes: List[Type] = lubList(ts, depth)
       val lubParents = spanningTypes(lubBaseTypes)
       val lubOwner = commonOwner(ts)
@@ -6969,6 +6981,7 @@ trait Types extends api.Types { self: SymbolTable =>
     def glb1(ts0: List[Type]): Type = {
       try {
         val (ts, tparams) = stripExistentialsAndTypeVars(ts0)
+        if (ts contains ErrorType) throw GlbFailure
         val glbOwner = commonOwner(ts)
         def refinedToParents(t: Type): List[Type] = t match {
           case RefinedType(ps, _) => ps flatMap refinedToParents
