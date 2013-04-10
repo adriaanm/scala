@@ -183,8 +183,10 @@ trait MatchTranslation {
       val Match(selector, cases) = match_
 
       val (nonSyntheticCases, defaultOverride) = cases match {
-        case init :+ last if treeInfo isSyntheticDefaultCase last => (init, Some(((scrut: Tree) => last.body)))
-        case _                                                    => (cases, None)
+        case init :+ last if treeInfo isSyntheticDefaultCase last =>
+          (init, Some(last.body))
+        case _ =>
+          (cases, None)
       }
 
       checkMatchVariablePatterns(nonSyntheticCases)
@@ -250,13 +252,15 @@ trait MatchTranslation {
           val casesNoSubstOnly = caseDefs map { caseDef => (propagateSubstitution(translateCase(SymbolScrutinee(scrutSym), pt)(caseDef), EmptySubstitution))}
 
           val exSym = freshSym(pos, pureType(ThrowableTpe), "ex")
+          val selector  = CODE.REF(exSym)
+          val scrutinee = SingleScrutinee(selector, scrutSym)
 
           List(
               atPos(pos) {
                 CaseDef(
                   Bind(exSym, Ident(nme.WILDCARD)), // TODO: does this need fixing upping?
                   EmptyTree,
-                  combineCasesNoSubstOnly(SingleScrutinee(REF(exSym), scrutSym), casesNoSubstOnly, pt, matchOwner, Some(scrut => Throw(REF(exSym))))
+                  combineCasesNoSubstOnly(scrutinee, casesNoSubstOnly, pt, matchOwner, Some(Throw(selector)))
                 )
               })
         }
