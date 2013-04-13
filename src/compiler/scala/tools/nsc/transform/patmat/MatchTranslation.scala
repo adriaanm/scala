@@ -9,6 +9,7 @@ package scala.tools.nsc.transform.patmat
 import scala.language.postfixOps
 import scala.collection.mutable
 import scala.reflect.internal.util.Statistics
+import scala.tools.nsc.symtab.Flags.SYNTHETIC
 
 /** Translate typed Trees that represent pattern matches into the patternmatching IR, defined by TreeMakers.
  */
@@ -43,11 +44,11 @@ trait MatchTranslation {
       case _                      => BoundTree(setVarInfo(freshSym(tree.pos, prefix = "p"), pt), tree)
     }
 
-    final case class BoundTree(binder: Symbol, tree: Tree) {
+    final case class BoundTree(scrutinee: Scrutinee, tree: Tree) {
       private lazy val extractor = ExtractorCall(tree)
 
       def pos     = tree.pos
-      def tpe     = binder.info.dealiasWiden  // the type of the variable bound to the pattern
+      def tpe     = scrutinee.info.dealiasWiden  // the type of the variable bound to the pattern
       def pt      = unbound match {
         case Star(tpt)      => this glbWith seqType(tpt.tpe)
         case TypeBound(tpe) => tpe
@@ -58,7 +59,7 @@ trait MatchTranslation {
       object SymbolAndTypeBound {
         def unapply(tree: Tree): Option[(Symbol, Type)] = tree match {
           case SymbolBound(sym, SymbolAndTypeBound(_, tpe)) => Some(sym -> tpe)
-          case TypeBound(tpe)                               => Some(binder -> tpe)
+          case TypeBound(tpe)                               => Some(scrutinee.sym -> tpe)
           case _                                            => None
         }
       }
@@ -70,13 +71,13 @@ trait MatchTranslation {
         }
       }
 
-      private def rebindTo(pattern: Tree) = BoundTree(binder, pattern)
+      private def rebindTo(pattern: Tree) = BoundTree(scrutinee, pattern)
       private def step(treeMakers: TreeMaker*)(subpatterns: BoundTree*): TranslationStep = TranslationStep(treeMakers.toList, subpatterns.toList)
 
-      private def bindingStep(sub: Symbol, subpattern: Tree) = step(SubstOnlyTreeMaker(sub, binder))(rebindTo(subpattern))
-      private def equalityTestStep()                         = step(EqualityTestTreeMaker(binder, tree, pos))()
-      private def typeTestStep(sub: Symbol, subPt: Type)     = step(TypeTestTreeMaker(sub, binder, subPt, glbWith(subPt))(pos))()
-      private def alternativesStep(alts: List[Tree])         = step(AlternativesTreeMaker(binder, translatedAlts(alts), alts.head.pos))()
+      private def bindingStep(sub: Symbol, subpattern: Tree) = step(SubstOnlyTreeMaker(sub, scrutinee.sym))(rebindTo(subpattern))
+      private def equalityTestStep()                         = step(EqualityTestTreeMaker(scrutinee.sym, tree, pos))()
+      private def typeTestStep(sub: Symbol, subPt: Type)     = step(TypeTestTreeMaker(sub, scrutinee.sym, subPt, glbWith(subPt))(pos))()
+      private def alternativesStep(alts: List[Tree])         = step(AlternativesTreeMaker(scrutinee.sym, translatedAlts(alts), alts.head.pos))()
       private def translatedAlts(alts: List[Tree])           = alts map (alt => rebindTo(alt).translate())
       private def noStep()                                   = step()()
 
@@ -94,17 +95,17 @@ trait MatchTranslation {
         // it tests the type, checks the outer pointer and casts to the expected type
         // TODO: the outer check is mandated by the spec for case classes, but we do it for user-defined unapplies as well [SPEC]
         // (the prefix of the argument passed to the unapply must equal the prefix of the type of the binder)
-        lazy val typeTest = TypeTestTreeMaker(binder, binder, paramType, paramType)(pos, extractorArgTypeTest = true)
+        lazy val typeTest = TypeTestTreeMaker(scrutinee.sym, scrutinee.sym, paramType, paramType)(pos, extractorArgTypeTest = true)
         // check whether typetest implies binder is not null,
         // even though the eventual null check will be on typeTest.nextBinder
         // it'll be equal to binder casted to paramType anyway (and the type test is on binder)
-        def extraction: TreeMaker = treeMaker(typeTest.nextBinder, typeTest impliesBinderNonNull binder, pos)
+        def extraction: TreeMaker = treeMaker(typeTest.nextBinder, typeTest impliesBinderNonNull scrutinee.sym, pos)
 
         // paramType = the type expected by the unapply
         // TODO: paramType may contain unbound type params (run/t2800, run/t3530)
         val makers = (
           // Statically conforms to paramType
-          if (this ensureConformsTo paramType) treeMaker(binder, false, pos) :: Nil
+          if (this ensureConformsTo paramType) treeMaker(scrutinee.sym, false, pos) :: Nil
           else typeTest :: extraction :: Nil
         )
         step(makers: _*)(extractor.subBoundTrees: _*)
@@ -128,7 +129,7 @@ trait MatchTranslation {
         case WildcardPattern()                                        => noStep()
         case _: UnApply | _: Apply                                    => extractorStep()
         case SymbolAndTypeBound(sym, tpe)                             => typeTestStep(sym, tpe)
-        case TypeBound(tpe)                                           => typeTestStep(binder, tpe)
+        case TypeBound(tpe)                                           => typeTestStep(scrutinee.sym, tpe)
         case SymbolBound(sym, expr)                                   => bindingStep(sym, expr)
         case Literal(Constant(_)) | Ident(_) | Select(_, _) | This(_) => equalityTestStep()
         case Alternative(alts)                                        => alternativesStep(alts)
@@ -138,7 +139,7 @@ trait MatchTranslation {
 
       private def setInfo(paramType: Type): Boolean = {
         devWarning(s"resetting info of $this to $paramType")
-        setVarInfo(binder, paramType)
+        setVarInfo(scrutinee.sym, paramType)
         true
       }
       // If <:< but not =:=, no type test needed, but the tree maker relies on the binder having
@@ -159,10 +160,10 @@ trait MatchTranslation {
         case WildcardPattern() => ""
         case pat               => s" @ $pat"
       }
-      override def toString = s"${binder.name}: $tpe_s$at_s"
+      override def toString = s"${scrutinee.sym.name}: $tpe_s$at_s"
     }
 
-    // a list of TreeMakers that encode `patTree`, and a list of arguments for recursive invocations of `translatePattern` to encode its subpatterns
+    // a list of TreeMakers that encode `patTree`, and a list of arguments for recursive invocations of `BoundTree.translate` to encode its subpatterns
     final case class TranslationStep(makers: List[TreeMaker], subpatterns: List[BoundTree]) {
       def merge(f: BoundTree => List[TreeMaker]): List[TreeMaker] = makers ::: (subpatterns flatMap f)
       override def toString = if (subpatterns.isEmpty) "" else subpatterns.mkString("(", ", ", ")")
@@ -209,12 +210,18 @@ trait MatchTranslation {
       // val packedPt = repeatedToSeq(typer.packedType(match_, context.owner))
       val selectorSym = freshSym(selector.pos, pureType(selectorTp)) setFlag treeInfo.SYNTH_CASE_FLAGS
 
-      // pt = Any* occurs when compiling test/files/pos/annotDepMethType.scala  with -Xexperimental
-      val combined = combineCases(selector, selectorSym, nonSyntheticCases map translateCase(selectorSym, pt), pt, matchOwner, defaultOverride)
+      val combined = {
+        val selectorSym     = freshSym(selector.pos, pureType(selectorTp)) setFlag treeInfo.SYNTH_CASE_FLAGS
+        val scrutinee       = SingleScrutinee(selector, selectorSym)
+        val translatedCases = nonSyntheticCases map translateCase(scrutinee, pt)
 
+        // pt = Any* occurs when compiling test/files/pos/annotDepMethType.scala  with -Xexperimental
+        combineCases(scrutinee, translatedCases, pt, matchOwner, defaultOverride)
+      }
       if (Statistics.canEnable) Statistics.stopTimer(patmatNanos, start)
       combined
     }
+
 
     // return list of typed CaseDefs that are supported by the backend (typed/bind/wildcard)
     // we don't have a global scrutinee -- the caught exception must be bound in each of the casedefs
@@ -230,7 +237,7 @@ trait MatchTranslation {
             // generate a fresh symbol for each case, hoping we'll end up emitting a type-switch (we don't have a global scrut there)
             // if we fail to emit a fine-grained switch, have to do translateCase again with a single scrutSym (TODO: uniformize substitution on treemakers so we can avoid this)
             val caseScrutSym = freshSym(pos, pureType(ThrowableTpe))
-            (caseScrutSym, propagateSubstitution(translateCase(caseScrutSym, pt)(caseDef), EmptySubstitution))
+            (caseScrutSym, propagateSubstitution(translateCase(SymbolScrutinee(caseScrutSym), pt)(caseDef), EmptySubstitution))
           }
 
           for(cases <- emitTypeSwitch(bindersAndCases, pt).toList
@@ -240,7 +247,7 @@ trait MatchTranslation {
 
         val catches = if (swatches.nonEmpty) swatches else {
           val scrutSym = freshSym(pos, pureType(ThrowableTpe))
-          val casesNoSubstOnly = caseDefs map { caseDef => (propagateSubstitution(translateCase(scrutSym, pt)(caseDef), EmptySubstitution))}
+          val casesNoSubstOnly = caseDefs map { caseDef => (propagateSubstitution(translateCase(SymbolScrutinee(scrutSym), pt)(caseDef), EmptySubstitution))}
 
           val exSym = freshSym(pos, pureType(ThrowableTpe), "ex")
 
@@ -249,7 +256,7 @@ trait MatchTranslation {
                 CaseDef(
                   Bind(exSym, Ident(nme.WILDCARD)), // TODO: does this need fixing upping?
                   EmptyTree,
-                  combineCasesNoSubstOnly(REF(exSym), scrutSym, casesNoSubstOnly, pt, matchOwner, Some(scrut => Throw(REF(exSym))))
+                  combineCasesNoSubstOnly(SingleScrutinee(REF(exSym), scrutSym), casesNoSubstOnly, pt, matchOwner, Some(scrut => Throw(REF(exSym))))
                 )
               })
         }
@@ -285,12 +292,10 @@ trait MatchTranslation {
       *    a function that will take care of binding and substitution of the next ast (to the right).
       *
       */
-    def translateCase(scrutSym: Symbol, pt: Type)(caseDef: CaseDef) = {
+    def translateCase(scrutinee: Scrutinee, pt: Type)(caseDef: CaseDef) = {
       val CaseDef(pattern, guard, body) = caseDef
-      translatePattern(BoundTree(scrutSym, pattern)) ++ translateGuard(guard) :+ translateBody(body, pt)
+      BoundTree(scrutinee, pattern).translate() ++ translateGuard(guard) :+ translateBody(body, pt)
     }
-
-    def translatePattern(bound: BoundTree): List[TreeMaker] = bound.translate()
 
     def translateGuard(guard: Tree): List[TreeMaker] =
       if (guard == EmptyTree) Nil
