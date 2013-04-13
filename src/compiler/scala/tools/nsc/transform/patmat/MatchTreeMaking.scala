@@ -31,10 +31,10 @@ trait MatchTreeMaking extends MatchCodeGen with Debugging {
 // the making of the trees
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   trait TreeMakers extends TypedSubstitution with CodegenCore {
-    def optimizeCases(prevBinder: Symbol, cases: List[List[TreeMaker]], pt: Type): (List[List[TreeMaker]], List[Tree])
-    def analyzeCases(prevBinder: Symbol, cases: List[List[TreeMaker]], pt: Type, suppression: Suppression): Unit
+    def optimizeCases(scrutinee: Scrutinee, cases: List[List[TreeMaker]], pt: Type): (List[List[TreeMaker]], List[Tree])
+    def analyzeCases(scrutinee: Scrutinee, cases: List[List[TreeMaker]], pt: Type, suppression: Suppression): Unit
 
-    def emitSwitch(scrut: Tree, scrutSym: Symbol, cases: List[List[TreeMaker]], pt: Type, defaultCaseOverride: Option[Tree], unchecked: Boolean): Option[Tree] =
+    def emitSwitch(scrutinee: Scrutinee, cases: List[List[TreeMaker]], pt: Type, defaultCaseOverride: Option[Tree], unchecked: Boolean): Option[Tree] =
       None
 
     // for catch (no need to customize match failure)
@@ -505,7 +505,7 @@ trait MatchTreeMaking extends MatchCodeGen with Debugging {
             ((casegen: Casegen) => combineExtractors(altTreeMakers :+ TrivialTreeMaker(casegen.one(mkTRUE)))(casegen))
           )
 
-          val findAltMatcher = codegenAlt.matcher(EmptyTree, NoSymbol, BooleanTpe)(combinedAlts, Some(mkFALSE))
+          val findAltMatcher = codegenAlt.matcher(NoScrutinee, BooleanTpe)(combinedAlts, Some(mkFALSE))
           codegenAlt.ifThenElseZero(findAltMatcher, substitution(next))
         }
       }
@@ -538,20 +538,20 @@ trait MatchTreeMaking extends MatchCodeGen with Debugging {
     }
 
     // calls propagateSubstitution on the treemakers
-    def combineCases(scrut: Tree, scrutSym: Symbol, casesRaw: List[List[TreeMaker]], pt: Type, owner: Symbol, defaultCaseOverride: Option[Tree]): Tree = {
+    def combineCases(scrutinee: Scrutinee, casesRaw: List[List[TreeMaker]], pt: Type, owner: Symbol, defaultCaseOverride: Option[Tree]): Tree = {
       // drops SubstOnlyTreeMakers, since their effect is now contained in the TreeMakers that follow them
       val casesNoSubstOnly = casesRaw map (propagateSubstitution(_, EmptySubstitution))
-      combineCasesNoSubstOnly(scrut, scrutSym, casesNoSubstOnly, pt, owner, defaultCaseOverride)
+      combineCasesNoSubstOnly(scrutinee, casesNoSubstOnly, pt, owner, defaultCaseOverride)
     }
 
     // pt is the fully defined type of the cases (either pt or the lub of the types of the cases)
-    def combineCasesNoSubstOnly(scrut: Tree, scrutSym: Symbol, casesNoSubstOnly: List[List[TreeMaker]], pt: Type, owner: Symbol, defaultCaseOverride: Option[Tree]): Tree =
-      fixerUpper(owner, scrut.pos) {
+    def combineCasesNoSubstOnly(scrutinee: Scrutinee, casesNoSubstOnly: List[List[TreeMaker]], pt: Type, owner: Symbol, defaultCaseOverride: Option[Tree]): Tree =
+      fixerUpper(owner, scrutinee.pos) {
         debug.patmat("combining cases: "+ (casesNoSubstOnly.map(_.mkString(" >> ")).mkString("{", "\n", "}")))
 
         val (suppression, requireSwitch): (Suppression, Boolean) =
           if (settings.XnoPatmatAnalysis) (Suppression.FullSuppression, false)
-          else scrut match {
+          else scrutinee.selector match {
             case Typed(tree, tpt) =>
               val suppressExhaustive = tpt.tpe hasAnnotation UncheckedClass
               val supressUnreachable = tree match {
@@ -576,38 +576,38 @@ trait MatchTreeMaking extends MatchCodeGen with Debugging {
               }
               val requireSwitch = hasSwitchAnnotation && exceedsTwoCasesOrAlts
               if (hasSwitchAnnotation && !requireSwitch)
-                reporter.warning(scrut.pos, "matches with two cases or fewer are emitted using if-then-else instead of switch")
+                reporter.warning(scrutinee.pos, "matches with two cases or fewer are emitted using if-then-else instead of switch")
               (suppression, requireSwitch)
             case _ =>
               (Suppression.NoSuppression, false)
           }
 
-        emitSwitch(scrut, scrutSym, casesNoSubstOnly, pt, defaultCaseOverride, unchecked = suppression.suppressExhaustive).getOrElse{
-          if (requireSwitch) reporter.warning(scrut.pos, "could not emit switch for @switch annotated match")
+        emitSwitch(scrutinee, casesNoSubstOnly, pt, defaultCaseOverride, unchecked = suppression.suppressExhaustive).getOrElse{
+          if (requireSwitch) reporter.warning(scrutinee.pos, "could not emit switch for @switch annotated match")
 
-          def defaultCase = defaultCaseOverride orElse Some(Throw(MatchErrorClass.tpe, CODE.REF(scrutSym)))
+          def defaultCase = defaultCaseOverride orElse Some(Throw(MatchErrorClass.tpe, scrutinee.ref))
 
           if (casesNoSubstOnly nonEmpty) {
             // before optimizing, check casesNoSubstOnly for presence of a default case,
             // since DCE will eliminate trivial cases like `case _ =>`, even if they're the last one
             // exhaustivity and reachability must be checked before optimization as well
             // TODO: improve notion of trivial/irrefutable -- a trivial type test before the body still makes for a default case
-            //   ("trivial" depends on whether we're emitting a straight match or an exception, or more generally, any supertype of scrutSym.tpe is a no-op)
+            //   ("trivial" depends on whether we're emitting a straight match or an exception, or more generally, any supertype of scrutinee.info is a no-op)
             //   irrefutability checking should use the approximation framework also used for CSE, unreachability and exhaustivity checking
             val nonTrivLast            = casesNoSubstOnly.last
             val hasUserSuppliedDefault = nonTrivLast.nonEmpty && nonTrivLast.head.isInstanceOf[BodyTreeMaker]
 
-            analyzeCases(scrutSym, casesNoSubstOnly, pt, suppression)
+            analyzeCases(scrutinee, casesNoSubstOnly, pt, suppression)
 
-            val (cases, toHoist) = optimizeCases(scrutSym, casesNoSubstOnly, pt)
+            val (cases, toHoist) = optimizeCases(scrutinee, casesNoSubstOnly, pt)
 
             val defaultCaseUnlessUserSupplied = if (hasUserSuppliedDefault) None else defaultCase
 
-            val matchRes = codegen.matcher(scrut, scrutSym, pt)(cases map combineExtractors, defaultCaseUnlessUserSupplied)
+            val matchRes = codegen.matcher(scrutinee, pt)(cases map combineExtractors, defaultCaseUnlessUserSupplied)
 
             if (toHoist isEmpty) matchRes else Block(toHoist, matchRes)
           } else {
-            codegen.matcher(scrut, scrutSym, pt)(Nil, defaultCase)
+            codegen.matcher(scrutinee, pt)(Nil, defaultCase)
           }
         }
       }

@@ -13,7 +13,6 @@ import scala.tools.nsc.transform.TypingTransformers
 import scala.tools.nsc.transform.Transform
 import scala.reflect.internal.util.Statistics
 import scala.reflect.internal.{Mode, Types}
-import scala.reflect.internal.util.Position
 
 /** Translate pattern matching.
   *
@@ -82,8 +81,8 @@ trait PatternMatching extends Transform
   }
 
   class PureMatchTranslator(val typer: analyzer.Typer, val matchStrategy: Tree) extends MatchTranslator with PureCodegen {
-    def optimizeCases(prevBinder: Symbol, cases: List[List[TreeMaker]], pt: Type) = (cases, Nil)
-    def analyzeCases(prevBinder: Symbol, cases: List[List[TreeMaker]], pt: Type, suppression: Suppression): Unit = {}
+    def optimizeCases(scrutinee: Scrutinee, cases: List[List[TreeMaker]], pt: Type) = (cases, Nil)
+    def analyzeCases(scrutinee: Scrutinee, cases: List[List[TreeMaker]], pt: Type, suppression: Suppression): Unit = {}
   }
 
   class OptimizingMatchTranslator(val typer: analyzer.Typer) extends MatchTranslator
@@ -129,6 +128,54 @@ trait Interface extends ast.TreeDSL {
     val _match    = newTermName("__match") // don't call the val __match, since that will trigger virtual pattern matching...
 
     def counted(str: String, i: Int) = newTermName(str + i)
+  }
+
+
+  /** Abstract over single-scrutinee and multi-scrutinee (packed in a tuple) matches.
+   */
+  sealed abstract class Scrutinee {
+    def selector: Tree
+    def sym: Symbol
+    def info: Type
+
+    def defs: List[Tree]
+    // for MatchError thrown by default case
+    def ref: Tree
+    def pos = selector.pos
+  }
+
+  // standard match
+  case class SingleScrutinee(selector: Tree, sym: Symbol) extends Scrutinee {
+    assert(sym ne NoSymbol, "Use NoScrutinee for no-symbol scrutinee "+ selector)
+
+    def info: Type = sym.info
+
+    def defs = List(ValDef(sym, selector))
+    def ref  = CODE.REF(sym)
+  }
+
+  // not meant to emit a match, for try/catch translation
+  case class SymbolScrutinee(sym: Symbol) extends Scrutinee {
+    assert(sym ne NoSymbol, "Use NoScrutinee for no-symbol scrutinee "+ selector)
+
+    def info: Type = sym.info
+
+    def ref = CODE.REF(sym)
+
+    def selector: Tree   = abort("SymbolScrutinee does not have a selector.")
+    def defs: List[Tree] = abort("SymbolScrutinee cannot emit a match. Use SingleScrutinee.")
+  }
+
+  // for alternatives
+  case object NoScrutinee extends Scrutinee {
+    def sym: Symbol               = NoSymbol
+    def info: Type                = NoType
+
+    def ref: Tree                 = EmptyTree
+    def defs: List[Tree]          = Nil
+    override def pos              = NoPosition
+
+    def selector: Tree            = abort("NoScrutinee does not have a selector.")
   }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
