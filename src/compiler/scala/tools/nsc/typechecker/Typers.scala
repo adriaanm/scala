@@ -2571,7 +2571,7 @@ trait Typers extends Modes with Adaptations with Tags {
       val pt    = deskolemizeGADTSkolems(pt0)
       val targs = pt.normalize.typeArgs
 
-      // if targs.head isn't fully defined, we can translate --> error
+      // if targs.head isn't fully defined, we can't translate --> error
       targs match {
         case argTp :: _ if isFullyDefined(argTp) => // ok
         case _ => // uh-oh
