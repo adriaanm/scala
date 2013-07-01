@@ -2867,11 +2867,12 @@ trait Typers extends Modes with Adaptations with Tags {
 
       val (funSym, argpts, respt) =
         pt match {
-          // check SAM first so that this works:
+          case FunctionType(args, res) => (FunctionSymbol, args, res)
+          // would like to check SAM first so that this works:
           //   abstract class MyFun extends (Int => Int)
           //   (a => a): MyFun
+          // ... but that breaks everything else :-)
           case SAMType(mem, args, res) => (mem, args, res)
-          case FunctionType(args, res) => (FunctionSymbol, args, res)
           case _                       => (FunctionSymbol, fun.vparams map (_ => NoType), WildcardType)
         }
 
