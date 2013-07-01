@@ -2773,28 +2773,108 @@ trait Typers extends Modes with Adaptations with Tags {
         }
     }
 
-
-    /**
-     *  @param fun  ...
-     *  @param mode ...
-     *  @param pt   ...
-     *  @return     ...
+    /** synthesize and type check a SAM type implementation
+     *
+     *  Assuming:
+     *    - fun == `(p1: T1, ..., pN: TN) => body`
+     *    - resTp is the type of body typed while expecting resPt (with pi: Ti in scope)
+     *
+     *  We synthesize:
+     *
+     *  new $samClassTp {
+     *    def ${sam.name}($p1: $T1, ..., $pN: $TN): $resTp = $body
+     *  }
+     *
+     * TODO: it would be nicer to generate the tree specified above at once and type it as a whole,
+     * there are two gotchas:
+     *    - we don't know typedBody.tpe until we've typed the body (unless it was specified),
+     *       - if we typed the body in isolation first, you'd know its result type, but would have to re-jig the owner structure
+     *       - could we use a type variable for the result type and backpatch it?
+     *    - occurrences of `this` in `cases` or `sel` must resolve to the this of the class originally enclosing the function,
+     *      not of the anonymous partial function subclass
+     *
+     * an alternative TODO: add partial function AST node or equivalent and get rid of this synthesis --> do everything in uncurry (or later)
      */
+    def synthesizeSAMFunction(sam: Symbol, fun: Function, resPt: Type, samClassTp: Type, mode: Int): Tree = {
+      // assert(fun.vparams forall (vp => isFullyDefined(vp.tpt.tpe))) -- by construction, as we take them from sam's info
+      val pos = fun.pos
+
+      val anonClass = (context.owner
+        newAnonymousFunctionClass pos
+        addAnnotation AnnotationInfo(SerialVersionUIDAttr.tpe, List(Literal(Constant(0))), List()))
+
+      anonClass setInfo ClassInfoType(addSerializable(samClassTp), newScope, anonClass)
+
+      val methodSym = anonClass.newMethod(sam.name.toTermName, fun.pos, FINAL | OVERRIDE)
+      val paramSyms = fun.vparams map { vp =>
+        methodSym.newValueParameter(vp.name, vp.pos.focus, SYNTHETIC) setInfo vp.tpt.tpe
+      }
+      methodSym setInfo MethodType(paramSyms, AnyTpe)
+
+      anonClass.info.decls enter methodSym
+
+      // `def ${sam.name}($p1: $T1, ..., $pN: $TN): $resTp = $body`
+      val methodBodyTyper = newTyper(context.makeNewScope(context.tree, methodSym))
+
+      // should use the DefDef for the context's tree, but it doesn't exist yet (we need the typer we're creating to create it)
+      paramSyms foreach (methodBodyTyper.context.scope enter _)
+
+      val typedBody = methodBodyTyper.typed(fun.body, mode, resPt)
+
+      methodSym setInfo MethodType(paramSyms, typedBody.tpe) // patch info
+
+      // TODO: encapsulate creating this tree shape
+      typedPos(pos, mode, samClassTp) {
+        Block(ClassDef(anonClass, NoMods, ListOfNil, List(DefDef(methodSym, typedBody)), pos.focus), atPos(pos.focus)(
+          Apply(Select(New(Ident(anonClass.name).setSymbol(anonClass)), nme.CONSTRUCTOR), List())
+        ))
+      }
+    }
+
+
     private def typedFunction(fun: Function, mode: Int, pt: Type): Tree = {
       val numVparams = fun.vparams.length
       if (numVparams > definitions.MaxFunctionArity)
         return MaxFunctionArityError(fun)
 
-      def decompose(pt: Type): (Symbol, List[Type], Type) =
-        if ((isFunctionType(pt) || (pt.typeSymbol == PartialFunctionClass && numVparams == 1 && fun.body.isInstanceOf[Match])) && // see bug901 for a reason why next conditions are needed
-            (  pt.normalize.typeArgs.length - 1 == numVparams
-            || fun.vparams.exists(_.tpt.isEmpty)
-            ))
-          (pt.typeSymbol, pt.normalize.typeArgs.init, pt.normalize.typeArgs.last)
-        else
-          (FunctionClass(numVparams), fun.vparams map (x => NoType), WildcardType)
+      val FunctionSymbol = FunctionClass(numVparams)
+      object FunctionType {
+        def unapply(tp: Type): Option[(List[Type], Type)] = {
+          tp baseType FunctionSymbol match {
+            case TypeRef(_, FunctionSymbol, args :+ res) => Some((args, res))
+            case _ => None
+          }
+        }
+      }
 
-      val (clazz, argpts, respt) = decompose(pt)
+      object SAMType {
+        def unapply(tp: Type): Option[(Symbol, List[Type], Type)] = {
+          // must filter out Any's members (getClass is deferred for some reason)
+          val deferredMembers = (
+            tp membersBasedOnFlags (excludedFlags = BridgeAndPrivateFlags, requiredFlags = DEFERRED)
+            filterNot (_.owner == AnyClass))
+
+          if (deferredMembers.size == 1) {
+            val sam = deferredMembers.head
+            if (sam.typeParams.isEmpty && sam.info.paramSectionCount == 1) {
+              val samInfo = tp memberInfo sam
+              Some((sam, samInfo.paramTypes, samInfo.resultType))
+            }
+            else None
+          } else None
+        }
+      }
+
+      val (funSym, argpts, respt) =
+        pt match {
+          // check SAM first so that this works:
+          //   abstract class MyFun extends (Int => Int)
+          //   (a => a): MyFun
+          case SAMType(mem, args, res) => (mem, args, res)
+          case FunctionType(args, res) => (FunctionSymbol, args, res)
+          case _                       => (FunctionSymbol, fun.vparams map (_ => NoType), WildcardType)
+        }
+
       if (argpts.lengthCompare(numVparams) != 0)
         WrongNumberOfParametersError(fun, argpts)
       else {
@@ -2836,6 +2916,9 @@ trait Typers extends Modes with Adaptations with Tags {
             if (p.tpt.tpe == null) p.tpt setType outerTyper.typedType(p.tpt).tpe
 
             outerTyper.synthesizePartialFunction(p.name, p.pos, fun.body, mode, pt)
+          case _ if funSym.isMethod => // a sam type
+            val outerTyper = newTyper(context.outer)
+            outerTyper.synthesizeSAMFunction(funSym, fun, respt, pt, mode)
           case _ =>
             val vparamSyms = fun.vparams map { vparam =>
               enterSym(context, vparam)
@@ -2843,15 +2926,12 @@ trait Typers extends Modes with Adaptations with Tags {
               vparam.symbol
             }
             val vparams = fun.vparams mapConserve (typedValDef)
-    //        for (vparam <- vparams) {
-    //          checkNoEscaping.locals(context.scope, WildcardType, vparam.tpt); ()
-    //        }
             val formals = vparamSyms map (_.tpe)
-            val body1 = typed(fun.body, respt)
-            val restpe = packedType(body1, fun.symbol).deconst.resultType
-            val funtpe = typeRef(clazz.tpe.prefix, clazz, formals :+ restpe)
-    //        body = checkNoEscaping.locals(context.scope, restpe, body)
-            treeCopy.Function(fun, vparams, body1).setType(funtpe)
+            val body1   = typed(fun.body, respt)
+            val restpe  = packedType(body1, fun.symbol).deconst.resultType
+            val funtpe  = appliedType(funSym, formals :+ restpe: _*)
+
+            treeCopy.Function(fun, vparams, body1) setType funtpe
         }
       }
     }
