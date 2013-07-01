@@ -2849,9 +2849,8 @@ trait Typers extends Modes with Adaptations with Tags {
 
       object SAMType {
         def unapply(tp: Type): Option[(Symbol, List[Type], Type)] =
-          // don't treat Function as a SAM, but do treat subtypes of FunctionN as SAMs (hence, SAMType is the first case below)
-          if (FunctionSymbol isSubClass pt.typeSymbol) None
-          else {
+          // don't give FunctionN the SAM treatment (yet)
+          if (tp.typeSymbol != FunctionSymbol) {
             // must filter out Any's members (getClass is deferred for some reason)
             val deferredMembers = (
               tp membersBasedOnFlags (excludedFlags = BridgeAndPrivateFlags, requiredFlags = DEFERRED)
@@ -2859,25 +2858,32 @@ trait Typers extends Modes with Adaptations with Tags {
 
             if (deferredMembers.size == 1) {
               val sam = deferredMembers.head
-              if (sam.typeParams.isEmpty && sam.info.paramSectionCount == 1) {
+
+              /* A SAM must be monomorphic and must have one parameter list with the expected number of parameters.
+               * The latter arity check is important: for backwards compatibility,
+               * should still type check and hope that there's an implicit conversion that converts to a function of the right arity (pos/t0438)
+               */
+              if (sam.typeParams.isEmpty &&
+                  sam.info.paramSectionCount == 1 &&
+                  sameLength(sam.info.params, fun.vparams)) {
                 val samInfo = tp memberInfo sam
                 Some((sam, samInfo.paramTypes, samInfo.resultType))
               }
               else None
             } else None
-          }
+          } else None
       }
 
-      // pt <:< FunctionN && sam(pt)
-      // pt <:< FunctionN && !sam(pt)
-      // !(pt <:< FunctionN) && sam(pt)
-      // !(pt <:< FunctionN) && !sam(pt)
       val (funSym, argpts, respt) =
         pt match {
-          // check SAM first so that this works:
-          //   abstract class MyFun extends (Int => Int)
-          //   (a => a): MyFun
-          // but (a => a): Int => Int should not get the sam treatment
+          /* The SAM case comes first so that this works:
+           *   abstract class MyFun extends (Int => Int)
+           *   (a => a): MyFun
+           *
+           * However, `(a => a): Int => Int` should not get the sam treatment.
+           *
+           * Note that SAMType only matches when the arity of the sam corresponds to the arity of the function.
+           */
           case SAMType(mem, args, res) => (mem, args, res)
           case FunctionType(args, res) => (FunctionSymbol, args, res)
           case _                       => (FunctionSymbol, fun.vparams map (_ => NoType), WildcardType)
