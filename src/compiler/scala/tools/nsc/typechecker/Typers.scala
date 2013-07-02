@@ -2825,7 +2825,7 @@ trait Typers extends Modes with Adaptations with Tags {
 
       // TODO: encapsulate creating this tree shape
       typedPos(pos, mode, samClassTp) {
-        Block(ClassDef(anonClass, NoMods, ListOfNil, List(DefDef(methodSym, typedBody)), pos.focus), atPos(pos.focus)(
+        Block(ClassDef(anonClass, NoMods, ListOfNil, ListOfNil, List(DefDef(methodSym, typedBody)), pos.focus), atPos(pos.focus)(
           Apply(Select(New(Ident(anonClass.name).setSymbol(anonClass)), nme.CONSTRUCTOR), List())
         ))
       }
@@ -2881,7 +2881,7 @@ trait Typers extends Modes with Adaptations with Tags {
           case _                       => (FunctionSymbol, fun.vparams map (_ => NoType), WildcardType)
         }
 
-      // arity restriction does not apply to SAM
+      // max arity restriction does not apply to SAM
       if (funSym == FunctionSymbol && numVparams > definitions.MaxFunctionArity)
         return MaxFunctionArityError(fun)
 
@@ -2897,32 +2897,36 @@ trait Typers extends Modes with Adaptations with Tags {
           case arity => arity
         }
 
-      if (numVparams == expectedArity || expectedArity < 0) {
-        foreach2(fun.vparams, argpts) { (vparam, argpt) =>
-          if (vparam.tpt.isEmpty) {
-            vparam.tpt.tpe =
-              if (isFullyDefined(argpt)) argpt
-              else {
-                fun match {
-                  case etaExpansion(vparams, fn, args) =>
-                    silent(_.typed(fn, forFunMode(mode), pt)) match {
-                      case SilentResultValue(fn1) if context.undetparams.isEmpty =>
-                        // if context,undetparams is not empty, the function was polymorphic,
-                        // so we need the missing arguments to infer its type. See #871
-                        //println("typing eta "+fun+":"+fn1.tpe+"/"+context.undetparams)
-                        val ftpe = normalize(fn1.tpe) baseType FunctionClass(numVparams)
-                        if (isFunctionType(ftpe) && isFullyDefined(ftpe))
-                          return typedFunction(fun, mode, ftpe)
-                      case _ =>
-                    }
-                  case _ =>
+      val parameterTypesKnown = !fun.vparams.exists(_.tpt.isEmpty)
+
+      // proceed if: arity as expected|| no expected arity || all parameter types are known
+      if (numVparams == expectedArity || expectedArity < 0 || parameterTypesKnown) {
+        if (!parameterTypesKnown)
+          foreach2(fun.vparams, argpts) { (vparam, argpt) =>
+            if (vparam.tpt.isEmpty) {
+              vparam.tpt.tpe =
+                if (isFullyDefined(argpt)) argpt
+                else {
+                  fun match {
+                    case etaExpansion(vparams, fn, args) =>
+                      silent(_.typed(fn, forFunMode(mode), pt)) match {
+                        case SilentResultValue(fn1) if context.undetparams.isEmpty =>
+                          // if context,undetparams is not empty, the function was polymorphic,
+                          // so we need the missing arguments to infer its type. See #871
+                          //println("typing eta "+fun+":"+fn1.tpe+"/"+context.undetparams)
+                          val ftpe = normalize(fn1.tpe) baseType FunctionClass(numVparams)
+                          if (isFunctionType(ftpe) && isFullyDefined(ftpe))
+                            return typedFunction(fun, mode, ftpe)
+                        case _ =>
+                      }
+                    case _ =>
+                  }
+                  MissingParameterTypeError(fun, vparam, pt)
+                  ErrorType
                 }
-                MissingParameterTypeError(fun, vparam, pt)
-                ErrorType
-              }
-            if (!vparam.tpt.pos.isDefined) vparam.tpt setPos vparam.pos.focus
+              if (!vparam.tpt.pos.isDefined) vparam.tpt setPos vparam.pos.focus
+            }
           }
-        }
 
         fun.body match {
           // translate `x => x match { <cases> }` : PartialFunction to
