@@ -2834,10 +2834,10 @@ trait Typers extends Modes with Adaptations with Tags {
 
     private def typedFunction(fun: Function, mode: Int, pt: Type): Tree = {
       val numVparams = fun.vparams.length
-      if (numVparams > definitions.MaxFunctionArity)
-        return MaxFunctionArityError(fun)
-
       val FunctionSymbol = FunctionClass(numVparams)
+
+      /* Matches a subtype of FunctionN where N is the expected number of parameters.
+       */
       object FunctionType {
         def unapply(tp: Type): Option[(List[Type], Type)] = {
           tp baseType FunctionSymbol match {
@@ -2847,51 +2847,57 @@ trait Typers extends Modes with Adaptations with Tags {
         }
       }
 
+      /* Matches a type that has a SAM with the expected number of parameters,
+       * excluding the Function type corresponding to the expected number of parameters.
+       *
+       * For mismatching arity, we continue type checking with unknown parameter types,
+       * as there may still be an implicit conversion to a function of the right arity (pos/t0438)
+       */
       object SAMType {
         def unapply(tp: Type): Option[(Symbol, List[Type], Type)] =
           // don't give FunctionN the SAM treatment (yet)
           if (tp.typeSymbol != FunctionSymbol) {
-            // must filter out Any's members (getClass is deferred for some reason)
-            val deferredMembers = (
-              tp membersBasedOnFlags (excludedFlags = BridgeAndPrivateFlags, requiredFlags = DEFERRED)
-              filterNot (_.owner == AnyClass))
+            val sam = samOf(tp)
 
-            if (deferredMembers.size == 1) {
-              val sam = deferredMembers.head
-
-              /* A SAM must be monomorphic and must have one parameter list with the expected number of parameters.
-               * The latter arity check is important: for backwards compatibility,
-               * should still type check and hope that there's an implicit conversion that converts to a function of the right arity (pos/t0438)
-               */
-              if (sam.typeParams.isEmpty &&
-                  sam.info.paramSectionCount == 1 &&
-                  sameLength(sam.info.params, fun.vparams)) {
-                val samInfo = tp memberInfo sam
-                Some((sam, samInfo.paramTypes, samInfo.resultType))
-              }
-              else None
+            if (sam != NoSymbol && sameLength(sam.info.params, fun.vparams)) {
+              val samInfo = tp memberInfo sam
+              Some((sam, samInfo.paramTypes, samInfo.resultType))
             } else None
           } else None
       }
 
+      /* The SAM case comes first so that this works:
+       *   abstract class MyFun extends (Int => Int)
+       *   (a => a): MyFun
+       *
+       * However, `(a => a): Int => Int` should not get the sam treatment.
+       *
+       * Note that SAMType only matches when the arity of the sam corresponds to the arity of the function.
+       */
       val (funSym, argpts, respt) =
         pt match {
-          /* The SAM case comes first so that this works:
-           *   abstract class MyFun extends (Int => Int)
-           *   (a => a): MyFun
-           *
-           * However, `(a => a): Int => Int` should not get the sam treatment.
-           *
-           * Note that SAMType only matches when the arity of the sam corresponds to the arity of the function.
-           */
           case SAMType(mem, args, res) => (mem, args, res)
           case FunctionType(args, res) => (FunctionSymbol, args, res)
           case _                       => (FunctionSymbol, fun.vparams map (_ => NoType), WildcardType)
         }
 
-      if (argpts.lengthCompare(numVparams) != 0)
-        WrongNumberOfParametersError(fun, argpts)
-      else {
+      // arity restriction does not apply to SAM
+      if (funSym == FunctionSymbol && numVparams > definitions.MaxFunctionArity)
+        return MaxFunctionArityError(fun)
+
+      val expectedArity =
+        if (pt.typeSymbol == PartialFunctionClass) 1
+        else FunctionClass indexOf pt.typeSymbol match {
+          // Expected type's symbol was not a FunctionN -- maybe it was a subtype of FunctionN or a SAM type?
+          // samOf works both for subtypes of FunctionN and generalized SAM types
+          case -1    =>
+            val sam = samOf(pt)
+            if (sam != NoSymbol) sam.info.params.length
+            else -1
+          case arity => arity
+        }
+
+      if (numVparams == expectedArity || expectedArity < 0) {
         foreach2(fun.vparams, argpts) { (vparam, argpt) =>
           if (vparam.tpt.isEmpty) {
             vparam.tpt.tpe =
@@ -2930,9 +2936,14 @@ trait Typers extends Modes with Adaptations with Tags {
             if (p.tpt.tpe == null) p.tpt setType outerTyper.typedType(p.tpt).tpe
 
             outerTyper.synthesizePartialFunction(p.name, p.pos, fun.body, mode, pt)
+
+          // translate `(p1: T1, ..., pN: TN) => body`
+          // to `new $pt { def ${funSym.name}($p1: $T1, ..., $pN: $TN): $resTp = $body }`
           case _ if funSym.isMethod => // a sam type
             val outerTyper = newTyper(context.outer)
             outerTyper.synthesizeSAMFunction(funSym, fun, respt, pt, mode)
+
+          // regular Functio
           case _ =>
             val vparamSyms = fun.vparams map { vparam =>
               enterSym(context, vparam)
@@ -2947,7 +2958,7 @@ trait Typers extends Modes with Adaptations with Tags {
 
             treeCopy.Function(fun, vparams, body1) setType funtpe
         }
-      }
+      } else WrongNumberOfParametersError(fun, expectedArity)
     }
 
     def typedRefinement(templ: Template) {

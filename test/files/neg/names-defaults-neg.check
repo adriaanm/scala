@@ -125,7 +125,7 @@ names-defaults-neg.scala:134: error: missing parameter type for expanded functio
 names-defaults-neg.scala:135: error: parameter 'a' is already specified at parameter position 1
   val taf3 = testAnnFun(b = _: String, a = get(8))
                                          ^
-names-defaults-neg.scala:136: error: wrong number of parameters; expected = 2
+names-defaults-neg.scala:136: error: wrong number of parameters; expected two
   val taf4: (Int, String) => Unit = testAnnFun(_, b = _)
                                               ^
 names-defaults-neg.scala:144: error: variable definition needs type because 'x' is used as a named argument in its body.

@@ -710,6 +710,22 @@ trait Definitions extends api.StandardDefinitions {
       case _                                    => NoType
     }
 
+    /* The single abstract method of type `tp` or NoSymbol.
+     * The method must be monomorphic and have exactly one parameter list.
+     */
+    def samOf(tp: Type): Symbol = {
+      // must filter out Any's members (getClass is deferred for some reason)
+      val deferredMembers = (
+        tp membersBasedOnFlags (excludedFlags = BridgeAndPrivateFlags, requiredFlags = METHOD | DEFERRED)
+        filterNot (_.owner == AnyClass))
+
+      if (deferredMembers.size == 1 &&
+          deferredMembers.head.typeParams.isEmpty &&
+          deferredMembers.head.info.paramSectionCount == 1)
+        deferredMembers.head
+      else NoSymbol
+    }
+
     def arrayType(arg: Type)         = appliedType(ArrayClass, arg)
     def byNameType(arg: Type)        = appliedType(ByNameParamClass, arg)
     def iteratorOfType(tp: Type)     = appliedType(IteratorClass, tp)
