@@ -32,7 +32,7 @@ class CNFBuilder {
   def clauses: Array[Clause] = buff.toArray
 
   private[this] var myLiteralCount = 0
-  def allLiterals: Set[Lit] = (1 to myLiteralCount).map(Lit(_)).toSet
+  def allVariables: List[Int] = (1 to myLiteralCount).toList
   def newLiteral(): Lit = {
     myLiteralCount += 1
     Lit(myLiteralCount)

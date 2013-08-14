@@ -182,8 +182,8 @@ trait Solving extends Logic {
     val NoModel: Model = null
 
     // this model contains the auxiliary variables as well
-    type TseitinModel = Set[Lit]
-    val EmptyTseitinModel = Set.empty[Lit]
+    type TseitinModel = List[Lit]
+    val EmptyTseitinModel = List.empty[Lit]
     val NoTseitinModel: TseitinModel = null
 
     // http://docs.oracle.com/javase/7/docs/api/java/lang/System.html#nanoTime() recommends nanoTime for measuring elapsed time
@@ -194,12 +194,10 @@ trait Solving extends Logic {
     def findAllModelsFor(solvable: Solvable): List[Model] = {
       val stoppingNanos: Long = stoppingNanosFor(AnalysisBudget.defaultTimeoutMillis)
 
-      // variables of the problem
-      val allVars: Set[Lit] = solvable.cnf.allLiterals
       // debug.patmat("vars "+ vars)
       // the negation of a model -(S1=True/False /\ ... /\ SN=True/False) = clause(S1=False/True, ...., SN=False/True)
       // (i.e. the blocking clause - used for ALL-SAT)
-      def negateModel(m: TseitinModel) = m.map(lit => -lit)
+      def negateModel(m: TseitinModel): Clause = m.map(lit => -lit).toSet
 
       def findAllModels(clauses: Array[Clause], models: List[TseitinModel], recursionDepthAllowed: Int = 10): List[TseitinModel] =
         if (recursionDepthAllowed == 0) models
@@ -208,7 +206,7 @@ trait Solving extends Logic {
           val model = findTseitinModelFor(clauses, stoppingNanos)
           // if we found a solution, conjunct the formula with the model's negation and recurse
           if (model ne NoTseitinModel) {
-            val unassigned = (allVars -- model.map(lit => Lit(lit.variable))).toList
+            val unassigned = (solvable.cnf.allVariables diff model.map(_.variable)).map(Lit(_))
             debug.patmat(s"unassigned ${unassigned map (lit => solvable.symForVar(lit.variable))} in ${projectToModel(model, solvable.symForVar)}")
 
             def force(lit: Lit) = {
@@ -235,7 +233,7 @@ trait Solving extends Logic {
     }
 
     private def withLit(res: TseitinModel, l: Lit): TseitinModel = {
-      if (res eq NoTseitinModel) NoTseitinModel else res + l
+      if (res eq NoTseitinModel) NoTseitinModel else l :: res
     }
 
     /** Drop trivially true clauses, simplify others by dropping negation of `unitLit`.

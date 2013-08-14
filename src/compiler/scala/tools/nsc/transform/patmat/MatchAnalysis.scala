@@ -480,7 +480,7 @@ trait MatchAnalysis extends MatchApproximation {
           val counterExamples = matchFailModels.map(modelToCounterExample(scrutVar))
 
           val pruned = CounterExample.prune(counterExamples).map(_.toString).sorted
-
+          println("pruned: "+ pruned.mkString("\n"))
           if (Statistics.canEnable) Statistics.stopTimer(patmatAnaExhaust, start)
           pruned
         } catch {
@@ -494,18 +494,28 @@ trait MatchAnalysis extends MatchApproximation {
     object CounterExample {
       def prune(examples: List[CounterExample]): List[CounterExample] = {
         val distinct = examples.filterNot(_ == NoExample).toSet
-        distinct.filterNot(ce => distinct.exists(other => (ce ne other) && ce.coveredBy(other))).toList
+        val pruned = distinct.filterNot(ce => distinct.exists(other => (ce ne other) && ce.coveredBy(other))).toList
+        println(pruned.groupBy(ex => (ex.ctor, ex.ctorArgs.length)))
+        pruned
       }
     }
 
     // a way to construct a value that will make the match fail: a constructor invocation, a constant, an object of some type)
     class CounterExample {
+      val ctor: Symbol = NoSymbol
+      val ctorArgs: List[CounterExample] = Nil
       protected[MatchAnalyzer] def flattenConsArgs: List[CounterExample] = Nil
       def coveredBy(other: CounterExample): Boolean = this == other || other == WildcardExample
     }
     case class ValueExample(c: ValueConst) extends CounterExample { override def toString = c.toString }
     case class TypeExample(c: Const)  extends CounterExample { override def toString = "(_ : "+ c +")" }
     case class NegativeExample(eqTo: Const, nonTrivialNonEqualTo: List[Const]) extends CounterExample {
+      override def coveredBy(other: CounterExample): Boolean = other match {
+        case WildcardExample               => true
+        case NegativeExample(`eqTo`, negs) => (nonTrivialNonEqualTo diff negs).isEmpty
+        case _                             => false
+      }
+
       // require(nonTrivialNonEqualTo.nonEmpty, nonTrivialNonEqualTo)
       override def toString = {
         val negation =
@@ -514,7 +524,7 @@ trait MatchAnalysis extends MatchApproximation {
         "(x: "+ eqTo +" forSome x not in "+ negation +")"
       }
     }
-    case class ListExample(ctorArgs: List[CounterExample]) extends CounterExample {
+    case class ListExample(override val ctor: Symbol, override val ctorArgs: List[CounterExample]) extends CounterExample {
       protected[MatchAnalyzer] override def flattenConsArgs: List[CounterExample] = ctorArgs match {
         case hd :: tl :: Nil => hd :: tl.flattenConsArgs
         case _ => Nil
@@ -523,29 +533,35 @@ trait MatchAnalysis extends MatchApproximation {
 
       override def coveredBy(other: CounterExample): Boolean =
         other match {
-          case other@ListExample(_) =>
+          case other@ListExample(_, _) =>
             this == other || ((elems.length == other.elems.length) && (elems zip other.elems).forall{case (a, b) => a coveredBy b})
           case _ => super.coveredBy(other)
         }
 
       override def toString = elems.mkString("List(", ", ", ")")
     }
-    case class TupleExample(ctorArgs: List[CounterExample]) extends CounterExample {
+    case class TupleExample(override val ctor: Symbol, override val ctorArgs: List[CounterExample]) extends CounterExample {
       override def toString = ctorArgs.mkString("(", ", ", ")")
 
       override def coveredBy(other: CounterExample): Boolean =
         other match {
-          case TupleExample(otherArgs) =>
+          case TupleExample(_, otherArgs) =>
             this == other || ((ctorArgs.length == otherArgs.length) && (ctorArgs zip otherArgs).forall{case (a, b) => a coveredBy b})
           case _ => super.coveredBy(other)
         }
     }
-    case class ConstructorExample(cls: Symbol, ctorArgs: List[CounterExample]) extends CounterExample {
-      override def toString = cls.decodedName + (if (cls.isModuleClass) "" else ctorArgs.mkString("(", ", ", ")"))
+    case class ConstructorExample(override val ctor: Symbol, override val ctorArgs: List[CounterExample]) extends CounterExample {
+      override def toString = ctor.decodedName + (if (ctor.isModuleClass) "" else ctorArgs.mkString("(", ", ", ")"))
     }
 
-    case object WildcardExample extends CounterExample { override def toString = "_" }
-    case object NoExample extends CounterExample { override def toString = "??" }
+    case object WildcardExample extends CounterExample {
+      override def toString = "_"
+      override def coveredBy(other: CounterExample): Boolean = other == WildcardExample
+    }
+    case object NoExample extends CounterExample {
+      override def toString = "??"
+      override def coveredBy(other: CounterExample): Boolean = true
+    }
 
     def modelToVarAssignment(model: Model): Map[Var, (Seq[Const], Seq[Const])] =
       model.toSeq.groupBy{f => f match {case (sym, value) => sym.variable} }.mapValues{ xs =>
@@ -659,8 +675,8 @@ trait MatchAnalysis extends MatchApproximation {
                 }
 
                 cls match {
-                  case ConsClass               => ListExample(args())
-                  case _ if isTupleSymbol(cls) => TupleExample(args(true))
+                  case ConsClass               => ListExample(cls, args())
+                  case _ if isTupleSymbol(cls) => TupleExample(cls, args(true))
                   case _ => ConstructorExample(cls, args())
                 }
 
