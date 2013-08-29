@@ -1,5 +1,8 @@
 import scalabuild._, BuildLogic._
 
+// Populate the repo with bootstrap jars
+initialize := s"${baseDirectory.value}/pull-binary-libs.sh".!
+
 // Don't know how to get a root project which aggregates all projects except
 // by not defining any root project. Then how do I refer to the not-defined project?
 lazy val scala = project.asRoot aggregate (allRefs: _*)
