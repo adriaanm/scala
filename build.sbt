@@ -4,7 +4,8 @@ import scalabuild._, BuildLogic._
 // by not defining any root project. Then how do I refer to the not-defined project?
 lazy val scala = project in file(".") aggregate (allRefs: _*) settings (commonSettings ++ rootSettings: _*)
 
-lazy val library = project.core settings (autoScalaLibrary in Compile := true, ivyConfigurations += Configurations.ScalaTool)
+lazy val library = project.core settings (autoScalaLibrary in Compile := false, ivyConfigurations += Configurations.ScalaTool,
+  scalacOptions ++= Seq[String]("-sourcepath", (scalaSource in Compile).value.toString)) dependsOn forkjoin
 
 lazy val asm, forkjoin = project.core
 
