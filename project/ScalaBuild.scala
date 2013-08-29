@@ -31,8 +31,8 @@ object BuildLogic extends Build {
            unmanagedBase := file("lib_unmanaged") // hiding ~/lib from being found for unmanaged classpath
   )
   def commonSettings = publishSettings ++ scalaSettings ++ List(
-    scalacOptions += "-nowarn",
-     javacOptions += "-nowarn"
+    scalacOptions in Compile += "-nowarn",
+     javacOptions in Compile += "-nowarn"
   )
   private def createRoot(project: Project, id: String): Project =
     project in file(".") settings (commonSettings: _*) settings (

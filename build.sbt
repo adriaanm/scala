@@ -8,7 +8,7 @@ initialize := s"${baseDirectory.value}/pull-binary-libs.sh".!
 lazy val scala = project.asRoot aggregate (allRefs: _*)
 
 lazy val library = project.core settings (
-  scalacOptions ++= "-sourcepath" :: (scalaSource in Compile).value.toString :: Nil
+  scalacOptions in Compile ++= "-sourcepath" :: (scalaSource in Compile).value.toString :: Nil
 ) dependsOn forkjoin
 
 lazy val asm, forkjoin = project.core
