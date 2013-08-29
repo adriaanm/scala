@@ -23,11 +23,9 @@ object Versions {
 }
 object Deps {
   import Versions.Deps.starr
-  def ant      = "org.apache.ant" % "ant" % Versions.Deps.ant
-  def jline    = "jline" % "jline" % Versions.Deps.jline
-  def partest  = "org.scala-lang.modules" % s"scala-partest_$starr" % Versions.Deps.partest
-  def library  = "org.scala-lang" % "scala-library" % starr
-  def compiler = "org.scala-lang" % "scala-compiler" % starr % "scala-tool"
+  def ant     = "org.apache.ant" % "ant" % Versions.Deps.ant
+  def jline   = "jline" % "jline" % Versions.Deps.jline
+  def partest = "org.scala-lang.modules" % s"scala-partest_$starr" % Versions.Deps.partest
 }
 
 final case class Version(version: String) { override def toString = version }

@@ -8,19 +8,15 @@ object BuildLogic extends Build {
   def localMaven   = Resolver.file("file", file(Path.userHome.absolutePath+"/.m2/repository"))
 
   implicit class ProjectOps(val p: Project) extends AnyVal {
+    def asRoot: Project           = createRoot(p, p.id)
     def core: Project             = createCore(p, p.id)
     def core(id: String): Project = createCore(p, id)
     def module: Project           = createModule(p, p.id, buildVersion)
+
     def module(id: String = p.id, v: Version = buildVersion): Project = createModule(p, id, v)
 
     def also(id: ModuleID): Project = p settings (libraryDependencies += id)
   }
-  def rootSettings = List(
-                           name := "scala",
-                        version := buildVersion,
-     publishArtifact in Compile := false,
-                      mainClass := Some("scala.tools.nsc.MainGenericRunner")
-  )
   def publishSettings = List(
                                    publishTo := Some(localMaven),
     publishArtifact in (Compile, packageDoc) := false,
@@ -28,17 +24,24 @@ object BuildLogic extends Build {
   )
   def scalaSettings = List(
                scalaHome := Some(baseDirectory in ThisBuild value),
-            scalaVersion := Versions.Deps.starr,
+            scalaVersion := buildVersion,
       scalaBinaryVersion := buildVersion,
     managedScalaInstance := false,
         autoScalaLibrary := false,
-           unmanagedBase := file("lib_unmanaged")
+           unmanagedBase := file("lib_unmanaged") // hiding ~/lib from being found for unmanaged classpath
   )
   def commonSettings = publishSettings ++ scalaSettings ++ List(
-       scalacOptions := "-nowarn" :: Nil,
-        javacOptions := "-nowarn" :: Nil,
-       sourcesInBase := false
+    scalacOptions += "-nowarn",
+     javacOptions += "-nowarn"
   )
+  private def createRoot(project: Project, id: String): Project =
+    project in file(".") settings (commonSettings: _*) settings (
+                            name := "scala",
+                    organization := "org.scala-lang",
+                         version := buildVersion,
+                       mainClass := Some("scala.tools.nsc.MainGenericRunner"),
+      publishArtifact in Compile := false
+    )
 
   private def createCore(project: Project, id: String): Project =
     create(project, id) settings (

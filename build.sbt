@@ -2,10 +2,11 @@ import scalabuild._, BuildLogic._
 
 // Don't know how to get a root project which aggregates all projects except
 // by not defining any root project. Then how do I refer to the not-defined project?
-lazy val scala = project in file(".") aggregate (allRefs: _*) settings (commonSettings ++ rootSettings: _*)
+lazy val scala = project.asRoot aggregate (allRefs: _*)
 
-lazy val library = project.core settings (autoScalaLibrary in Compile := false, ivyConfigurations += Configurations.ScalaTool,
-  scalacOptions ++= Seq[String]("-sourcepath", (scalaSource in Compile).value.toString)) dependsOn forkjoin
+lazy val library = project.core settings (
+  scalacOptions ++= "-sourcepath" :: (scalaSource in Compile).value.toString :: Nil
+) dependsOn forkjoin
 
 lazy val asm, forkjoin = project.core
 
