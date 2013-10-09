@@ -914,9 +914,11 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
         }
       }
 
-      def insertApply(): Tree = {
+      // helper for desugaring of f(args) to f.apply(args), where apply may be "spelled differently" (for SAM case)
+      def insertApply(name: Name): Tree = {
         assert(!context.inTypeConstructorAllowed, mode) //@M
-        val adapted = adaptToName(tree, nme.apply)
+        // don't adapt for SAMs
+        val adapted = if (name eq nme.apply) adaptToName(tree, name) else tree
         def stabilize0(pre: Type): Tree = stabilize(adapted, pre, MonoQualifierModes, WildcardType)
 
         // TODO reconcile the overlap between Typers#stablize and TreeGen.stabilize
@@ -936,7 +938,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
             other
         }
         typedPos(tree.pos, mode, pt) {
-          Select(qual setPos tree.pos.makeTransparent, nme.apply)
+          Select(qual setPos tree.pos.makeTransparent, name)
         }
       }
       def adaptConstant(value: Constant): Tree = {
@@ -1077,16 +1079,22 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
       }
 
       def vanillaAdapt(tree: Tree) = {
+        var sam: Symbol = NoSymbol
+
         def applyPossible = {
           def applyMeth = member(adaptToName(tree, nme.apply), nme.apply)
           def hasPolymorphicApply = applyMeth.alternatives exists (_.tpe.typeParams.nonEmpty)
           def hasMonomorphicApply = applyMeth.alternatives exists (_.tpe.paramSectionCount > 0)
+          def hasSingleAbstractMethod = {
+            sam = samOf(tree.tpe) // NoSymbol unless settings.Xexperimental
+            sam.exists
+          }
 
           dyna.acceptsApplyDynamic(tree.tpe) || (
             if (mode.inTappMode)
               tree.tpe.typeParams.isEmpty && hasPolymorphicApply
             else
-              hasMonomorphicApply
+              hasMonomorphicApply || hasSingleAbstractMethod
           )
         }
         def shouldInsertApply(tree: Tree) = mode.typingExprFun && {
@@ -1102,7 +1110,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
         else if (mode.typingConstructorPattern)
           typedConstructorPattern(tree, pt)
         else if (shouldInsertApply(tree))
-          insertApply()
+          insertApply(if(sam.exists) sam.name else nme.apply)
         else if (hasUndetsInMonoMode) { // (9)
           assert(!context.inTypeConstructorAllowed, context) //@M
           instantiatePossiblyExpectingUnit(tree, mode, pt)
@@ -2858,8 +2866,8 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
        * as `(a => a): Int => Int` should not (yet) get the sam treatment.
        */
       val sam =
-        if (!settings.Xexperimental || pt.typeSymbol == FunctionSymbol) NoSymbol
-        else samOf(pt)
+        if (pt.typeSymbol == FunctionSymbol) NoSymbol
+        else samOf(pt) // NoSymbol unless settings.Xexperimental
 
       /* The SAM case comes first so that this works:
        *   abstract class MyFun extends (Int => Int)

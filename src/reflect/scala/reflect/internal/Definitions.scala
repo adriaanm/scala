@@ -730,7 +730,7 @@ trait Definitions extends api.StandardDefinitions {
      * The class defining the method is a supertype of `tp` that
      * has a public no-arg primary constructor.
      */
-    def samOf(tp: Type): Symbol = {
+    def samOf(tp: Type): Symbol = if (settings.Xexperimental) {
       // if tp has a constructor, it must be public and must not take any arguments
       // (not even an implicit argument list -- to keep it simple for now)
       val tpSym  = tp.typeSymbol
@@ -760,7 +760,7 @@ trait Definitions extends api.StandardDefinitions {
           deferredMembers.head
         else NoSymbol
       } else NoSymbol
-    }
+    } else NoSymbol
 
     def arrayType(arg: Type)         = appliedType(ArrayClass, arg)
     def byNameType(arg: Type)        = appliedType(ByNameParamClass, arg)
