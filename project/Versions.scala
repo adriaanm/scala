@@ -7,8 +7,8 @@ object Versions {
   // Versions of artifacts upon which we depend
   object Deps {
     def starr   = v("2.11.0-M4")
-    def parsers = v("1.0-RC1")
-    def xml     = v("1.0-RC2")
+    def parsers = v("1.0-RC2")
+    def xml     = v("1.0-RC4")
     def partest = v("1.0-RC4")
     def ant     = v("1.9.2")
     def jline   = v("2.11")
