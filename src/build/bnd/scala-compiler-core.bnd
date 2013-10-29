@@ -1,0 +1,8 @@
+Bundle-Name: Scala Compiler
+Bundle-SymbolicName: org.scala-lang.scala-compiler-core
+ver: @VERSION@
+Bundle-Version: ${ver}
+Export-Package: *;version=${ver}
+Import-Package: jline.*;resolution:=optional, \
+                org.apache.tools.ant.*;resolution:=optional, \
+                *

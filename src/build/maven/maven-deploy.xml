@@ -51,6 +51,7 @@
     <attribute name="name" />
     <attribute name="local"  default="false"/>
     <attribute name="signed" default="false"/>
+    <attribute name="virtual" default="false"/>
 
     <sequential>
       <local name="path"/> <property name="path" value="@{dir}@{name}/@{name}"/>
@@ -63,6 +64,8 @@
           <filter token="SCALA_BINARY_VERSION" value="${scala.binary.version}" />
           <filter token="XML_VERSION" value="${scala-xml.version.number}" />
           <filter token="PARSER_COMBINATORS_VERSION" value="${scala-parser-combinators.version.number}" />
+          <filter token="SCALA_COMPILER_DOC_VERSION" value="${scala-compiler-doc.version.number}" />
+          <filter token="SCALA_COMPILER_INTERACTIVE_VERSION" value="${scala-compiler-interactive.version.number}" />
           <filter token="RELEASE_REPOSITORY" value="${remote.release.repository}" />
           <filter token="SNAPSHOT_REPOSITORY" value="${remote.snapshot.repository}" />
           <filter token="JLINE_VERSION" value="${jline.version}" />
@@ -70,35 +73,60 @@
       </copy>
       <artifact:pom id="@{name}.pom" file="${path}-pom-filtered.xml" />
 
-      <if><equals arg1="@{signed}" arg2="false"/><then>
-        <if><isset property="docs.skip"/><then>
-          <deploy-to local="@{local}" jar="${path}.jar" pom="@{name}.pom">
-            <artifact:attach type="jar" file="${path}-src.jar"  classifier="sources" />
-          </deploy-to>
+      <if><equals arg1="@{virtual}" arg2="true"/><then>
+        <if><equals arg1="@{signed}" arg2="false"/><then>
+          <if><isset property="docs.skip"/><then>
+            <deploy-to local="@{local}" jar="${path}-pom.xml" pom="@{name}.pom"/>
+          </then><else>
+            <deploy-to local="@{local}" jar="${path}-pom.xml" pom="@{name}.pom"/>
+          </else></if>
         </then><else>
-          <deploy-to local="@{local}" jar="${path}.jar" pom="@{name}.pom">
-            <artifact:attach type="jar" file="${path}-src.jar"  classifier="sources" />
-            <artifact:attach type="jar" file="${path}-docs.jar" classifier="javadoc" />
-          </deploy-to>
+          <local name="repo"/>
+          <if><equals arg1="@{local}" arg2="false"/><then>
+            <property name="repo" value="${remote.repository}"/>
+          </then><else>
+            <property name="repo" value="${local.repository}"/>
+          </else></if>
+          <artifact:mvn failonerror="true">
+            <arg value="org.apache.maven.plugins:maven-gpg-plugin:1.3:sign-and-deploy-file" />
+            <arg value="-Durl=${repo}" />
+            <arg value="-DrepositoryId=${repository.credentials.id}" />
+            <arg value="-DpomFile=${path}-pom-filtered.xml" />
+            <arg value="-Pgpg" />
+            <arg value="-Dgpg.useagent=true" />
+          </artifact:mvn>
         </else></if>
       </then><else>
-        <local name="repo"/>
-        <if><equals arg1="@{local}" arg2="false"/><then>
-          <property name="repo" value="${remote.repository}"/>
+        <if><equals arg1="@{signed}" arg2="false"/><then>
+          <if><isset property="docs.skip"/><then>
+            <deploy-to local="@{local}" jar="${path}.jar" pom="@{name}.pom">
+              <artifact:attach type="jar" file="${path}-src.jar"  classifier="sources" />
+            </deploy-to>
+          </then><else>
+            <deploy-to local="@{local}" jar="${path}.jar" pom="@{name}.pom">
+              <artifact:attach type="jar" file="${path}-src.jar"  classifier="sources" />
+              <artifact:attach type="jar" file="${path}-docs.jar" classifier="javadoc" />
+            </deploy-to>
+          </else></if>
         </then><else>
-          <property name="repo" value="${local.repository}"/>
+          <local name="repo"/>
+          <if><equals arg1="@{local}" arg2="false"/><then>
+            <property name="repo" value="${remote.repository}"/>
+          </then><else>
+            <property name="repo" value="${local.repository}"/>
+          </else></if>
+          <artifact:mvn failonerror="true">
+            <arg value="org.apache.maven.plugins:maven-gpg-plugin:1.3:sign-and-deploy-file" />
+            <arg value="-Durl=${repo}" />
+            <arg value="-DrepositoryId=${repository.credentials.id}" />
+            <arg value="-DpomFile=${path}-pom-filtered.xml" />
+            <arg value=   "-Dfile=${path}.jar" />
+            <arg value="-Dsources=${path}-src.jar" />
+            <arg value="-Djavadoc=${path}-docs.jar" />
+            <arg value="-Pgpg" />
+            <arg value="-Dgpg.useagent=true" />
+          </artifact:mvn>
         </else></if>
-        <artifact:mvn failonerror="true">
-          <arg value="org.apache.maven.plugins:maven-gpg-plugin:1.3:sign-and-deploy-file" />
-          <arg value="-Durl=${repo}" />
-          <arg value="-DrepositoryId=${repository.credentials.id}" />
-          <arg value="-DpomFile=${path}-pom-filtered.xml" />
-          <arg value=   "-Dfile=${path}.jar" />
-          <arg value="-Dsources=${path}-src.jar" />
-          <arg value="-Djavadoc=${path}-docs.jar" />
-          <arg value="-Pgpg" />
-          <arg value="-Dgpg.useagent=true" />
-        </artifact:mvn>
       </else></if>
     </sequential>
   </macrodef>
@@ -111,7 +139,10 @@
     <sequential>
       <deploy-one dir="@{dir}"          name="scala-library"     local="@{local}" signed="@{signed}"/>
       <deploy-one dir="@{dir}"          name="scala-reflect"     local="@{local}" signed="@{signed}"/>
-      <deploy-one dir="@{dir}"          name="scala-compiler"    local="@{local}" signed="@{signed}"/>
+      <!-- <deploy-one dir="@{dir}"          name="scala-compiler"    virtual="true" local="@{local}" signed="@{signed}"/> -->
+      <deploy-one dir="@{dir}"          name="scala-compiler-core" local="@{local}" signed="@{signed}"/>
+      <deploy-one dir="@{dir}"          name="scala-compiler-interactive" local="@{local}" signed="@{signed}"/>
+      <deploy-one dir="@{dir}"          name="scala-compiler-doc"         local="@{local}" signed="@{signed}"/>
       <deploy-one dir="@{dir}"          name="scala-actors"      local="@{local}" signed="@{signed}"/>
       <deploy-one dir="@{dir}"          name="scala-swing"       local="@{local}" signed="@{signed}"/>
       <deploy-one dir="@{dir}"          name="scalap"            local="@{local}" signed="@{signed}"/>
