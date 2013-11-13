@@ -496,7 +496,17 @@ trait MatchOptimization extends MatchTreeMaking with MatchAnalysis {
     }
 
     class RegularSwitchMaker(scrutinee: Scrutinee, defaultCaseOverride: Option[Tree], val unchecked: Boolean) extends SwitchMaker {
+<<<<<<< HEAD
       val switchableTpe = Set(ByteTpe, ShortTpe, IntTpe, CharTpe)
+||||||| parent of 471ccbea08... Optimize match that tuples only to then decompose.
+      val switchableTpe = Set(ByteClass.tpe, ShortClass.tpe, IntClass.tpe, CharClass.tpe)
+=======
+      private val switchableTpe = Set(ByteClass.tpe, ShortClass.tpe, IntClass.tpe, CharClass.tpe)
+      def switchable(scrutinee: Scrutinee) = scrutinee match {
+        case scrutinee: SingleScrutinee => switchableTpe(dealiasWiden(scrutinee.info))
+        case _ => false
+      }
+>>>>>>> 471ccbea08... Optimize match that tuples only to then decompose.
       val alternativesSupported = true
       val canJump = true
 
@@ -530,7 +540,7 @@ trait MatchOptimization extends MatchTreeMaking with MatchAnalysis {
     override def emitSwitch(scrutinee: Scrutinee, cases: List[List[TreeMaker]], pt: Type, defaultCaseOverride: Option[Tree], unchecked: Boolean): Option[Tree] = { import CODE._
       val regularSwitchMaker = new RegularSwitchMaker(scrutinee, defaultCaseOverride, unchecked)
       // TODO: if patterns allow switch but the type of the scrutinee doesn't, cast (type-test) the scrutinee to the corresponding switchable type and switch on the result
-      if ((scrutinee.sym != NoSymbol) && regularSwitchMaker.switchableTpe(dealiasWiden(scrutinee.info))) {
+      if (regularSwitchMaker.switchable(scrutinee)) {
         val caseDefsWithDefault = regularSwitchMaker(cases map {c => (scrutinee.sym, c)}, pt)
         if (caseDefsWithDefault isEmpty) None // not worth emitting a switch.
         else {

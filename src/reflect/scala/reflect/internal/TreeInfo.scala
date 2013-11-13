@@ -18,7 +18,13 @@ abstract class TreeInfo {
   val global: SymbolTable
 
   import global._
+<<<<<<< HEAD
   import definitions.{ isTupleSymbol, isVarArgsList, isCastSymbol, ThrowableClass, TupleClass, MacroContextClass, MacroContextPrefixType, uncheckedStableClass }
+||||||| parent of 471ccbea08... Optimize match that tuples only to then decompose.
+  import definitions.{ isVarArgsList, isCastSymbol, ThrowableClass, TupleClass, MacroContextClass, MacroContextPrefixType }
+=======
+  import definitions.{ isVarArgsList, isCastSymbol, ThrowableClass, TupleClass, isTupleType, MacroContextClass, MacroContextPrefixType }
+>>>>>>> 471ccbea08... Optimize match that tuples only to then decompose.
 
   /* Does not seem to be used. Not sure what it does anyway.
   def isOwnerDefinition(tree: Tree): Boolean = tree match {
@@ -734,8 +740,38 @@ abstract class TreeInfo {
       unapply(dissectApplied(tree))
   }
 
+<<<<<<< HEAD
   /** Locates the synthetic Apply node corresponding to an extractor's call to
    *  unapply (unwrapping nested Applies) and returns the fun part of that Apply.
+||||||| parent of 471ccbea08... Optimize match that tuples only to then decompose.
+  /** Does list of trees start with a definition of
+   *  a class of module with given name (ignoring imports)
+=======
+  // match a tree that's a tuple creation
+  object TupleCtor {
+    def unapplySeq(tree: Tree): Option[Seq[Tree]] =
+      tree match {
+        case Applied(fun, _, List(args)) if {
+              args.nonEmpty && (fun.symbol ne NoSymbol) &&
+              fun.symbol == TupleClass(args.length).companionModule.info.nonPrivateMember(nme.apply)
+              } => // Tuple::apply isn't currently specialized, so no need for `unspecializedSymbol`
+          Some(args.toSeq)
+        case _ => None
+      }
+  }
+
+  object TuplePattern {
+    def unapplySeq(tree: Tree): Option[Seq[Tree]] =
+      tree match {
+        case Apply(fun, args) if args.nonEmpty && fun.isTyped && isTupleType(fun.tpe.finalResultType) =>
+          Some(args.toSeq)
+        case _ => None
+      }
+  }
+
+  /** Does list of trees start with a definition of
+   *  a class of module with given name (ignoring imports)
+>>>>>>> 471ccbea08... Optimize match that tuples only to then decompose.
    */
   object Unapplied {
     // Duplicated with `spliceApply`
