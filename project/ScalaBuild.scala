@@ -3,66 +3,75 @@ package scalabuild
 import sbt._
 import Keys._
 
-object BuildLogic extends Build {
-  def buildVersion = Versions.Build.core
-  def localMaven   = Resolver.file("file", file(Path.userHome.absolutePath+"/.m2/repository"))
+object Settings {
+  import ScalaUtil._
+  import Versions.Deps._
+  import Versions.Build._
 
-  implicit class ProjectOps(val p: Project) extends AnyVal {
-    def asRoot: Project           = createRoot(p, p.id)
-    def core: Project             = createCore(p, p.id)
-    def core(id: String): Project = createCore(p, id)
-    def module: Project           = createModule(p, p.id, buildVersion)
-
-    def module(id: String = p.id, v: Version = buildVersion): Project = createModule(p, id, v)
-
-    def also(id: ModuleID): Project = p settings (libraryDependencies += id)
-  }
-  def publishSettings = List(
-                                   publishTo := Some(localMaven),
+  def publishSettings = List(      publishTo := Some(Resolver.mavenLocal),
     publishArtifact in (Compile, packageDoc) := false,
     publishArtifact in (Compile, packageSrc) := false
   )
-  def scalaSettings = List(
-               scalaHome := Some(baseDirectory in ThisBuild value),
-            scalaVersion := buildVersion,
-      scalaBinaryVersion := buildVersion,
-    managedScalaInstance := false,
-        autoScalaLibrary := false,
+
+  // used to build core -- we only use released STARRs, and for staged builds we first publish locker and reboot
+  def scalaSettings = Seq(
+    conflictWarning ~= { _.copy(failOnConflict = false) }, // TODO: can we avoid this warning altogether?
+      scalaBinaryVersion := prop("scala.binary.version"),
+            scalaVersion := prop("starr.version"),
            unmanagedBase := file("lib_unmanaged") // hiding ~/lib from being found for unmanaged classpath
+    // managedScalaInstance := false,
+    // autoScalaLibrary := false,
   )
-  def commonSettings = publishSettings ++ scalaSettings ++ List(
+  def commonSettings = publishSettings ++ scalaSettings ++ versionSettings ++ Seq(
+    organization := "org.scala-lang",
     scalacOptions in Compile += "-nowarn",
      javacOptions in Compile += "-nowarn"
   )
-  private def createRoot(project: Project, id: String): Project =
-    project in file(".") settings (commonSettings: _*) settings (
-                            name := "scala",
-                    organization := "org.scala-lang",
-                         version := buildVersion,
-                       mainClass := Some("scala.tools.nsc.MainGenericRunner"),
-      publishArtifact in Compile := false
-    )
 
-  private def createCore(project: Project, id: String): Project =
-    create(project, id) settings (
-      organization := "org.scala-lang",
-           version := buildVersion,
-      crossVersion := CrossVersion.Disabled
-    )
+  def versionSettings = Seq(
+    suffix         := prop("version.suffix", prop("maven.version.suffix", "-SNAPSHOT")),
+    version        := s"${major}.${minor}.${patch}${buildSuffix}${suffix.value}",
+    osgiVersion    := s"${major}.${minor}.${patch}.v${gitHeadDateTime.value}${osgify(suffix.value)}-${gitHeadSha.value}",
 
-  private def createModule(project: Project, id: String, rev: Version): Project =
-    create(project, id) settings (
-              name := s"scala-$id",
-      organization := "org.scala-lang.modules",
-           version := rev,
-      crossVersion := CrossVersion.fullMapped(_ => buildVersion)
-    )
+    antVer         := "1.9.2",
+    jlineVer       := prop("jline.version.number"),
+    parsersVer     := prop("scala-parser-combinators.version.number"),
+    xmlVer         := prop("scala-xml.version.number"),
+    partestVer     := prop("partest.version.number"),
+    partestSbtVer  := prop("partest-interface.version.number"),
+    scalacheckVer  := prop("scalacheck.version.number")
+  )
 
-  private def create(project: Project, id: String): Project = {
-    def settings = commonSettings ::: List(
-      name := s"scala-$id",
-      scalaSource in Compile := (baseDirectory in ThisBuild).value / "src" / id
-    )
-    project in (file("projects") / id) settings (settings: _*)
+  private lazy val major       = prop("version.major")
+  private lazy val minor       = prop("version.minor")
+  private lazy val patch       = prop("version.patch")
+  private lazy val buildSuffix = prop("version.bnum") match { case "0" => "" case b => s"-$b" }
+  private def osgify(sfx: String) = sfx match {
+    case ""           => "-VFINAL"
+    case "-SNAPSHOT"  => ""
+    case sfx          => sfx
+  }
+}
+
+object ScalaUtil {
+  import java.io.{InputStreamReader, FileInputStream, File}
+  import java.util.Properties
+
+  val gitHeadSha = settingKey[String]("git commit hash of HEAD")
+  val gitHeadDateTime = settingKey[String]("git commit hash of HEAD")
+
+  def prop(n: String)  = sys props n
+  def prop(n: String, d: => String) = sys.props.getOrElse(n, d)
+
+  def loadProps(file: File): Unit = {
+    import scala.collection.JavaConverters._
+    if (file.exists()) {
+      println("Loading system properties from file `" + file.name + "`")
+      val in = new InputStreamReader(new FileInputStream(file), "UTF-8")
+      val props = new Properties
+      props.load(in)
+      in.close()
+      sys.props ++ props.asScala
+    }
   }
 }

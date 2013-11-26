@@ -29,6 +29,7 @@
 # target directories for ant build
 /build/
 /dists/
+/projects
 
 # other
 /out/

@@ -1,43 +1,73 @@
-import scalabuild._, BuildLogic._
+import scalabuild._, Settings._, ScalaUtil._, Versions.Deps._
 
-// Populate the repo with bootstrap jars
-initialize := s"${baseDirectory.value}/pull-binary-libs.sh".!
+// TODO: this isn't always triggered... insert this into dependency graph the right way
+initialize := {
+  loadProps((baseDirectory in ThisBuild value) / "versions.properties")
+  loadProps((baseDirectory in ThisBuild value) / "build.number")
+}
 
 // Don't know how to get a root project which aggregates all projects except
 // by not defining any root project. Then how do I refer to the not-defined project?
-lazy val scala = project.asRoot aggregate (allRefs: _*)
+lazy val scala = project in file(".") settings (commonSettings: _*) settings (
+                        name := "scala",
+                   mainClass := Some("scala.tools.nsc.MainGenericRunner"),
+  publishArtifact in Compile := false) aggregate (allRefs: _*)
 
-lazy val library = project.core settings (
+
+def core(project: Project) = project in (file("projects") / project.id) settings ((
+  commonSettings ++ Seq(
+    name := s"scala-${project.id}",
+    scalaSource in Compile := (baseDirectory in ThisBuild).value / "src" / project.id)) : _*)
+
+def java(project: Project) = project in (file("projects") / project.id) settings ((
+  commonSettings ++ Seq(
+    name := s"${project.id}",
+    javacOptions ++= Seq("-source", "1.5", "-target", "1.6"),
+    javaSource in Compile := (baseDirectory in ThisBuild).value / "src" / project.id)) : _*)
+
+lazy val asm = java(project)
+
+lazy val forkjoin = java(project) settings (
+  javacOptions += "-XDignore.symbol.file"
+)
+
+// core
+lazy val library = core(project) settings (
   scalacOptions in Compile ++= "-sourcepath" :: (scalaSource in Compile).value.toString :: Nil
 ) dependsOn forkjoin
 
-lazy val asm, forkjoin = project.core
+lazy val reflect = core(project) dependsOn library
 
-lazy val reflect, swing = project.core dependsOn library
+lazy val compiler = core(project) dependsOn (asm, reflect) settings (
+  libraryDependencies += "org.apache.ant" % "ant" % antVer.value)
 
-lazy val compiler = project.core dependsOn (asm, reflect) also Deps.ant
+// library modules
+lazy val swing  = core(project) dependsOn library
 
-lazy val repl = project.core dependsOn compiler also Deps.jline
+lazy val actors = core(project) dependsOn (library, forkjoin)
 
-lazy val actors = project.core dependsOn (library, forkjoin)
+lazy val scalap = core(project) dependsOn compiler
 
-lazy val scalap = project.core dependsOn compiler
+// compiler modules
+lazy val interactive = core(project) dependsOn (compiler, scaladoc)
 
-lazy val scaladoc = project.core dependsOn (compiler, parserCombinators, partestExtras)
+lazy val repl = core(project) dependsOn compiler settings (
+  libraryDependencies += "jline" % "jline" % jlineVer.value)
 
-lazy val interactive = project.core dependsOn (compiler, scaladoc)
+lazy val scaladoc = core(project) dependsOn (compiler, partestExtras)
 
-lazy val xml = project.module(v = Versions.Build.xml) dependsOn library
+// testing infrastructure
+lazy val partestExtras = core(project) settings (
+  name := "partest-extras",
+  libraryDependencies += "org.scala-lang.modules" %% "scala-partest" % partestVer.value)
 
-lazy val parserCombinators = project.module(id = "parser-combinators", v = Versions.Build.parsers) dependsOn library
 
-lazy val partestExtras = project.module(id = "partest-extras") also Deps.partest
 
 def autonomousProjects = List(asm, forkjoin)
 
-def coreProjects = List(library, reflect, compiler, repl, swing, actors, scaladoc, interactive, scalap)
+def coreProjects = List(library, reflect, compiler)
 
-def moduleProjects = List(xml, parserCombinators, partestExtras)
+def moduleProjects = List(actors, swing, interactive, repl, scaladoc, scalap, partestExtras)
 
 def allProjects = autonomousProjects ++ coreProjects ++ moduleProjects
 

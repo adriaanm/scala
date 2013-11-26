@@ -3,30 +3,21 @@ package scalabuild
 import sbt._
 
 object Versions {
-  private def v(s: String) = Version(s)
   // Versions of artifacts upon which we depend
   object Deps {
-    def starr   = v("2.11.0-M4")
-    def parsers = v("1.0-RC2")
-    def xml     = v("1.0-RC4")
-    def partest = v("1.0-RC4")
-    def ant     = v("1.9.2")
-    def jline   = v("2.11")
+    // compiler used to build core
+    val parsersVer    = settingKey[String]("scala-parser-combinators.version.number")
+    val xmlVer        = settingKey[String]("scala-xml.version.number")
+    val antVer        = settingKey[String]("ant")
+    val jlineVer      = settingKey[String]("jline.version.number")
+    val partestVer    = settingKey[String]("partest.version.number")
+    val partestSbtVer = settingKey[String]("partest-interface.version.number")
+    val scalacheckVer = settingKey[String]("scalacheck.version.number")
   }
+
   // Versions of artifacts which we are presently building
   object Build {
-    private def suffix = "SNAPSHOT"
-    def core    = v(s"2.11.0-$suffix")
-    def parsers = v(s"1.1-$suffix")
-    def xml     = v(s"1.1-$suffix")
+    val suffix      = settingKey[String]("version suffix")
+    val osgiVersion = settingKey[String]("osgi")
   }
 }
-object Deps {
-  import Versions.Deps.starr
-  def ant     = "org.apache.ant" % "ant" % Versions.Deps.ant
-  def jline   = "jline" % "jline" % Versions.Deps.jline
-  def partest = "org.scala-lang.modules" % s"scala-partest_$starr" % Versions.Deps.partest
-}
-
-final case class Version(version: String) { override def toString = version }
-object Version { implicit def lowerVersion(v: Version): String = v.version }
