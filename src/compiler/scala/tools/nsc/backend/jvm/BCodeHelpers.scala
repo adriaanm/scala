@@ -7,7 +7,7 @@ package scala
 package tools.nsc
 package backend.jvm
 
-import scala.tools.asm
+import org.objectweb.asm
 import scala.annotation.switch
 import scala.collection.{ immutable, mutable }
 import scala.tools.nsc.io.AbstractFile
@@ -820,7 +820,7 @@ abstract class BCodeHelpers extends BCodeTypes with BytecodeWriters {
         // Run the signature parser to catch bogus signatures.
         val isValidSignature = wrap {
           // Alternative: scala.tools.reflect.SigParser (frontend to sun.reflect.generics.parser.SignatureParser)
-          import scala.tools.asm.util.CheckClassAdapter
+          import org.objectweb.asm.util.CheckClassAdapter
           if (sym.isMethod)    { CheckClassAdapter checkMethodSignature sig }
           else if (sym.isTerm) { CheckClassAdapter checkFieldSignature  sig }
           else                 { CheckClassAdapter checkClassSignature  sig }

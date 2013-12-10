@@ -142,7 +142,6 @@ TODO:
   <property name="build.dir"               value="${basedir}/build"/>
   <property name="build-deps.dir"          value="${build.dir}/deps"/>
   <property name="build-libs.dir"          value="${build.dir}/libs"/>
-  <property name="build-asm.dir"           value="${build.dir}/asm"/>
   <property name="build-forkjoin.dir"      value="${build-libs.dir}"/>
   <property name="build-locker.dir"        value="${build.dir}/locker"/>
   <property name="build-quick.dir"         value="${build.dir}/quick"/>
@@ -330,6 +329,18 @@ TODO:
         <dependency groupId="org.scala-lang" artifactId="scala-library" version="${starr.version}"/>
         <dependency groupId="org.scala-lang" artifactId="scala-reflect" version="${starr.version}"/>
         <dependency groupId="org.scala-lang" artifactId="scala-compiler" version="${starr.version}"/>
+      </artifact:dependencies>
+
+      <artifact:dependencies pathId="jarjar.classpath">
+        <dependency groupId="com.googlecode.jarjar" artifactId="jarjar" version="${jarjar.version.number}"/>
+      </artifact:dependencies>
+      <taskdef name="jarjar" classname="com.tonicsystems.jarjar.JarJarTask" classpathref="jarjar.classpath" />
+
+      <artifact:dependencies pathId="asm.classpath" filesetId="asm.fileset" useScope="runtime">
+        <dependency groupId="org.ow2.asm" artifactId="asm"          version="${asm.version.number}"/>
+        <dependency groupId="org.ow2.asm" artifactId="asm-util"     version="${asm.version.number}"/>
+        <dependency groupId="org.ow2.asm" artifactId="asm-analysis" version="${asm.version.number}"/>
+        <dependency groupId="org.ow2.asm" artifactId="asm-commons"  version="${asm.version.number}"/>
       </artifact:dependencies>
 
       <property name="maven-deps-done"     value="yep!"/>
@@ -528,9 +539,7 @@ TODO:
     </then></if>
 
     <path id="forkjoin.classpath" path="${build-libs.dir}/classes/forkjoin"/>
-    <path id="asm.classpath"      path="${build-asm.dir}/classes"/>
     <property name="forkjoin-classes" refid="forkjoin.classpath"/>
-    <property name="asm-classes" refid="asm.classpath"/>
 
     <!-- the following properties fully define staged-docs, staged-pack, make-bundle, copy-bundle and mvn-package for each of the projects -->
     <property name="library.description"           value="Scala Standard Library"/>
@@ -787,7 +796,8 @@ TODO:
       <fileset dir="${build-quick.dir}/classes/scaladoc"/>
       <fileset dir="${build-quick.dir}/classes/interactive"/>
       <fileset dir="${build-quick.dir}/classes/repl"/>
-      <fileset dir="${asm-classes}"/>
+      <!-- asm is added in pack.comp target in staged-pack invocation,
+           because the macro borks on zipfilesets for uptodate checking -->
     </path>
 
     <!-- TODO modularize compiler.
@@ -1000,7 +1010,6 @@ TODO:
                                   LOCAL DEPENDENCIES
 ============================================================================ -->
 
-  <target name="asm.done"      depends="init"> <simple-javac project="asm" jar="no"/> </target>
   <target name="forkjoin.done" depends="init"> <simple-javac project="forkjoin" args="-XDignore.symbol.file"/></target>
 
   <!-- For local development only. We only allow released versions of Scala for STARR.
@@ -1023,7 +1032,7 @@ TODO:
 <!-- ===========================================================================
                                   LOCAL REFERENCE BUILD (LOCKER)
 ============================================================================ -->
-  <target name="locker.start"  depends="asm.done, forkjoin.done">
+  <target name="locker.start"  depends="forkjoin.done">
     <condition property="locker.locked"><available file="${build-locker.dir}/locker.locked"/></condition></target>
 
   <target name="locker.lib"    depends="locker.start"     unless="locker.locked">
@@ -1120,8 +1129,8 @@ TODO:
   <target name="pack.reflect" depends="quick.reflect"> <staged-pack project="reflect"/> </target>
 
   <!-- TODO modularize compiler. Remove other quick targets when they become modules. -->
-  <target name="pack.comp"    depends="quick.comp, quick.scaladoc, quick.interactive, quick.repl, asm.done">
-    <staged-pack project="compiler" manifest="${build-pack.dir}/META-INF/MANIFEST.MF">
+  <target name="pack.comp"    depends="quick.comp, quick.scaladoc, quick.interactive, quick.repl">
+    <staged-pack project="compiler" jarjar="true" manifest="${build-pack.dir}/META-INF/MANIFEST.MF">
       <pre> <!-- TODO the files copied here do not influence actuality of this target (nor does the manifest) -->
         <copy todir="${build-pack.dir}/lib">
           <resources refid="repl.fileset"/>
@@ -1139,8 +1148,17 @@ TODO:
           <attribute name="Class-Path" value="scala-reflect.jar scala-library.jar"/>
         </manifest>
       </pre>
-      <!-- JSR-223 support introduced in 2.11 -->
       <jar-opts>
+        <zipfileset src="${org.ow2.asm:asm:jar}"/>
+        <zipfileset src="${org.ow2.asm:asm-util:jar}"/>
+        <zipfileset src="${org.ow2.asm:asm-analysis:jar}"/>
+        <zipfileset src="${org.ow2.asm:asm-commons:jar}"/>
+
+        <keep pattern="scala.tools.**"/>
+        <keep pattern="scala.reflect.**"/>
+        <rule pattern="org.objectweb.asm.**" result="scala.internal.org.objectweb.asm.@1"/>
+
+        <!-- JSR-223 support introduced in 2.11 -->
         <service type="javax.script.ScriptEngineFactory" provider="scala.tools.nsc.interpreter.IMain$Factory"/>
       </jar-opts>
     </staged-pack>
@@ -1179,7 +1197,7 @@ TODO:
     <staged-build with="quick" stage="quick" project="partest-javaagent" />
 
     <staged-pack project="partest-extras"/>
-    <staged-pack project="partest-javaagent"
+    <staged-pack project="partest-javaagent" jarjar="true"
                  manifest="${src.dir}/partest-javaagent/scala/tools/partest/javaagent/MANIFEST.MF"/>
   </target>
 

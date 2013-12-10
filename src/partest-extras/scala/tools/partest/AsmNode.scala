@@ -1,10 +1,11 @@
 package scala.tools.partest
 
 import scala.collection.JavaConverters._
-import scala.tools.asm
+import org.objectweb.asm
 import asm._
 import asm.tree._
 import java.lang.reflect.Modifier
+import java.util.{List => JList}
 
 sealed trait AsmNode[+T] {
   def node: T
@@ -31,8 +32,8 @@ object AsmNode {
   implicit class ClassNodeOps(val node: ClassNode) {
     def fieldsAndMethods: List[AsmMember] = {
       val xs: List[AsmMember] = (
-           node.methods.asScala.toList.map(x => (x: AsmMethod))
-        ++ node.fields.asScala.toList.map(x => (x: AsmField))
+           node.methods.asInstanceOf[JList[MethodNode]].asScala.toList.map(x => (x: AsmMethod))
+        ++ node.fields.asInstanceOf[JList[FieldNode]].asScala.toList.map(x => (x: AsmField))
       )
       xs sortBy (_.characteristics)
     }
@@ -42,18 +43,18 @@ object AsmNode {
     def desc: String                               = node.desc
     def name: String                               = node.name
     def signature: String                          = node.signature
-    def attrs: List[Attribute]                     = node.attrs.asScala.toList
-    def visibleAnnotations: List[AnnotationNode]   = node.visibleAnnotations.asScala.toList
-    def invisibleAnnotations: List[AnnotationNode] = node.invisibleAnnotations.asScala.toList
+    def attrs: List[Attribute]                     = node.attrs.asInstanceOf[JList[Attribute]].asScala.toList
+    def visibleAnnotations: List[AnnotationNode]   = node.visibleAnnotations.asInstanceOf[JList[AnnotationNode]].asScala.toList
+    def invisibleAnnotations: List[AnnotationNode] = node.invisibleAnnotations.asInstanceOf[JList[AnnotationNode]].asScala.toList
   }
   implicit class AsmFieldNode(val node: FieldNode) extends AsmNode[FieldNode] {
     def access: Int                                = node.access
     def desc: String                               = node.desc
     def name: String                               = node.name
     def signature: String                          = node.signature
-    def attrs: List[Attribute]                     = node.attrs.asScala.toList
-    def visibleAnnotations: List[AnnotationNode]   = node.visibleAnnotations.asScala.toList
-    def invisibleAnnotations: List[AnnotationNode] = node.invisibleAnnotations.asScala.toList
+    def attrs: List[Attribute]                     = node.attrs.asInstanceOf[JList[Attribute]].asScala.toList
+    def visibleAnnotations: List[AnnotationNode]   = node.visibleAnnotations.asInstanceOf[JList[AnnotationNode]].asScala.toList
+    def invisibleAnnotations: List[AnnotationNode] = node.invisibleAnnotations.asInstanceOf[JList[AnnotationNode]].asScala.toList
   }
 
   def apply(node: MethodNode): AsmMethodNode = new AsmMethodNode(node)

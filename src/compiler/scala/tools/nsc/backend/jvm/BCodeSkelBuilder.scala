@@ -13,7 +13,7 @@ import scala.collection.{ mutable, immutable }
 import scala.tools.nsc.symtab._
 import scala.annotation.switch
 
-import scala.tools.asm
+import org.objectweb.asm
 
 /*
  *
@@ -259,7 +259,7 @@ abstract class BCodeSkelBuilder extends BCodeHelpers {
           javagensig,
           null // no initial value
         )
-        cnode.fields.add(jfield)
+        (cnode.fields.asInstanceOf[java.util.List[asm.tree.FieldNode]]).add(jfield)
         emitAnnotations(jfield, f.annotations)
       }
 

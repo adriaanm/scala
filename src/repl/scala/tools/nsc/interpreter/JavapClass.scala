@@ -87,17 +87,18 @@ class JavapClass(
     // the name test is naive. could add $mangled path.
     // assumes only the first match is of interest (because only one endpoint is generated).
     def findNewStyle(bytes: Array[Byte]) = {
-      import scala.tools.asm.ClassReader
-      import scala.tools.asm.tree.ClassNode
+      import org.objectweb.asm.ClassReader
+      import org.objectweb.asm.tree.ClassNode
       import PartialFunction.cond
       import JavaConverters._
       val rdr = new ClassReader(bytes)
       val nod = new ClassNode
+      val methods = nod.methods.asInstanceOf[java.util.List[org.objectweb.asm.tree.MethodNode]].asScala
       rdr.accept(nod, 0)
       //foo/Bar.delayedEndpoint$foo$Bar$1
       val endpoint = "delayedEndpoint".r.unanchored
       def isEndPoint(s: String) = (s contains '$') && cond(s) { case endpoint() => true }
-      nod.methods.asScala collectFirst { case m if isEndPoint(m.name) => m.name }
+      methods collectFirst { case m if isEndPoint(m.name) => m.name }
     }
     // try new style, and add foo#delayedEndpoint$bar$1 to filter on the endpoint
     def asNewStyle(bytes: Array[Byte]) = Some(bytes) filter (_.nonEmpty) flatMap { bs =>

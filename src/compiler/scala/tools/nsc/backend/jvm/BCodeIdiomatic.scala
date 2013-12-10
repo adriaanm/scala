@@ -7,7 +7,7 @@ package scala
 package tools.nsc
 package backend.jvm
 
-import scala.tools.asm
+import org.objectweb.asm
 import scala.annotation.switch
 import scala.collection.{ immutable, mutable }
 import collection.convert.Wrappers.JListWrapper
@@ -717,7 +717,7 @@ abstract class BCodeIdiomatic extends BCodeGlue {
     @inline final def foreachInsn(f: (asm.tree.AbstractInsnNode) => Unit) {
       val insnIter = lst.iterator()
       while (insnIter.hasNext) {
-        f(insnIter.next())
+        f(insnIter.next().asInstanceOf[asm.tree.AbstractInsnNode])
       }
     }
   }

@@ -336,6 +336,7 @@
 
   <macrodef name="staged-pack">
     <attribute name="project"/>
+    <attribute name="jarjar" default=""/>
     <attribute name="manifest" default=""/>
     <element name="pre" optional="true"/>
     <element name="jar-opts" optional="true"/>
@@ -355,16 +356,17 @@
         <then>
           <mkdir dir="${build-pack.dir}/${@{project}.targetdir}"/>
           <pre/>
+
           <if>
             <not>
-              <equals arg1="@{manifest}" arg2=""/>
+              <equals arg1="@{jarjar}" arg2=""/>
             </not>
             <then>
-              <jar whenmanifestonly="fail" destfile="${destfile}" manifest="@{manifest}">
+              <jarjar jarfile="${destfile}" whenmanifestonly="fail" manifest="@{manifest}">
                 <!-- update="true" makes no difference on my machine, so starting from scratch-->
                 <jar-opts/>
                 <path refid="pack.@{project}.files"/>
-              </jar>
+              </jarjar>
             </then>
             <else>
               <jar whenmanifestonly="fail" destfile="${destfile}">
@@ -373,6 +375,7 @@
               </jar>
             </else>
           </if>
+
         </then>
       </if>
     </sequential>

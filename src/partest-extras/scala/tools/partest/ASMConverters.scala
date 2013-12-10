@@ -1,7 +1,7 @@
 package scala.tools.partest
 
 import scala.collection.JavaConverters._
-import scala.tools.asm
+import org.objectweb.asm
 import asm.tree.{ClassNode, MethodNode, InsnList}
 
 /** Makes using ASM from ByteCodeTests more convenient.
@@ -57,7 +57,7 @@ trait ASMConverters {
       case i: asm.tree.IntInsnNode            => IntOp        (op(i), i.operand: Int)
       case i: asm.tree.JumpInsnNode           => Jump         (op(i), this(i.label))
       case i: asm.tree.LdcInsnNode            => Ldc          (op(i), i.cst: Any)
-      case i: asm.tree.LookupSwitchInsnNode   => LookupSwitch (op(i), this(i.dflt), lst(i.keys), mapOver(lst(i.labels)).asInstanceOf[List[Label]])
+      case i: asm.tree.LookupSwitchInsnNode   => LookupSwitch (op(i), this(i.dflt), lst(i.keys.asInstanceOf[java.util.List[Integer]]), mapOver(lst(i.labels)).asInstanceOf[List[Label]])
       case i: asm.tree.TableSwitchInsnNode    => TableSwitch  (op(i), this(i.dflt), i.max: Int, i.min: Int, mapOver(lst(i.labels)).asInstanceOf[List[Label]])
       case i: asm.tree.MethodInsnNode         => Method       (op(i), i.desc: String, i.name: String, i.owner: String)
       case i: asm.tree.MultiANewArrayInsnNode => NewArray     (op(i), i.desc: String, i.dims: Int)
