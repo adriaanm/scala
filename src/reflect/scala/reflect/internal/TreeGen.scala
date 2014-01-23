@@ -95,7 +95,7 @@ abstract class TreeGen extends macros.TreeBuilder {
       case ConstantType(value) =>
         Literal(value) setType tpe
 
-      case AnnotatedType(_, atp, _) =>
+      case AnnotatedType(_, atp) =>
         mkAttributedQualifier(atp)
 
       case RefinedType(parents, _) =>
@@ -191,11 +191,7 @@ abstract class TreeGen extends macros.TreeBuilder {
       )
       val pkgQualifier =
         if (needsPackageQualifier) {
-          // The owner of a symbol which requires package qualification may be the
-          // package object iself, but it also could be any superclass of the package
-          // object.  In the latter case, we must go through the qualifier's info
-          // to obtain the right symbol.
-          val packageObject = if (sym.owner.isModuleClass) sym.owner.sourceModule else qual.tpe member nme.PACKAGE
+          val packageObject = rootMirror.getPackageObjectWithMember(qual.tpe, sym)
           Select(qual, nme.PACKAGE) setSymbol packageObject setType singleType(qual.tpe, packageObject)
         }
         else qual

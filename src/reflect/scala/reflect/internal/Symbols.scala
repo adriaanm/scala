@@ -2419,7 +2419,7 @@ trait Symbols extends api.Symbols { self: SymbolTable =>
         else if (isTrait) ("trait", "trait", "TRT")
         else if (isClass) ("class", "class", "CLS")
         else if (isType) ("type", "type", "TPE")
-        else if (isClassConstructor && isPrimaryConstructor) ("primary constructor", "constructor", "PCTOR")
+        else if (isClassConstructor && (owner.hasCompleteInfo && isPrimaryConstructor)) ("primary constructor", "constructor", "PCTOR")
         else if (isClassConstructor) ("constructor", "constructor", "CTOR")
         else if (isSourceMethod) ("method", "method", "METH")
         else if (isTerm) ("value", "value", "VAL")
@@ -2519,6 +2519,10 @@ trait Symbols extends api.Symbols { self: SymbolTable =>
         if (settings.debug.value) parentsString(tp.parents)
         else briefParentsString(tp.parents)
       )
+      def isStructuralThisType = (
+        // prevents disasters like SI-8158
+        owner.isInitialized && owner.isStructuralRefinement && tp == owner.tpe
+      )
       if (isType) typeParamsString(tp) + (
         if (isClass) " extends " + parents
         else if (isAliasType) " = " + tp.resultType
@@ -2529,10 +2533,11 @@ trait Symbols extends api.Symbols { self: SymbolTable =>
       )
       else if (isModule) "" //  avoid "object X of type X.type"
       else tp match {
-        case PolyType(tparams, res)  => typeParamsString(tp) + infoString(res)
-        case NullaryMethodType(res)  => infoString(res)
-        case MethodType(params, res) => valueParamsString(tp) + infoString(res)
-        case _                       => ": " + tp
+        case PolyType(tparams, res)    => typeParamsString(tp) + infoString(res)
+        case NullaryMethodType(res)    => infoString(res)
+        case MethodType(params, res)   => valueParamsString(tp) + infoString(res)
+        case _ if isStructuralThisType => ": " + owner.name
+        case _                         => ": " + tp
       }
     }
 

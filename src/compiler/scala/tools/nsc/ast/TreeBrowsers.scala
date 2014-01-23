@@ -619,7 +619,7 @@ abstract class TreeBrowsers {
                         toDocument(result) :: ")")
         )
 
-      case AnnotatedType(annots, tp, _) =>
+      case AnnotatedType(annots, tp) =>
         Document.group(
           Document.nest(4, "AnnotatedType(" :/:
                         annots.mkString("[", ",", "]") :/:
@@ -632,7 +632,7 @@ abstract class TreeBrowsers {
                 Document.group("(" :/: symsToDocument(tparams) :/: "), ") :/:
                 toDocument(result) :: ")"))
 
-      case global.analyzer.ImportType(expr) =>
+      case ImportType(expr) =>
         "ImportType(" + expr.toString + ")"
 
 

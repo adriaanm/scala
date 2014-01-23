@@ -41,7 +41,8 @@ trait JavaUniverseForce { self: runtime.JavaUniverse  =>
     // inaccessible: this._lubResults
     // inaccessible: this._glbResults
     // inaccessible: this._indent
-    // inaccessible: this._tostringRecursions
+    // inaccessible: this._toStringRecursions
+    // inaccessible: this._toStringSubjects
     // inaccessible: this.atomicIds
     // inaccessible: this.atomicExistentialIds
     // inaccessible: this._recursionTable
@@ -169,6 +170,7 @@ trait JavaUniverseForce { self: runtime.JavaUniverse  =>
     this.PolyType
     this.ExistentialType
     this.OverloadedType
+    this.ImportType
     this.AntiPolyType
     this.HasTypeMember
     this.ArrayTypeRef

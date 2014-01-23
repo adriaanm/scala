@@ -260,14 +260,16 @@ trait Importers extends api.Importers { to: SymbolTable =>
         newExistentialType(tparams map importSymbol, importType(result))
       case from.OverloadedType(pre, alts) =>
         OverloadedType(importType(pre), alts map importSymbol)
+      case from.ImportType(qual) =>
+        ImportType(importTree(qual))
       case from.AntiPolyType(pre, targs) =>
         AntiPolyType(importType(pre), targs map importType)
       case their: from.TypeVar =>
         val myconstr = new TypeConstraint(their.constr.loBounds map importType, their.constr.hiBounds map importType)
         myconstr.inst = importType(their.constr.inst)
         TypeVar(importType(their.origin), myconstr, their.typeArgs map importType, their.params map importSymbol)
-      case from.AnnotatedType(annots, result, selfsym) =>
-        AnnotatedType(annots map importAnnotationInfo, importType(result), importSymbol(selfsym))
+      case from.AnnotatedType(annots, result) =>
+        AnnotatedType(annots map importAnnotationInfo, importType(result))
       case from.ErrorType =>
         ErrorType
       case from.WildcardType =>
