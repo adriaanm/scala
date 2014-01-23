@@ -1988,12 +1988,21 @@ trait Types
       // too little information is known to determine its kind, and
       // it later turns out not to have kind *. See SI-4070.  Only
       // logging it for now.
-      if (sym.typeParams.size != args.size)
-        devWarning(s"$this.transform($tp), but tparams.isEmpty and args=$args")
+      // if (sym.typeParams.size != args.size)
+      //   devWarning(s"$this.transform($tp), but tparams.isEmpty and args=$args")
 
-      val GenPolyType(tparams, result) = asSeenFromOwner(tp)
-      assert((tparams eq Nil) || tparams == sym.typeParams, (tparams, sym.typeParams))
-      result.instantiateTypeParams(sym.typeParams, args)
+      Thread.dumpStack
+      println(s"$pre / $sym (${sym.typeParams}) [ $args ] >> tp")
+      // assert((tparams eq Nil) || tparams == sym.typeParams, (tparams, sym.typeParams))
+      val applied = tp.instantiateTypeParams(sym.typeParams, args)
+      println(s"applied: $applied == $tp? ${applied =:= tp}")
+
+      val relative = asSeenFromOwner(tp)
+      println(s"relative unapplied: $relative")
+
+      val appliedASF = asSeenFromOwner(applied)
+      println(s"relative applied: $applied")
+      applied
     }
 
     // note: does not go through typeRef. There's no need to because
