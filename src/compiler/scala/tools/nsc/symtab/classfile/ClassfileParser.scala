@@ -631,6 +631,18 @@ abstract class ClassfileParser {
           def processClassType(tp: Type): Type = tp match {
             case TypeRef(pre, classSym, args) =>
               val existentials = new ListBuffer[Symbol]()
+
+              // [SI-6169, SI-8197 -- companion to SI-1786]
+              // Approximation to improve the bounds of a Java-defined existential type
+              val tparamsToImproveExistential = new ListBuffer[Symbol]()
+              var canRefineBounds = false
+
+              // SI-6169 First, check whether we can safely look classSym's info -- only on first need (avoid cycles)
+              // We only do this to interoperate better with java bounded wildcard, so ignore if classSym is not java defined
+              var tparamIter =
+                if (classSym.isJavaDefined && classSym.hasCompleteInfo) classSym.typeParams
+                else Nil
+
               if (sig.charAt(index) == '<') {
                 accept('<')
                 val xs = new ListBuffer[Type]()
@@ -647,19 +659,52 @@ abstract class ClassfileParser {
                           // we don't want Any as a LOWER bound.
                           if (tp.typeSymbol == AnyClass) TypeBounds.empty
                           else TypeBounds.lower(tp)
-                        case '*' => TypeBounds.empty
+                        case '*' =>
+                          TypeBounds.empty
                       }
                       val newtparam = sym.newExistential(newTypeName("?"+i), sym.pos) setInfo bounds
                       existentials += newtparam
                       xs += newtparam.tpeHK
                       i += 1
+
+                      // SI-6169
+                      tparamsToImproveExistential += (
+                        tparamIter match {
+                          // be paranoid to avoid causing spurious cycles
+                          // if we can, improve the bounds of the existential that abstracts over tparam,
+                          // by sharpening the existential's bounds to those declared by tparam
+                          // TODO: instead of the crude `variance == '*'`, should check whether `curr.info.bounds <:< bounds`
+                          // (it's trickier than that -- need to wrap in polytypes to bind the typeparams, and avoid cycles, slowdown in classfile parsing,...)
+                          case curr :: _ if variance == '*' && curr.hasCompleteInfo && !curr.info.bounds.isEmptyBounds =>
+                            canRefineBounds = true
+                            curr
+                          case _ => NoSymbol // pad so that tparamsToImproveExistential.length == existentials.length
+                        }
+                      )
                     case _ =>
                       xs += sig2type(tparams, skiptvs)
                   }
+                  if (tparamIter.nonEmpty) tparamIter = tparamIter.tail
                 }
                 accept('>')
                 assert(xs.length > 0, tp)
-                debuglogResult("new existential")(newExistentialType(existentials.toList, typeRef(pre, classSym, xs.toList)))
+
+                val quantified = existentials.toList
+
+                // SI-6169 mimic Java's notion of existential subtyping, where opening an existential entails
+                // entering the constraints implied by the existentially quantified type's type parameters
+                // into the context. We approximate this by replacing an existential symbol's empty bounds
+                // by the bounds declared by classSym's corresponding type parameter.
+                // is there a corresponding type param to improve bounds?
+                if (canRefineBounds) {
+                  val origTparams = tparamsToImproveExistential.toList
+                  foreach2(origTparams, quantified) { (tparam, quant) =>
+                    if (tparam.exists)
+                      quant.setInfo(tparam.info.bounds.substSym(origTparams, quantified))
+                  }
+                }
+
+                debuglogResult("new existential")(newExistentialType(quantified, typeRef(pre, classSym, xs.toList)))
               }
               // isMonomorphicType is false if the info is incomplete, as it usually is here
               // so have to check unsafeTypeParams.isEmpty before worrying about raw type case below,
