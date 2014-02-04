@@ -636,12 +636,16 @@ abstract class ClassfileParser {
               // Approximation to improve the bounds of a Java-defined existential type
               val tparamsToImproveExistential = new ListBuffer[Symbol]()
               var canRefineBounds = false
+              var tparamIndex     =  0
+              var _tparamCount    = -1
 
-              // SI-6169 First, check whether we can safely look classSym's info -- only on first need (avoid cycles)
-              // We only do this to interoperate better with java bounded wildcard, so ignore if classSym is not java defined
-              var tparamIter =
-                if (classSym.isJavaDefined && classSym.hasCompleteInfo) classSym.typeParams
-                else Nil
+              // be paranoid to avoid causing spurious cycles, but still initialize or we won't always get the right tparams
+              @inline def tparamCount = {
+                if (_tparamCount == -1 && classSym.lockOK)
+                  _tparamCount = classSym.initialize.typeParams.length
+
+                _tparamCount
+              }
 
               if (sig.charAt(index) == '<') {
                 accept('<')
@@ -659,32 +663,32 @@ abstract class ClassfileParser {
                           // we don't want Any as a LOWER bound.
                           if (tp.typeSymbol == AnyClass) TypeBounds.empty
                           else TypeBounds.lower(tp)
-                        case '*' =>
-                          TypeBounds.empty
+                        case '*' => TypeBounds.empty
                       }
                       val newtparam = sym.newExistential(newTypeName("?"+i), sym.pos) setInfo bounds
                       existentials += newtparam
                       xs += newtparam.tpeHK
                       i += 1
 
-                      // SI-6169
+                      // SI-6169 First, check whether we can safely look classSym's info -- only on first need (avoid cycles)
+                      // We only do this to interoperate better with java bounded wildcard
                       tparamsToImproveExistential += (
-                        tparamIter match {
-                          // be paranoid to avoid causing spurious cycles
-                          // if we can, improve the bounds of the existential that abstracts over tparam,
-                          // by sharpening the existential's bounds to those declared by tparam
-                          // TODO: instead of the crude `variance == '*'`, should check whether `curr.info.bounds <:< bounds`
-                          // (it's trickier than that -- need to wrap in polytypes to bind the typeparams, and avoid cycles, slowdown in classfile parsing,...)
-                          case curr :: _ if variance == '*' && curr.hasCompleteInfo && !curr.info.bounds.isEmptyBounds =>
+                        // if we can, improve the bounds of the existential that abstracts over tparam,
+                        // by sharpening the existential's bounds to those declared by tparam
+                        // TODO: instead of the crude `variance == '*'`, should check whether `curr.info.bounds <:< bounds`
+                        // (it's trickier than that -- need to wrap in polytypes to bind the typeparams, and avoid cycles, slowdown in classfile parsing,...)
+                        if (variance == '*' && tparamIndex < tparamCount) {
+                          val tpar = classSym.typeParams(tparamIndex)
+                          if (tpar.hasCompleteInfo && !tpar.info.bounds.isEmptyBounds) {
                             canRefineBounds = true
-                            curr
-                          case _ => NoSymbol // pad so that tparamsToImproveExistential.length == existentials.length
-                        }
+                            tpar
+                          } else NoSymbol // pad so that tparamsToImproveExistential.length == existentials.length
+                        } else NoSymbol
                       )
                     case _ =>
                       xs += sig2type(tparams, skiptvs)
                   }
-                  if (tparamIter.nonEmpty) tparamIter = tparamIter.tail
+                  tparamIndex += 1
                 }
                 accept('>')
                 assert(xs.length > 0, tp)
