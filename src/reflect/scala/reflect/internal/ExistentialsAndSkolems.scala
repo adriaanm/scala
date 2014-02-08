@@ -56,7 +56,7 @@ trait ExistentialsAndSkolems {
       case tp @ RefinedType(parents, decls) =>
         val parents1 = parents mapConserve safeBound
         if (parents eq parents1) tp
-        else copyRefinedType(tp, parents1, decls)
+        else RefinedType(parents1, decls) // no need to clone decls here, only creates more confusion (see below)
       case tp => tp
     }
 
@@ -98,13 +98,44 @@ trait ExistentialsAndSkolems {
 
       quantified setInfo bound.cloneInfo(quantified)
     }
-    // Higher-kinded existentials are not yet supported, but this is
-    // tpeHK for when they are: "if a type constructor is expected/allowed,
-    // tpeHK must be called instead of tpe."
-    val typeParamTypes = typeParams map (_.tpeHK)
-    def doSubst(info: Type) = info.subst(rawSyms, typeParamTypes)
 
-    creator(typeParams map (_ modifyInfo doSubst), doSubst(tp))
+    def doSubst(info: Type) = info.substSym(rawSyms, typeParams)
+
+    /* Abandon all hope for symbol consistency, ye who enter here:
+     * For example, from SI-6493, let's compute a result type for
+     *   `def foo = { class Foo { class Bar { val b = 2 }}; val f = new Foo; new f.Bar }`:
+     *
+     * Note the inconsistent symbol ids in:
+     *
+     * rawSyms    = List(class Bar#49742,     value f#49740, class Foo#49739)
+     * typeParams = List( type Bar#49773, type f.type#49774,  type Foo#49775)
+     * allBounds  =
+     *   Map(class Bar#49742 ->  <: AnyRef#2669{val b#49758: Int#1758},
+     *         value f#49740 ->  <: AnyRef#2669{type Bar#49762 <: AnyRef#2669{val b#49764: Int#1758}} with Singleton#5762,
+     *       class Foo#49739 ->  <: AnyRef#2669{type Bar#49770 <: AnyRef#2669{val b#49772: Int#1758}})
+     *
+     * It makes sense to subst the symbols in tp, but the modifyInfo will have little effect on typeParams.
+     * Luckily, coevolveSym will fix up some of the inconsistencies, so that we get
+     * f.type#49774.Bar#49762 forSome { type f.type#49774 <: AnyRef#2669{type Bar#49762 <: AnyRef#2669{val b#49764: Int#1758}} with Singleton#5762 }
+     *
+     * The remaining problem is that ExistentialExtrapolation will not consider type Bar#49762 existentially bound.
+     * Instead, it's looking for the stale version in typeParams, Bar#49773.
+     * If it was looking for Bar#49762, the result type would simply be `AnyRef#2669{val b#49764: Int#1758}`
+     */
+    val approximatedTp = doSubst(tp)
+    val paramName      = typeParams.map(_.name).toSet
+    // all abstract type symbols in the bounds in the allBounds map's values
+    val allBoundsClosure = (sym: Symbol) => true // TODO
+
+    // scour approximatedTp for the right symbols to abstract over
+    val quantified = typeParams.map(_ modifyInfo doSubst) ++ approximatedTp.withFilter{ tp =>
+      val sym = tp.typeSymbol
+      sym.isAbstractType &&  // optimization
+      paramName(sym.name) && // optimization
+      allBoundsClosure(sym)
+    }.map(_.typeSymbol)
+
+    creator(quantified, approximatedTp)
   }
 
   /**
