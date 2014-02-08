@@ -2182,44 +2182,9 @@ trait Types
     // appliedType(sym.info, typeArgs).asSeenFrom(pre, sym.owner)
     override def betaReduce = transform(sym.info.resultType)
 
-    /** SI-3731, SI-8177: when prefix is changed to `newPre`, maintain consistency of prefix and sym
-     *  (where the symbol refers to a declaration "embedded" in the prefix).
-     *
-     *  @returns newSym so that `newPre` binds `sym.name` to `newSym`,
-     *                  to remain consistent with `pre` previously binding `sym.name` to `sym`.
-     *
-     *  `newSym` and `sym` are conceptually the same symbols, but some change to our `prefix`
-     *  got them out of whack. (Usually triggered by substitution or `asSeenFrom`.)
-     *  The only kind of "binds" we consider is where `prefix` (or its underlying type)
-     *  is a refined type that declares `sym` (since the old prefix was discarded,
-     *  the old symbol is now stale and we should update it, like in `def rebind`,
-     *  except this is not for overriding symbols -- a vertical move -- but a "lateral" change.)
-     *
-     *  The reason for this hack is that substitution and asSeenFrom clone RefinedTypes and
-     *  their members, without updating the potential references to those members -- here, we aim to patch
-     *  this up, so that: when changing a TypeRef(pre, sym, args) to a TypeRef(pre', sym', args'), and pre
-     *  embeds a symbol sym (pre is a RefinedType(_, Scope(..., sym,...)) or a SingleType with such an
-     *  underlying type), make sure that we update sym' to compensate for the change of pre -> pre' (which may
-     *  have created a new symbol for the one the original sym referred to)
-     */
-    override def coevolveSym(newPre: Type): Symbol =
-      if ((pre ne newPre) && embeddedSymbol(pre, sym.name) == sym) {
-        val newSym = embeddedSymbol(newPre, sym.name)
-        debuglog(s"co-evolve: ${pre} -> ${newPre}, $sym : ${sym.info} -> $newSym : ${newSym.info}")
-        // To deal with erroneous `preNew`, fallback via `orElse sym`, in case `preNew` does not have a decl named `sym.name`.
-        newSym orElse sym
-      } else sym
-
     override def kind = "AliasTypeRef"
   }
 
-  // Return the symbol named `name` that's "embedded" in tp
-  // This is the case if `tp` is a `T{...; type/val $name ; ...}`,
-  // or a singleton type with such an underlying type.
-  private def embeddedSymbol(tp: Type, name: Name): Symbol = tp.widen match {
-    case RefinedType(_, decls) => decls lookup name
-    case _ => NoSymbol
-  }
 
   trait AbstractTypeRef extends NonClassTypeRef {
     require(sym.isAbstractType, sym)
@@ -2313,10 +2278,6 @@ trait Types
       if (tpars.isEmpty) this
       else typeFunAnon(tpars, copyTypeRef(this, pre, sym, tpars map (_.tpeHK))) // todo: also beta-reduce?
     }
-
-    // only need to rebind type aliases, as typeRef already handles abstract types
-    // (they are allowed to be rebound more liberally)
-    def coevolveSym(pre1: Type): Symbol = sym
 
     //@M! use appliedType on the polytype that represents the bounds (or if aliastype, the rhs)
     def transformInfo(tp: Type): Type = appliedType(asSeenFromOwner(tp), args)
@@ -3437,18 +3398,70 @@ trait Types
 
 // Creators ---------------------------------------------------------------
 
-  /** Rebind symbol `sym` to an overriding member in type `pre`. */
-  private def rebind(pre: Type, sym: Symbol): Symbol = {
-    if (!sym.isOverridableMember || sym.owner == pre.typeSymbol) sym
-    else pre.nonPrivateMember(sym.name).suchThat { sym =>
-      // SI-7928 `isModuleNotMethod` is here to avoid crashing with spuriously "overloaded" module accessor and module symbols.
-      //         These appear after refchecks eliminates ModuleDefs that implement an interface.
-      //         Here, we exclude the module symbol, which allows us to bind to the accessor.
-      // SI-8054 We must only do this after refchecks, otherwise we exclude the module symbol which does not yet have an accessor!
-      val isModuleWithAccessor = phase.refChecked && sym.isModuleNotMethod
-      sym.isType || (!isModuleWithAccessor && sym.isStable && !sym.hasVolatileType)
-    } orElse sym
-  }
+  /**
+   *  When prefix is changed to `pre`, maintain consistency of prefix and sym
+   *  (where the symbol refers to a declaration "embedded" in the prefix)
+   *  by rebinding `sym` to the corresponding member in `pre`.
+   *  The most obvious case is an overriding member of `sym` defined in `pre`.
+   *
+   *  The rest of this comment explains the other, hackier, case, motivated by SI-3731, SI-6493 (partially), SI-8177.
+   *
+   *  The invariant we (cheaply) try to maintain is `pre.member(sym.name) == sym`.
+   *  The assumption is that if `pre` is a refinement that declares a symbol `sym.name`,
+   *  the typeref must necessarily refer to that symbol. Refchecks ensures that the symbols
+   *  in that refinement are allowed to override the members declared in the refinement's parents.
+   *
+   *  @returns newSym so that `pre` binds `sym.name` to `newSym`,
+   *                  to remain consistent with `pre` previously binding `sym.name` to `sym`.
+   *
+   *  Additional notes:
+   *
+   *  `newSym` (see `rebind`) and `sym` are conceptually the same symbols, but some change to our `prefix`
+   *  got them out of whack. (Usually triggered by substitution or `asSeenFrom`.)
+   *  The only kind of "binds" we consider is where `prefix` (or its underlying type)
+   *  is a refined type that declares `sym` (since the old prefix was discarded,
+   *  the old symbol is now stale and we should update it, like in `def rebind`,
+   *  except this is not for overriding symbols -- a vertical move -- but a "lateral" change.)
+   *
+   *  The reason for this hack is that substitution and asSeenFrom clone RefinedTypes and
+   *  their members, without updating the potential references to those members -- here, we aim to patch
+   *  this up, so that: when changing a TypeRef(pre, sym, args) to a TypeRef(pre', sym', args'), and pre
+   *  embeds a symbol sym (pre is a RefinedType(_, Scope(..., sym,...)) or a SingleType with such an
+   *  underlying type), make sure that we update sym' to compensate for the change of pre -> pre' (which may
+   *  have created a new symbol for the one the original sym referred to)
+   *
+   *  See pos/depmet_rebind_typealias for an example of type parameters referenced by the alias
+   *  that are instantiated in the prefix.
+   */
+  private def shouldRebind(pre: Type, sym: Symbol): Boolean =
+    // fast path: no need to rebind
+    if (!sym.exists || sym.isError || sym.owner == pre.typeSymbol || pre.isTrivial) false
+    else
+      // classic rebind for overridable abstract type
+      (sym.isAbstractType && sym.isOverridableMember) ||
+      // hacky case -- see comments above (used to be done in coevolveSym)
+      (pre.widen match {
+        case RefinedType(_, decls) => (decls lookup sym.name).exists
+        case _ => false
+      })
+
+  /** Rebind symbol `sym` to an overriding/corresponding member in type `pre`. */
+  private def rebind(pre: Type, sym: Symbol): Symbol =
+    if (shouldRebind(pre, sym)) {
+      val newSym =
+        pre.nonPrivateMember(sym.name).suchThat { sym =>
+          // SI-7928 `isModuleNotMethod` is here to avoid crashing with spuriously "overloaded" module accessor and module symbols.
+          //         These appear after refchecks eliminates ModuleDefs that implement an interface.
+          //         Here, we exclude the module symbol, which allows us to bind to the accessor.
+          // SI-8054 We must only do this after refchecks, otherwise we exclude the module symbol which does not yet have an accessor!
+          val isModuleWithAccessor = phase.refChecked && sym.isModuleNotMethod
+          sym.isType || (!isModuleWithAccessor && sym.isStable && !sym.hasVolatileType)
+        }
+
+      debuglog(s"rebind under ${pre} | $sym : ${sym.info} -> $newSym : ${newSym.info}")
+
+      newSym orElse sym
+    } else sym
 
   /** Convert a `super` prefix to a this-type if `sym` is abstract or final. */
   private def removeSuper(tp: Type, sym: Symbol): Type = tp match {
@@ -3510,11 +3523,6 @@ trait Types
    *  todo: see how we can clean this up a bit
    */
   def typeRef(pre: Type, sym: Symbol, args: List[Type]): Type = {
-    // type alias selections are rebound in TypeMap ("coevolved",
-    // actually -- see #3731) e.g., when type parameters that are
-    // referenced by the alias are instantiated in the prefix. See
-    // pos/depmet_rebind_typealias.
-
     val sym1 = if (sym.isAbstractType) rebind(pre, sym) else sym
     // don't expand cyclical type alias
     // we require that object is initialized, thus info.typeParams instead of typeParams.
@@ -3526,9 +3534,9 @@ trait Types
         x.thistpe
       case _ => pre
     }
-    if (pre eq pre1)                                TypeRef(pre, sym1, args)
-    else if (sym1.isAbstractType && !sym1.isClass)  typeRef(pre1, rebind(pre1, sym1), args)
-    else                                            typeRef(pre1, sym1, args)
+    if (pre eq pre1) TypeRef(pre, sym1, args)
+    else             typeRef(pre1, rebind(pre1, sym1), args)
+
   }
 
   // Optimization to avoid creating unnecessary new typerefs.
@@ -3539,7 +3547,7 @@ trait Types
 
       TypeRef(pre, sym, args)
     case _ =>
-      typeRef(pre, sym, args)
+      typeRef(pre, rebind(pre, sym), args)
   }
 
   /** The canonical creator for implicit method types */
