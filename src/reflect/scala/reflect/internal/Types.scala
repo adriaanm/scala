@@ -3435,7 +3435,9 @@ trait Types
    */
   private def shouldRebind(pre: Type, sym: Symbol): Boolean =
     // fast path: no need to rebind
-    if (!sym.exists || sym.isError || sym.owner == pre.typeSymbol || pre.isTrivial) false
+    if (!sym.exists || sym.isError ||
+        sym.owner == pre.typeSymbol ||
+        (!pre.isInstanceOf[TypeRef] && pre.isTrivial)) false // TODO: drop isInstanceOf -- trying to avoid expensive isTrivial
     else
       // classic rebind for overridable abstract type
       (sym.isAbstractType && sym.isOverridableMember) ||
@@ -3522,21 +3524,17 @@ trait Types
   /** The canonical creator for typerefs
    *  todo: see how we can clean this up a bit
    */
-  def typeRef(pre: Type, sym: Symbol, args: List[Type]): Type = {
-    val sym1 = if (sym.isAbstractType) rebind(pre, sym) else sym
+  def typeRef(pre: Type, sym: Symbol, args: List[Type], forceRebind: Boolean = false): Type = {
+    var sym1 = if (sym.isAbstractType || forceRebind) rebind(pre, sym)
+    val pre1 = removeSuper(pre, sym1)
+    if (pre1 ne pre) sym1 = rebind(pre1, sym1)
+
     // don't expand cyclical type alias
     // we require that object is initialized, thus info.typeParams instead of typeParams.
     if (sym1.isAliasType && sameLength(sym1.info.typeParams, args) && !sym1.lockOK)
       throw new RecoverableCyclicReference(sym1)
 
-    val pre1 = pre match {
-      case x: SuperType if sym1.isEffectivelyFinal || sym1.isDeferred =>
-        x.thistpe
-      case _ => pre
-    }
-    if (pre eq pre1) TypeRef(pre, sym1, args)
-    else             typeRef(pre1, rebind(pre1, sym1), args)
-
+    TypeRef(pre1, sym1, args)
   }
 
   // Optimization to avoid creating unnecessary new typerefs.
@@ -3547,7 +3545,7 @@ trait Types
 
       TypeRef(pre, sym, args)
     case _ =>
-      typeRef(pre, rebind(pre, sym), args)
+      typeRef(pre, sym, args, forceRebind = tp.prefix != pre)
   }
 
   /** The canonical creator for implicit method types */
