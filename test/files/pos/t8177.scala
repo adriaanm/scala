@@ -1,3 +1,4 @@
+// exercise coevolveSym: SingleType with an underlying RefinedType
 trait Thing { type A }
 object IntThing extends Thing { type A = Int }
 
