@@ -369,6 +369,22 @@ trait Types
       else commonOwner(this) freshExistential ".type" setInfo singletonBounds(this) tpe
     */
 
+    /** Slower version of narrow that uses existential abstraction, which yields nicer type projections.
+     *
+     * To soundly abstract over an unstable value (x: T) while retaining the most type information,
+     * use `x.type forSome { type x.type <: T with Singleton}`, this type can be created using
+     * `typeOf[T].narrowExistentially(symbolOf[x])`.
+     *
+     * See also: InstantiateDependentMap, captureThis in AsSeenFromMap.
+     */
+    def narrowExistentially(origin: Symbol): Type =
+      if (phase.erasedTypes) this
+      else {
+        val name  = newTypeName(origin.name + nme.SINGLETON_SUFFIX.toString)
+        val quant = origin.owner newExistential(name, origin.pos) setInfo singletonBounds(this)
+        newExistentialType(quant :: Nil, typeRef(NoPrefix, quant, Nil))
+      }
+
     /** Map to a singleton type which is a subtype of this type.
      *  The fallback implemented here gives:
      *  {{{

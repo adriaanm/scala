@@ -863,27 +863,37 @@ private[internal] trait TypeMaps {
     private val existentials = new Array[Symbol](actuals.size)
     def existentialsNeeded: List[Symbol] = existentials.iterator.filter(_ ne null).toList
 
-    private object StableArg {
-      def unapply(param: Symbol) = Arg unapply param map actuals filter (tp =>
-        tp.isStable && (tp.typeSymbol != NothingClass)
-        )
+    private object Stable {
+      // type of actual arg corresponding to param -- if the type is stable
+      def unapply(tp: Type): Option[Type] =
+        if (tp.isStable && (tp.typeSymbol != NothingClass)) Some(tp)
+        else None
     }
+    private object ArgTp {
+      // type of actual arg corresponding to param
+      def unapply(param: Symbol) = Arg unapply param map actuals
+    }
+
     private object Arg {
+      // index into `actuals` that corresponds to `param`
       def unapply(param: Symbol) = Some(params indexOf param) filter (_ >= 0)
     }
 
-    def apply(tp: Type): Type = mapOver(tp) match {
-      // unsound to replace args by unstable actual #3873
-      case SingleType(NoPrefix, StableArg(arg)) => arg
-      // (soundly) expand type alias selections on implicit arguments,
-      // see depmet_implicit_oopsla* test cases -- typically, `param.isImplicit`
-      case tp1 @ TypeRef(SingleType(NoPrefix, Arg(pid)), sym, targs) =>
-        val arg = actuals(pid)
-        val res = typeRef(arg, sym, targs)
-        if (res.typeSymbolDirect.isAliasType) res.dealias else tp1
-      // don't return the original `tp`, which may be different from `tp1`,
-      // due to dropping annotations
-      case tp1 => tp1
+    /** instantiate `param.type` to the (sound approximation of the) type `T`
+     * of the actual argument `arg` that was passed in for `param`
+     *
+     * (1) If `T` is stable, we can just use that.
+     *
+     * (2) SI-3873: it'd be unsound to instantiate `param.type` to an unstable `T`,
+     * so we approximate to `X forSome {type X <: T with Singleton}` -- we can't soundly say more.
+     */
+    def apply(tp: Type): Type = tp match {
+      case SingleType(NoPrefix, paramSym@ArgTp(tp)) =>
+        tp match { // manually nesting for performance -- we don't CSE extractor calls
+          case Stable(tp) => tp                                // (1)
+          case _          => tp.narrowExistentially(paramSym)  // (2)
+        }
+      case _ => mapOver(tp)
     }
 
     /* Return the type symbol for referencing a parameter inside the existential quantifier.
@@ -922,7 +932,7 @@ private[internal] trait TypeMaps {
       // Both examples are from run/constrained-types.scala.
       object treeTrans extends Transformer {
         override def transform(tree: Tree): Tree = tree.symbol match {
-          case StableArg(actual) =>
+          case ArgTp(Stable(actual)) =>
             gen.mkAttributedQualifier(actual, tree.symbol)
           case Arg(pid) =>
             val sym = existentialFor(pid)
