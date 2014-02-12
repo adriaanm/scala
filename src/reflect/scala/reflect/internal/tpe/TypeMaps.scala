@@ -978,6 +978,32 @@ private[internal] trait TypeMaps {
     }
   }
 
+  /** Does a type reference a certain symbol? */
+  class ReferencesCollector(sym: Symbol) extends TypeCollector(false) {
+    def traverse(tp: Type) {
+      traverse(tp.typeSymbolDirect)
+      if (!result) mapOver(tp)
+    }
+    private[this] val seenSymInfo = mutable.HashSet.empty[Symbol]
+    def traverse(sym1: Symbol) {
+      if (!result) {
+        if (sym eq sym1) result = true
+        else if (!seenSymInfo(sym1)) {
+          seenSymInfo += sym1
+          mapOver(sym1.info)
+        }
+      }
+    }
+
+    override def mapOver(arg: Tree) = {
+      for (t <- arg) {
+        traverse(t.tpe)
+        traverse(t.symbol)
+      }
+      arg
+    }
+  }
+
   /** A map to implement the `filter` method. */
   class FilterTypeCollector(p: Type => Boolean) extends TypeCollector[List[Type]](Nil) {
     override def collect(tp: Type) = super.collect(tp).reverse

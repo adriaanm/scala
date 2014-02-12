@@ -756,6 +756,9 @@ trait Types
     /** Does this type contain a reference to this symbol? */
     def contains(sym: Symbol): Boolean = new ContainsCollector(sym).collect(this)
 
+    /** Does this type contain a reference to this symbol? */
+    def references(sym: Symbol): Boolean = new ReferencesCollector(sym).collect(this)
+
     /** Is this type a subtype of that type? */
     def <:<(that: Type): Boolean = {
       if (Statistics.canEnable) stat_<:<(that)
@@ -3593,7 +3596,7 @@ trait Types
       val tpe      = normalizeAliases(tpe0)
       val tpe1     = new ExistentialExtrapolation(tparams) extrapolate tpe
       var tparams0 = tparams
-      var tparams1 = tparams0 filter tpe1.contains
+      var tparams1 = tparams0 filter tpe1.references
 
       while (tparams1 != tparams0) {
         tparams0 = tparams1
