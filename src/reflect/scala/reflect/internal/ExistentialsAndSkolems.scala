@@ -60,21 +60,6 @@ trait ExistentialsAndSkolems {
    *  only the type of the Ident is changed.
    */
   final def existentialTransform[T](rawSyms: List[Symbol], tp: Type, rawOwner: Symbol = NoSymbol)(creator: (List[Symbol], Type) => T): T = {
-    /** If we map a set of hidden symbols to their existential bounds, we
-     *  have a problem: the bounds may themselves contain references to the
-     *  hidden symbols.  So this recursively calls existentialBound until
-     *  the typeSymbol is not amongst the symbols being hidden.
-     */
-    object deepBound extends TypeMap {
-      def safeExistentialBound(tp: Type): Type = {
-        val sym = tp.typeSymbol
-        if (rawSyms contains sym) safeExistentialBound(sym.existentialBound.bounds.hi)
-        else tp
-      }
-
-      def apply(tp: Type) = mapOver(safeExistentialBound(tp))
-    }
-
     val quantifiers = rawSyms map { sym =>
       val name = sym.name match {
         case x: TypeName  => x
@@ -83,11 +68,7 @@ trait ExistentialsAndSkolems {
       def rawOwner0 = rawOwner orElse abort(s"no owner provided for existential transform over raw parameter: $sym")
       val sowner    = if (isRawParameter(sym)) rawOwner0 else sym.owner
       val quant     = sowner.newExistential(name, sym.pos)
-      val bound     = sym.existentialBound match {
-        // Hanging onto lower bound in case anything interesting happens with it.
-        case TypeBounds(lo, hi) => TypeBounds(lo, deepBound(hi))
-        case tp                 => deepBound(tp.bounds.hi)
-      }
+      val bound     = sym.existentialBound
 
       quant setInfo bound.cloneInfo(quant)
     }
