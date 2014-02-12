@@ -842,6 +842,25 @@ private[internal] trait TypeMaps {
     }
   }
 
+  object dropExistentials extends TypeMap {
+    def apply(tp: Type): Type =
+      try {
+        tp match {
+          case TypeRef(_, sym, _) if sym.isExistentiallyBound =>
+            val TypeBounds(lo, hi) = sym.info.bounds
+            BoundedWildcardType(TypeBounds(mapOver(lo), mapOver(hi)))
+          case ExistentialType(_, underlying) =>
+            mapOver(underlying)
+          case TypeRef(_, sym, _) if sym.isAliasType =>
+            mapOver(tp.dealias)
+          case _ => mapOver(tp)
+        }
+      } catch {
+        case ex: MalformedType =>
+          WildcardType
+      }
+  }
+
   // dependent method types
   object IsDependentCollector extends TypeCollector(false) {
     def traverse(tp: Type) {

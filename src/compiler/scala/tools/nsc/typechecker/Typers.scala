@@ -242,21 +242,6 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
     var context = context0
     def context1 = context
 
-    def dropExistential(tp: Type): Type = tp match {
-      case ExistentialType(tparams, tpe) =>
-        new SubstWildcardMap(tparams).apply(tp)
-      case TypeRef(_, sym, _) if sym.isAliasType =>
-        val tp0 = tp.dealias
-        if (tp eq tp0) {
-          debugwarn(s"dropExistential did not progress dealiasing $tp, see SI-7126")
-          tp
-        } else {
-          val tp1 = dropExistential(tp0)
-          if (tp1 eq tp0) tp else tp1
-        }
-      case _ => tp
-    }
-
     private def errorNotClass(tpt: Tree, found: Type)  = { ClassTypeRequiredError(tpt, found); false }
     private def errorNotStable(tpt: Tree, found: Type) = { TypeNotAStablePrefixError(tpt, found); false }
 
@@ -5306,7 +5291,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
         val ptWild = if (mode.inPatternMode)
           ptPlugins // SI-5022 don't widen pt for patterns as types flow from it to the case body.
         else
-          dropExistential(ptPlugins) // FIXME: document why this is done.
+          dropExistentials(ptPlugins) // FIXME: document why this is done.
         val tree1: Tree = if (alreadyTyped) tree else typed1(tree, mode, ptWild)
         if (shouldPrint)
           typingStack.showTyped(tree1)
