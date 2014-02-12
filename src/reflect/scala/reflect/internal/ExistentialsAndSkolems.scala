@@ -67,20 +67,14 @@ trait ExistentialsAndSkolems {
       }
       def rawOwner0 = rawOwner orElse abort(s"no owner provided for existential transform over raw parameter: $sym")
       val sowner    = if (isRawParameter(sym)) rawOwner0 else sym.owner
-      val quant     = sowner.newExistential(name, sym.pos)
-      val bound     = sym.existentialBound
 
-      quant setInfo bound.cloneInfo(quant)
+      sowner.newExistential(name, sym.pos)
     }
 
     // Higher-kinded existentials are not yet supported, but this is
     // tpeHK for when they are: "if a type constructor is expected/allowed,
     // tpeHK must be called instead of tpe."
     val quantifierTypes = quantifiers map (_.tpeHK)
-
-    // TODO: fuse the substitutions? both are needed!
-    // the first one replaces types, the second one is motivated by the example below
-    def doSubst(info: Type) = info.subst(rawSyms, quantifierTypes).substSym(rawSyms, quantifiers)
 
     /* Abandon all hope for symbol consistency, ye who enter here:
      * For example, from SI-6493, let's compute a result type for
@@ -110,7 +104,30 @@ trait ExistentialsAndSkolems {
      *       the `doSubst(tp)` will clone more symbols, so we'll probably need to traverse its result and
      *       somehow correlate the contained symbols to those in `quantifiers`...
      */
-    creator(quantifiers map (_ modifyInfo doSubst), doSubst(tp))
+    def doSubst(info: Type) = {
+      // TODO: fuse the substitutions? both are needed!
+      // the first one replaces types, the second one is motivated by the example below
+      val tp1 = info.subst(rawSyms, quantifierTypes)
+      val tp2 = tp1.substSym(rawSyms, quantifiers)
+      println(s"subst: $info ->\n$tp1\n$tp2")
+      tp2
+    }
+
+    println(s"ET: $tp under $rawSyms --> $quantifiers")
+
+    foreach2(rawSyms, quantifiers) { (sym, quant) =>
+      // `sym.existentialBound` may contain references to symbols in `rawSyms`
+      // That's okay, we'll replace `rawSyms` by `quantifiers`
+      val bound = doSubst(sym.existentialBound)
+      val tp = bound.cloneInfo(quant)
+      println(s"$quant : $tp")
+      quant setInfo tp
+    }
+
+    val substed = doSubst(tp)
+
+    println(s"creating under $quantifiers: $substed (${showRaw(substed)})")
+    creator(quantifiers, substed)
   }
 
   /**
