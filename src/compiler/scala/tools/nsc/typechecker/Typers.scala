@@ -3827,7 +3827,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
             tree
           }
         }
-        TypeTree(newExistentialType(tparams, tp)) setOriginal original
+        TypeTree(existentialAbstraction(tparams, tp)) setOriginal original
       }
       )
     }
