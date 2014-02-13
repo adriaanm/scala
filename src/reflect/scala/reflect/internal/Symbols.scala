@@ -2841,6 +2841,9 @@ trait Symbols extends api.Symbols { self: SymbolTable =>
    */
   class AbstractTypeSymbol protected[Symbols] (initOwner: Symbol, initPos: Position, initName: TypeName)
   extends TypeSymbol(initOwner, initPos, initName) {
+    if (id == 13951)
+      Thread.dumpStack
+
     type TypeOfClonedSymbol = TypeSymbol
     final override def isAbstractType = true
     override def existentialBound = this.info
