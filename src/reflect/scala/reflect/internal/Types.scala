@@ -2662,113 +2662,28 @@ trait Types
 
     def withTypeVars(op: Type => Boolean): Boolean = withTypeVars(op, AnyDepth)
 
+    // Used to implement the following subtyping rule:
+    //
+    //      T <: subst(U)    for all i: subst(Li) <: Vi /\ Vi <: subst(Hi)
+    // ----------------------------------------------------------------------------
+    //         T <: U forSome {type X1 :> L1 <: H1,..., type Xn :> Ln <: Hn}
+    //
+    // where subst(T) = T.subst(Xi, Vi) -- Vi fresh type variables
+    //
+    // T is a subtype of some existential if all constraints of the existential hold
+    // after substituting Vi for the existentially quantified type variables Xi,
+    // and T is a subtype of the underlying type U with the same substition applied.
+    //
+    // `(U forSome {type X1 :> L1 <: H1,..., type Xn :> Ln <: Hn}).withTypeVars(isSubType(T, _, depth), depth)`),
     def withTypeVars(op: Type => Boolean, depth: Depth): Boolean = {
       val quantifiedFresh = cloneSymbols(quantified)
-      val tvars = quantifiedFresh map (tparam => TypeVar(tparam))
-      println(s"quantifiedFresh: $quantifiedFresh : ${quantifiedFresh map (_.info)}")
-      quantifiedFresh.map(_.modifyInfo(_.subst(quantifiedFresh, tvars)))
-      println(s"quantifiedFresh substed: $quantifiedFresh : ${quantifiedFresh map (_.info)}")
+      val tvars           = quantifiedFresh map (tparam => TypeVar(tparam))
+      // fuse subst quantified -> quantifiedFresh -> tvars
+      val underlying1     = underlying.instantiateTypeParams(quantified, tvars)
 
-      /**
-       * [Martin] Can someone comment this please? I have no idea what it's for
-       *  and the code is not exactly readable.
-       */
-      object AdjustedTypeArgs {
-        val Result = mutable.LinkedHashMap
-        type Result = mutable.LinkedHashMap[Symbol, Option[Type]]
-
-        def unapply(m: Result): Some[(List[Symbol], List[Type])] = Some(toLists(
-          (m collect { case (p, Some(a)) => (p, a) }).unzip))
-
-        object Undets {
-          def unapply(m: Result): Some[(List[Symbol], List[Type], List[Symbol])] = Some(toLists {
-            val (ok, nok) = m.map { case (p, a) => (p, a.getOrElse(null)) }.partition(_._2 ne null)
-            val (okArgs, okTparams) = ok.unzip
-            (okArgs, okTparams, nok.keys)
-          })
-        }
-
-        object AllArgsAndUndets {
-          def unapply(m: Result): Some[(List[Symbol], List[Type], List[Type], List[Symbol])] = Some(toLists {
-            val (ok, nok) = m.map { case (p, a) => (p, a.getOrElse(null)) }.partition(_._2 ne null)
-            val (okArgs, okTparams) = ok.unzip
-            (okArgs, okTparams, m.values.map(_.getOrElse(NothingTpe)), nok.keys)
-          })
-        }
-
-        private def toLists[A1, A2](pxs: (Iterable[A1], Iterable[A2])) = (pxs._1.toList, pxs._2.toList)
-        private def toLists[A1, A2, A3](pxs: (Iterable[A1], Iterable[A2], Iterable[A3])) = (pxs._1.toList, pxs._2.toList, pxs._3.toList)
-        private def toLists[A1, A2, A3, A4](pxs: (Iterable[A1], Iterable[A2], Iterable[A3], Iterable[A4])) = (pxs._1.toList, pxs._2.toList, pxs._3.toList, pxs._4.toList)
-      }
-
-      /**
-       * Retract arguments that were inferred to Nothing because inference failed. Correct types for repeated params.
-       *
-       * We detect Nothing-due-to-failure by only retracting a parameter if either:
-       *  - it occurs in an invariant/contravariant position in `restpe`
-       *  - `restpe == WildcardType`
-       *
-       * Retracted parameters are mapped to None.
-       *  TODO:
-       *    - make sure the performance hit of storing these in a map is acceptable (it's going to be a small map in 90% of the cases, I think)
-       *    - refactor further up the callstack so that we don't have to do this post-factum adjustment?
-       *
-       * Rewrite for repeated param types:  Map T* entries to Seq[T].
-       *  @return map from tparams to inferred arg, if inference was successful, tparams that map to None are considered left undetermined
-       *    type parameters that are inferred as `scala.Nothing` and that are not covariant in `restpe` are taken to be undetermined
-       */
-      def adjustTypeArgs(tparams: List[Symbol], tvars: List[TypeVar], targs: List[Type], restpe: Type = WildcardType): AdjustedTypeArgs.Result = {
-        val buf = AdjustedTypeArgs.Result.newBuilder[Symbol, Option[Type]]
-
-        foreach3(tparams, tvars, targs) { (tparam, tvar, targ) =>
-          val retract = (
-            targ.typeSymbol == NothingClass // only retract Nothings
-            && (restpe.isWildcard || !varianceInType(restpe)(tparam).isPositive) // don't retract covariant occurrences
-            )
-
-          buf += ((tparam,
-            if (retract) None
-            else Some(
-              if (targ.typeSymbol == RepeatedParamClass) targ.baseType(SeqClass)
-              else if (targ.typeSymbol == JavaRepeatedParamClass) targ.baseType(ArrayClass)
-              // this infers Foo.type instead of "object Foo" (see also widenIfNecessary)
-              else if (targ.typeSymbol.isModuleClass || tvar.constr.avoidWiden) targ
-              else targ.widen)))
-        }
-        buf.result()
-      }
-      /** Map every TypeVar to its constraint.inst field.
-   *  throw a NoInstance exception if a NoType or WildcardType is encountered.
-   */
-  object instantiate extends TypeMap {
-    private var excludedVars = immutable.Set[TypeVar]()
-    private def applyTypeVar(tv: TypeVar): Type = tv match {
-      case TypeVar(origin, constr) if !constr.instValid => ???
-      case _ if excludedVars(tv)                        => ???
-      case TypeVar(_, constr)                           =>
-        excludedVars += tv
-        try apply(constr.inst)
-        finally excludedVars -= tv
-    }
-    def apply(tp: Type): Type = tp match {
-      case WildcardType | BoundedWildcardType(_) | NoType => ???
-      case tv: TypeVar if !tv.untouchable                 => applyTypeVar(tv)
-      case _                                              => mapOver(tp)
-    }
-  }
-    
-      isWithinBounds(NoPrefix, NoSymbol, quantifiedFresh, tvars)
-      println(s"primed tvars: $tvars")
-      val underlying1 = underlying.subst(quantified, tvars) // fuse subst quantified -> quantifiedFresh -> tvars
-      op(underlying1) && {
-        solve(tvars, quantifiedFresh, quantifiedFresh map (_ => Covariant), upper = false, depth) &&
-        {
-          val targs = tvars map instantiate
-          val AdjustedTypeArgs.Undets(okParams, okArgs, _) = adjustTypeArgs(quantifiedFresh, tvars, targs)
-          println(s"OKPARARGS $okParams $okArgs")
-          isWithinBounds(NoPrefix, NoSymbol, okParams, okArgs)
-        }
-      }
+      isWithinBounds(NoPrefix, NoSymbol, quantifiedFresh, tvars) && // add constraints implied by bounds
+      op(underlying1) &&                                            // check actual relation
+      solve(tvars, quantifiedFresh, quantifiedFresh map (_ => Invariant), upper = false, depth)
     }
   }
 
