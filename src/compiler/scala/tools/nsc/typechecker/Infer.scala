@@ -263,6 +263,8 @@ trait Infer extends Checkable {
       if (context.unit.exists)
         context.unit.depends += sym.enclosingTopLevelClass
 
+      println(s"ACCESS\t${sym.owner.fullName}\t${sym.defString}")
+
       if (sym.isError)
         tree setSymbol sym setType ErrorType
       else accessible match {
