@@ -647,12 +647,12 @@ abstract class GenASM extends SubComponent with BytecodeWriters with GenJVMASM {
           )
 
           assert(jname != null, "javaName is broken.") // documentation
-          val doAdd = entries.get(jname) match {
+          val doAdd = entries get jname match {
             // TODO is it ok for prevOName to be null? (Someone should really document the invariants of the InnerClasses bytecode attribute)
             case Some(prevOName) =>
               // this occurs e.g. when innerClassBuffer contains both class Thread$State, object Thread$State,
               // i.e. for them it must be the case that oname == java/lang/Thread
-              assert(prevOName == oname, "duplicate")
+              assert(prevOName == oname, s"duplicate: $oname")
               false
             case None => true
           }
@@ -2235,7 +2235,7 @@ abstract class GenASM extends SubComponent with BytecodeWriters with GenJVMASM {
               } else {
                 jmethod.visitFieldInsn(
                   Opcodes.GETSTATIC,
-                  javaName(module) /* + "$" */ ,
+                  javaName(module) /* + "$" */,
                   strMODULE_INSTANCE_FIELD,
                   descriptor(module))
               }

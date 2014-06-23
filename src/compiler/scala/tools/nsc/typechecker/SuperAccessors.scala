@@ -87,23 +87,6 @@ abstract class SuperAccessors extends transform.Transform with transform.TypingT
       }
     }
 
-    /** Check that a class and its companion object to not both define
-     *  a class or module with same name
-     */
-    private def checkCompanionNameClashes(sym: Symbol) =
-      if (!sym.owner.isModuleClass) {
-        val linked = sym.owner.linkedClassOfClass
-        if (linked != NoSymbol) {
-          var other = linked.info.decl(sym.name.toTypeName).filter(_.isClass)
-          if (other == NoSymbol)
-            other = linked.info.decl(sym.name.toTermName).filter(_.isModule)
-          if (other != NoSymbol)
-            unit.error(sym.pos, "name clash: "+sym.owner+" defines "+sym+
-                       "\nand its companion "+sym.owner.companionModule+" also defines "+
-                       other)
-        }
-      }
-
     private def transformSuperSelect(sel: Select): Tree = {
       val Select(sup @ Super(_, mix), name) = sel
       val sym   = sel.symbol
@@ -155,25 +138,20 @@ abstract class SuperAccessors extends transform.Transform with transform.TypingT
 
         case ClassDef(_, _, _, _) =>
           def transformClassDef = {
-          checkCompanionNameClashes(sym)
-          val decls = sym.info.decls
-          for (s <- decls) {
-            if (s.privateWithin.isClass && !s.isProtected && !s.privateWithin.isModuleClass &&
-                !s.hasFlag(EXPANDEDNAME) && !s.isConstructor) {
-              val savedName = s.name
-              decls.unlink(s)
-              s.expandName(s.privateWithin)
-              decls.enter(s)
-              log("Expanded '%s' to '%s' in %s".format(savedName, s.name, sym))
+            val decls = sym.info.decls
+            for (s <- decls) {
+              if (s.privateWithin.isClass && !s.isProtected && !s.privateWithin.isModuleClass &&
+                  !s.hasFlag(EXPANDEDNAME) && !s.isConstructor) {
+                val savedName = s.name
+                decls.unlink(s)
+                s.expandName(s.privateWithin)
+                decls.enter(s)
+                log("Expanded '%s' to '%s' in %s".format(savedName, s.name, sym))
+              }
             }
-          }
-          super.transform(tree)
+            super.transform(tree)
           }
           transformClassDef
-
-        case ModuleDef(_, _, _) =>
-          checkCompanionNameClashes(sym)
-          super.transform(tree)
 
         case Template(_, _, body) =>
           def transformTemplate = {
