@@ -519,28 +519,7 @@ abstract class GenASM extends SubComponent with BytecodeWriters with GenJVMASM {
      *  cannot exist in the classpath: the type checker will be very confused.
      */
     def javaName(sym: Symbol): String = {
-
-        /*
-         * Checks if given symbol corresponds to inner class/object and add it to innerClassBuffer
-         *
-         * Note: This method is called recursively thus making sure that we add complete chain
-         * of inner class all until root class.
-         */
-        def collectInnerClass(s: Symbol): Unit = {
-          // TODO: some enteringFlatten { ... } which accounts for
-          // being nested in parameterized classes (if we're going to selectively flatten.)
-          val x = innerClassSymbolFor(s)
-          if(x ne NoSymbol) {
-            assert(x.isClass, "not an inner-class symbol")
-            val isInner = !x.rawowner.isPackageClass
-            if (isInner) {
-              innerClassBuffer += x
-              collectInnerClass(x.rawowner)
-            }
-          }
-        }
-
-      collectInnerClass(sym)
+      innerClassBuffer ++= sym.rawOwnerChain takeWhile (s => s.isClass && !s.rawowner.isPackageClass)
 
       val hasInternalName = sym.isClass || sym.isModuleNotMethod
       val cachedJN = javaNameCache.getOrElseUpdate(sym, {

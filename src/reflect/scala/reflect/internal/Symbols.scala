@@ -1127,6 +1127,7 @@ trait Symbols extends api.Symbols { self: SymbolTable =>
     }
 
     def ownerChain: List[Symbol] = this :: owner.ownerChain
+    def rawOwnerChain: List[Symbol] = this :: rawowner.rawOwnerChain
     def originalOwnerChain: List[Symbol] = this :: originalOwner.getOrElse(this, rawowner).originalOwnerChain
 
     // Non-classes skip self and return rest of owner chain; overridden in ClassSymbol.
@@ -3463,6 +3464,7 @@ trait Symbols extends api.Symbols { self: SymbolTable =>
       this
     }
     override def ownerChain: List[Symbol] = Nil
+    override def rawOwnerChain = Nil
     override def ownersIterator: Iterator[Symbol] = Iterator.empty
     override def alternatives: List[Symbol] = List()
     override def reset(completer: Type): this.type = this
