@@ -1,0 +1,12 @@
+Test  class - class Test$
+Test  encl - null
+Test  simple - Test$
+i1  class - class Test$$i1$
+i1  encl - class Test
+i1  simple - $i1$
+i1_1  class - class Test$$i1$$i1_1
+i1_1  encl - class Test$$i1$
+i1_1  simple - i1_1
+i1_2  class - class Test$$i1$$i1_2$
+i1_2  encl - class Test$$i1$
+i1_2  simple - i1_2$
