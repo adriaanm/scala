@@ -1330,15 +1330,21 @@ trait Contexts { self: Analyzer =>
     override def isBuffering = true
 
     override def issue(err: AbsTypeError)(implicit context: Context): Unit             = errorBuffer += err
+    // TODO: emit all buffered errors, warnings
+    override def makeImmediate: ContextReporter = {
+      val repo = new ImmediateReporter
+      implicit val context = NoContext
+      errors foreach repo.issue
+      warnings foreach { case (pos, msg) => reporter.warning(pos, msg) }
+      repo
+    }
+
 
     // this used to throw new TypeError(pos, msg) -- buffering lets us report more errors (test/files/neg/macro-basic-mamdmi)
     // the old throwing behavior was relied on by diagnostics in manifestOfType
     protected def handleError(pos: Position, msg: String): Unit                        = errorBuffer += TypeErrorWrapper(new TypeError(pos, msg))
     override protected def handleSuppressedAmbiguous(err: AbsAmbiguousTypeError): Unit = errorBuffer += err
     override protected def handleWarning(pos: Position, msg: String): Unit             = warningBuffer += ((pos, msg))
-
-    // TODO: emit all buffered errors, warnings
-    override def makeImmediate: ContextReporter = new ImmediateReporter(errorBuffer, warningBuffer)
   }
 
   /** Used after typer (specialization relies on TypeError being thrown, among other post-typer phases).
