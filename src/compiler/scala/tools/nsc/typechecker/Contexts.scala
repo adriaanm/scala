@@ -1230,7 +1230,17 @@ trait Contexts { self: Analyzer =>
     override final def toString     = super.toString + " with " + s"ImportContext { $impInfo; outer.owner = ${outer.owner} }"
   }
 
-  /** A buffer for warnings and errors that are accumulated during speculative type checking. */
+  /** A reporter for use during type checking. It has multiple modes for handling errors.
+   *
+   *  The default (immediate mode) is to send the error to the global reporter.
+   *  When switched into buffering mode via makeBuffering, errors and warnings are buffered and not be reported
+   *  (there's a special case for ambiguity errors for some reason: those are force to the reporter when context.ambiguousErrors,
+   *   or else they are buffered -- TODO: can we simplify this?)
+   *
+   *  When using the type checker after typers, an error results in a TypeError being thrown. TODO: get rid of this mode.
+   *
+   *  To handle nested contexts, reporters share buffers. TODO: only buffer in BufferingReporter, emit immediately in ImmediateReporter
+   */
   abstract class ContextReporter(private[this] var _errorBuffer: mutable.LinkedHashSet[AbsTypeError] = null, private[this] var _warningBuffer: mutable.LinkedHashSet[(Position, String)] = null) extends Reporter {
     type Error = AbsTypeError
     type Warning = (Position, String)
@@ -1296,7 +1306,8 @@ trait Contexts { self: Analyzer =>
       else msg
     }
 
-    // TODO: deprecate everything below (related to buffering) and push down to BufferingReporter
+    // TODO: everything below should be pushed down to BufferingReporter (related to buffering)
+
     // [JZ] Contexts, pre- the SI-7345 refactor, avoided allocating the buffers until needed. This
     // is replicated here out of conservatism.
     private def newBuffer[A]    = mutable.LinkedHashSet.empty[A] // Important to use LinkedHS for stable results.
