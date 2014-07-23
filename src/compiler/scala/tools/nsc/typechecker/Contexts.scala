@@ -182,7 +182,8 @@ trait Contexts { self: Analyzer =>
    * @param _outer The next outer context.
    */
   class Context private[typechecker](val tree: Tree, val owner: Symbol, val scope: Scope,
-                                     val unit: CompilationUnit, _outer: Context) {
+                                     val unit: CompilationUnit, _outer: Context,
+                                     private var _reporter: ContextReporter = new ThrowingReporter) {
     private def outerIsNoContext = _outer eq null
     final def outer: Context = if (outerIsNoContext) NoContext else _outer
 
@@ -325,8 +326,6 @@ trait Contexts { self: Analyzer =>
     //
 
     // the reporter for this context
-    // TODO: start off with ImmediateReporter
-    private var _reporter: ContextReporter = new ThrowingReporter
 
     def reporter = _reporter
 
@@ -385,7 +384,7 @@ trait Contexts { self: Analyzer =>
     // Temporary mode adjustment
     //
 
-    @inline def withMode[T](enabled: ContextMode = NOmode, disabled: ContextMode = NOmode)(op: => T): T = {
+    @inline final def withMode[T](enabled: ContextMode = NOmode, disabled: ContextMode = NOmode)(op: => T): T = {
       val saved = contextMode
       set(enabled, disabled)
       try op
@@ -445,7 +444,8 @@ trait Contexts { self: Analyzer =>
      * `Context#imports`.
      */
     def make(tree: Tree = tree, owner: Symbol = owner,
-             scope: Scope = scope, unit: CompilationUnit = unit): Context = {
+             scope: Scope = scope, unit: CompilationUnit = unit,
+             reporter: ContextReporter = this.reporter): Context = {
       val isTemplateOrPackage = tree match {
         case _: Template | _: PackageDef => true
         case _                           => false
@@ -468,16 +468,15 @@ trait Contexts { self: Analyzer =>
 
       // The blank canvas
       val c = if (isImport)
-        new Context(tree, owner, scope, unit, this) with ImportContext
+        new Context(tree, owner, scope, unit, this, reporter) with ImportContext
       else
-        new Context(tree, owner, scope, unit, this)
+        new Context(tree, owner, scope, unit, this, reporter)
 
       // Fields that are directly propagated
       c.variance           = variance
       c.diagUsedDefaults   = diagUsedDefaults
       c.openImplicits      = openImplicits
       c.contextMode        = contextMode // note: ConstructorSuffix, a bit within `mode`, is conditionally overwritten below.
-      c._reporter          = reporter
 
       // Fields that may take on a different value in the child
       c.prefix             = prefixInChild
@@ -510,22 +509,19 @@ trait Contexts { self: Analyzer =>
       else make(tree, owner, scope, unit)
 
     /** Make a child context that represents a new nested scope */
-    def makeNewScope(tree: Tree, owner: Symbol): Context =
-      make(tree, owner, newNestedScope(scope))
-
+    def makeNewScope(tree: Tree, owner: Symbol, reporter: ContextReporter = this.reporter): Context =
+      make(tree, owner, newNestedScope(scope), reporter = reporter)
 
     /** Make a child context that buffers errors and warnings into a fresh report buffer. */
     def makeSilent(reportAmbiguousErrors: Boolean = ambiguousErrors, newtree: Tree = tree): Context = {
-      val c = make(newtree)
-      c.setAmbiguousErrors(reportAmbiguousErrors)
       // A fresh buffer so as not to leak errors/warnings into `this`.
-      c._reporter = new BufferingReporter
+      val c = make(newtree, reporter = new BufferingReporter)
+      c.setAmbiguousErrors(reportAmbiguousErrors)
       c
     }
 
     def makeNonSilent(newtree: Tree): Context = {
-      val c = make(newtree)
-      c._reporter = reporter.makeImmediate
+      val c = make(newtree, reporter = reporter.makeImmediate)
       c.setAmbiguousErrors(true)
       c
     }
@@ -549,9 +545,10 @@ trait Contexts { self: Analyzer =>
      */
     def makeConstructorContext = {
       val baseContext = enclClass.outer.nextEnclosing(!_.tree.isInstanceOf[Template])
-      val argContext = baseContext.makeNewScope(tree, owner)
+      // must propagate reporter!
+      // (caught by neg/t3649 when refactoring reporting to be specified only by this.reporter and not also by this.contextMode)
+      val argContext = baseContext.makeNewScope(tree, owner, reporter = this.reporter)
       argContext.contextMode = contextMode
-      argContext._reporter = _reporter // caught by neg/t3649 TODO: make sure _reporter is propagated wherever contextMode is
       argContext.inSelfSuperCall = true
       def enterElems(c: Context) {
         def enterLocalElems(e: ScopeEntry) {
