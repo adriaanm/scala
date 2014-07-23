@@ -1238,7 +1238,7 @@ trait Contexts { self: Analyzer =>
    *
    *  To handle nested contexts, reporters share buffers. TODO: only buffer in BufferingReporter, emit immediately in ImmediateReporter
    */
-  abstract class ContextReporter(private[this] var _errorBuffer: mutable.LinkedHashSet[AbsTypeError] = null, private[this] var _warningBuffer: mutable.LinkedHashSet[(Position, String)] = null) extends Reporter {
+  abstract class ContextReporter extends Reporter {
     type Error = AbsTypeError
     type Warning = (Position, String)
 
@@ -1261,7 +1261,7 @@ trait Contexts { self: Analyzer =>
       if (context.ambiguousErrors) reporter.error(err.errPos, addDiagString(err.errMsg)) // force reporting... see TODO above
       else handleSuppressedAmbiguous(err)
 
-    def ++=(errors: Traversable[AbsTypeError]): Unit = errorBuffer ++= errors
+    def ++=(errors: Traversable[AbsTypeError])(implicit context: Context): Unit = errors foreach issue
 
     protected final def info0(pos: Position, msg: String, severity: Severity, force: Boolean): Unit =
       severity match {
@@ -1270,10 +1270,50 @@ trait Contexts { self: Analyzer =>
         case INFO    => reporter.echo(pos, msg)
       }
 
-    final override def hasErrors = super.hasErrors || errorBuffer.nonEmpty
+    // have to pass in context because multiple contexts may share the same ReportBuffer
+    def reportFirstDivergentError(fun: Tree, param: Symbol, paramTp: Type)(implicit context: Context): Unit = ()
+
+    def retainDivergentErrorsExcept(saved: DivergentImplicitTypeError) = ()
+
+    protected def addDiagString(msg: String)(implicit context: Context): String = {
+      val diagUsedDefaultsMsg = "Error occurred in an application involving default arguments."
+      if (context.diagUsedDefaults && !(msg endsWith diagUsedDefaultsMsg)) msg + "\n" + diagUsedDefaultsMsg
+      else msg
+    }
+
+    // TODO: everything below should be pushed down to BufferingReporter (related to buffering)
+
+    // [JZ] Contexts, pre- the SI-7345 refactor, avoided allocating the buffers until needed. This
+    // is replicated here out of conservatism.
+    def errors: immutable.Seq[Error] = Nil
+    def warnings: immutable.Seq[Warning] = Nil
+    def firstError: Option[AbsTypeError] = None
+
+    def clearAll(): Unit = ()
+    def clearAllErrors(): Unit = ()
+    def clearAllWarnings(): Unit = ()
+  }
+
+  private class ImmediateReporter extends ContextReporter {
+    override def makeBuffering: ContextReporter = new BufferingReporter
+    protected def handleError(pos: Position, msg: String): Unit = reporter.error(pos, msg)
+  }
+
+  class BufferingReporter(private[this] var _errorBuffer: mutable.LinkedHashSet[AbsTypeError] = null, private[this] var _warningBuffer: mutable.LinkedHashSet[(Position, String)] = null) extends ContextReporter {
+    override def isBuffering = true
+
+    override def issue(err: AbsTypeError)(implicit context: Context): Unit             = errorBuffer += err
+    // TODO: emit all buffered errors, warnings
+    override def makeImmediate: ContextReporter = {
+      val repo = new ImmediateReporter
+      implicit val context = NoContext
+      errors foreach repo.issue
+      warnings foreach { case (pos, msg) => reporter.warning(pos, msg) }
+      repo
+    }
 
     // have to pass in context because multiple contexts may share the same ReportBuffer
-    def reportFirstDivergentError(fun: Tree, param: Symbol, paramTp: Type)(implicit context: Context): Unit =
+    override def reportFirstDivergentError(fun: Tree, param: Symbol, paramTp: Type)(implicit context: Context): Unit =
       errors.collectFirst {
         case dte: DivergentImplicitTypeError => dte
       } match {
@@ -1291,60 +1331,35 @@ trait Contexts { self: Analyzer =>
           NoImplicitFoundError(fun, param)(context)
       }
 
-    def retainDivergentErrorsExcept(saved: DivergentImplicitTypeError) =
+    override def retainDivergentErrorsExcept(saved: DivergentImplicitTypeError) =
       errorBuffer.retain {
         case err: DivergentImplicitTypeError => err ne saved
         case _ => false
       }
-
-    protected def addDiagString(msg: String)(implicit context: Context): String = {
-      val diagUsedDefaultsMsg = "Error occurred in an application involving default arguments."
-      if (context.diagUsedDefaults && !(msg endsWith diagUsedDefaultsMsg)) msg + "\n" + diagUsedDefaultsMsg
-      else msg
-    }
-
-    // TODO: everything below should be pushed down to BufferingReporter (related to buffering)
-
-    // [JZ] Contexts, pre- the SI-7345 refactor, avoided allocating the buffers until needed. This
-    // is replicated here out of conservatism.
-    private def newBuffer[A]    = mutable.LinkedHashSet.empty[A] // Important to use LinkedHS for stable results.
-    final protected def errorBuffer   = { if (_errorBuffer == null) _errorBuffer = newBuffer; _errorBuffer }
-    final protected def warningBuffer = { if (_warningBuffer == null) _warningBuffer = newBuffer; _warningBuffer }
-
-    final def errors: immutable.Seq[Error]     = errorBuffer.toVector
-    final def warnings: immutable.Seq[Warning] = warningBuffer.toVector
-    final def firstError: Option[AbsTypeError] = errorBuffer.headOption
-
-    final def clearAll(): Unit         = { clearAllErrors(); clearAllWarnings() }
-    final def clearAllErrors(): Unit   = errorBuffer.clear()
-    final def clearAllWarnings(): Unit = warningBuffer.clear()
-  }
-
-  private class ImmediateReporter(_errorBuffer: mutable.LinkedHashSet[AbsTypeError] = null, _warningBuffer: mutable.LinkedHashSet[(Position, String)] = null) extends ContextReporter(_errorBuffer, _warningBuffer) {
-    override def makeBuffering: ContextReporter = new BufferingReporter(errorBuffer, warningBuffer)
-    protected def handleError(pos: Position, msg: String): Unit = reporter.error(pos, msg)
- }
-
-
-  private class BufferingReporter(_errorBuffer: mutable.LinkedHashSet[AbsTypeError] = null, _warningBuffer: mutable.LinkedHashSet[(Position, String)] = null) extends ContextReporter(_errorBuffer, _warningBuffer) {
-    override def isBuffering = true
-
-    override def issue(err: AbsTypeError)(implicit context: Context): Unit             = errorBuffer += err
-    // TODO: emit all buffered errors, warnings
-    override def makeImmediate: ContextReporter = {
-      val repo = new ImmediateReporter
-      implicit val context = NoContext
-      errors foreach repo.issue
-      warnings foreach { case (pos, msg) => reporter.warning(pos, msg) }
-      repo
-    }
-
 
     // this used to throw new TypeError(pos, msg) -- buffering lets us report more errors (test/files/neg/macro-basic-mamdmi)
     // the old throwing behavior was relied on by diagnostics in manifestOfType
     protected def handleError(pos: Position, msg: String): Unit                        = errorBuffer += TypeErrorWrapper(new TypeError(pos, msg))
     override protected def handleSuppressedAmbiguous(err: AbsAmbiguousTypeError): Unit = errorBuffer += err
     override protected def handleWarning(pos: Position, msg: String): Unit             = warningBuffer += ((pos, msg))
+
+    // TODO: everything below should be pushed down to BufferingReporter (related to buffering)
+
+    // [JZ] Contexts, pre- the SI-7345 refactor, avoided allocating the buffers until needed. This
+    // is replicated here out of conservatism.
+    private def newBuffer[A] = mutable.LinkedHashSet.empty[A] // Important to use LinkedHS for stable results.
+    final protected def errorBuffer = { if (_errorBuffer == null) _errorBuffer = newBuffer; _errorBuffer }
+    final protected def warningBuffer = { if (_warningBuffer == null) _warningBuffer = newBuffer; _warningBuffer }
+
+    override def hasErrors = super.hasErrors || errorBuffer.nonEmpty
+
+    override def errors: immutable.Seq[Error] = errorBuffer.toVector
+    override def warnings: immutable.Seq[Warning] = warningBuffer.toVector
+    override def firstError: Option[AbsTypeError] = errorBuffer.headOption
+
+    override def clearAll(): Unit = { clearAllErrors(); clearAllWarnings() }
+    override def clearAllErrors(): Unit = errorBuffer.clear()
+    override def clearAllWarnings(): Unit = warningBuffer.clear()
   }
 
   /** Used after typer (specialization relies on TypeError being thrown, among other post-typer phases).
