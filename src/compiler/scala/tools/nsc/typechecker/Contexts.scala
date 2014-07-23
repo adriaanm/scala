@@ -326,7 +326,8 @@ trait Contexts { self: Analyzer =>
     //
 
     // the reporter for this context
-    def reporter: ContextReporter = _reporter
+    def reporter: Reporter = _reporter
+    type Reporter = ContextReporter
 
     // if set, errors will not be reporter/thrown
     def bufferErrors = reporter.isBuffering
@@ -513,11 +514,11 @@ trait Contexts { self: Analyzer =>
       make(tree, owner, newNestedScope(scope), reporter = reporter)
 
     /** Make a child context that buffers errors and warnings into a fresh report buffer. */
-    def makeSilent(reportAmbiguousErrors: Boolean = ambiguousErrors, newtree: Tree = tree): Context = {
+    def makeSilent(reportAmbiguousErrors: Boolean = ambiguousErrors, newtree: Tree = tree): Context { type Reporter = BufferingReporter } = {
       // A fresh buffer so as not to leak errors/warnings into `this`.
       val c = make(newtree, reporter = new BufferingReporter)
       c.setAmbiguousErrors(reportAmbiguousErrors)
-      c
+      c.asInstanceOf[Context { type Reporter = BufferingReporter }]
     }
 
     def makeNonSilent(newtree: Tree): Context = {

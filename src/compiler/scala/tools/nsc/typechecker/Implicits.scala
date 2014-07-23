@@ -34,6 +34,8 @@ trait Implicits {
   import typingStack.{ printTyping }
   import typeDebug._
 
+  type ImplicitContext = Context { type Reporter = BufferingReporter }
+
   def inferImplicit(tree: Tree, pt: Type, reportAmbiguous: Boolean, isView: Boolean, context: Context): SearchResult =
     inferImplicit(tree, pt, reportAmbiguous, isView, context, saveAmbiguousDivergent = true, tree.pos)
 
@@ -72,10 +74,10 @@ trait Implicits {
     val implicitSearchContext = context.makeImplicit(reportAmbiguous)
     val result = new ImplicitSearch(tree, pt, isView, implicitSearchContext, pos).bestImplicit
     if (result.isFailure && saveAmbiguousDivergent && implicitSearchContext.reporter.hasErrors) {
-      context.reporter ++= (implicitSearchContext.reporter.errors.collect {
-        case dte: DivergentImplicitTypeError => dte
-        case ate: AmbiguousImplicitTypeError => ate
-      })
+      implicit val _reportingContext = context
+      implicitSearchContext.reporter.errors foreach {
+        case err@(_: DivergentImplicitTypeError | _: AmbiguousImplicitTypeError) => context.reporter issue err
+      }
       debuglog("update buffer: " + implicitSearchContext.reporter.errors)
     }
     // SI-7944 undetermined type parameters that result from inference within typedImplicit land in
@@ -325,7 +327,7 @@ trait Implicits {
    *                          (useful when we infer synthetic stuff and pass EmptyTree in the `tree` argument)
    *                          If it's set to NoPosition, then position-based services will use `tree.pos`
    */
-  class ImplicitSearch(tree: Tree, pt: Type, isView: Boolean, context0: Context, pos0: Position = NoPosition) extends Typer(context0) with ImplicitsContextErrors {
+  class ImplicitSearch(tree: Tree, pt: Type, isView: Boolean, context0: ImplicitContext, pos0: Position = NoPosition) extends Typer(context0) with ImplicitsContextErrors {
     val searchId = implicitSearchId()
     private def typingLog(what: String, msg: => String) =
       typingStack.printTyping(tree, f"[search #$searchId] $what $msg")
@@ -1210,8 +1212,9 @@ trait Implicits {
       }
 
       /* Re-wraps a type in a manifest before calling inferImplicit on the result */
-      def findManifest(tp: Type, manifestClass: Symbol = if (full) FullManifestClass else PartialManifestClass) =
+      def findManifest(tp: Type, manifestClass: Symbol = if (full) FullManifestClass else PartialManifestClass) = {
         inferImplicit(tree, appliedType(manifestClass, tp), reportAmbiguous = true, isView = false, context).tree
+      }
 
       def findSubManifest(tp: Type) = findManifest(tp, if (full) FullManifestClass else OptManifestClass)
       def mot(tp0: Type, from: List[Symbol], to: List[Type]): SearchResult = {
