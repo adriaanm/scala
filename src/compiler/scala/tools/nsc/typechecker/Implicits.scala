@@ -1357,20 +1357,18 @@ trait Implicits {
         if (Statistics.canEnable) Statistics.incCounter(inscopeImplicitHits)
       }
       if (result.isFailure) {
-        val previousErrs = context.reporter.errors
-        context.reporter.clearAllErrors()
         val failstart = if (Statistics.canEnable) Statistics.startTimer(oftypeFailNanos) else null
         val succstart = if (Statistics.canEnable) Statistics.startTimer(oftypeSucceedNanos) else null
 
         val wasAmbigious = result.isAmbiguousFailure // SI-6667, never search companions after an ambiguous error in in-scope implicits
-        result = materializeImplicit(pt)
-        // `materializeImplicit` does some preprocessing for `pt`
-        // is it only meant for manifests/tags or we need to do the same for `implicitsOfExpectedType`?
-        if (result.isFailure && !wasAmbigious)
-          result = searchImplicit(implicitsOfExpectedType, isLocalToCallsite = false)
-
+        context.withReporter() {
+          result = materializeImplicit(pt)
+          // `materializeImplicit` does some preprocessing for `pt`
+          // is it only meant for manifests/tags or we need to do the same for `implicitsOfExpectedType`?
+          if (result.isFailure && !wasAmbigious)
+            result = searchImplicit(implicitsOfExpectedType, isLocalToCallsite = false)
+        }
         if (result.isFailure) {
-          context.reporter ++= previousErrs
           if (Statistics.canEnable) Statistics.stopTimer(oftypeFailNanos, failstart)
         } else {
           if (Statistics.canEnable) Statistics.stopTimer(oftypeSucceedNanos, succstart)
@@ -1422,20 +1420,21 @@ trait Implicits {
       def eligibleInfos(iss: Infoss, isLocalToCallsite: Boolean) = {
         val eligible = new ImplicitComputation(iss, isLocalToCallsite).eligible
         eligible.toList.flatMap {
-          (ii: ImplicitInfo) =>
-        // each ImplicitInfo contributes a distinct set of constraints (generated indirectly by typedImplicit)
-        // thus, start each type var off with a fresh for every typedImplicit
-        resetTVars()
-        // any previous errors should not affect us now
-        context.reporter.clearAllErrors()
-        val res = typedImplicit(ii, ptChecked = false, isLocalToCallsite)
-        if (res.tree ne EmptyTree) List((res, tvars map (_.constr)))
-        else Nil
+            (ii: ImplicitInfo) =>
+          // each ImplicitInfo contributes a distinct set of constraints (generated indirectly by typedImplicit)
+          // thus, start each type var off with a fresh for every typedImplicit
+          resetTVars()
+          // any previous errors should not affect us now
+          context.withReporter() {
+            val res = typedImplicit(ii, ptChecked = false, isLocalToCallsite)
+            if (res.tree ne EmptyTree) List((res, tvars map (_.constr)))
+            else Nil
+          }
+        }
       }
-    }
       eligibleInfos(context.implicitss, isLocalToCallsite = true) ++
       eligibleInfos(implicitsOfExpectedType, isLocalToCallsite = false)
-  }
+    }
   }
 
   object ImplicitNotFoundMsg {

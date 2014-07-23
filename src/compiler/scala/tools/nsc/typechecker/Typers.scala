@@ -465,22 +465,9 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
 
     @inline
     final def typerWithLocalContext[T](c: Context)(f: Typer => T): T = {
-      val res = f(newTyper(c))
-      val errors = c.reporter.errors
-      if (errors.nonEmpty) {
-        c.reporter.clearAllErrors()
-        context.reporter ++= errors
+      c.withReporter(context.reporter) {
+        f(newTyper(c))
       }
-      res
-    }
-
-    @inline
-    final def withSavedContext[T](c: Context)(f: => T) = {
-      val savedErrors = c.reporter.errors
-      c.reporter.clearAllErrors()
-      val res = f
-      c.reporter ++= savedErrors
-      res
     }
 
     /** The typer for a label definition. If this is part of a template we
@@ -699,12 +686,13 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
             SilentResultValue(result)
           }
         } else {
-          assert(context.bufferErrors || isPastTyper, "silent mode is not available past typer")
-          withSavedContext(context){
+          // assert(context.bufferErrors || isPastTyper, "silent mode is not available past typer")
+
+          context.withReporter() {
             val res = op(this)
             val errorsToReport = context.reporter.errors
-            context.reporter.clearAllErrors()
-            if (errorsToReport.isEmpty) SilentResultValue(res) else SilentTypeError(errorsToReport.head)
+            if (errorsToReport.isEmpty) SilentResultValue(res)
+            else SilentTypeError(errorsToReport.head)
           }
         }
       } catch {

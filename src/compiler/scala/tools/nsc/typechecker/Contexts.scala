@@ -183,7 +183,7 @@ trait Contexts { self: Analyzer =>
    */
   class Context private[typechecker](val tree: Tree, val owner: Symbol, val scope: Scope,
                                      val unit: CompilationUnit, _outer: Context,
-                                     private var _reporter: ContextReporter = new ThrowingReporter) {
+                                     private[this] var _reporter: ContextReporter = new ThrowingReporter) {
     private def outerIsNoContext = _outer eq null
     final def outer: Context = if (outerIsNoContext) NoContext else _outer
 
@@ -326,57 +326,50 @@ trait Contexts { self: Analyzer =>
     //
 
     // the reporter for this context
-
-    def reporter = _reporter
+    def reporter: ContextReporter = _reporter
 
     // if set, errors will not be reporter/thrown
-    def bufferErrors    = reporter.isBuffering
-    def reportErrors    = !bufferErrors
+    def bufferErrors = reporter.isBuffering
+    def reportErrors = !bufferErrors
 
     // whether to *report* (which is separate from buffering/throwing) ambiguity errors
     def ambiguousErrors = this(AmbiguousErrors)
 
     private def setAmbiguousErrors(report: Boolean): Unit = this(AmbiguousErrors) = report
 
-
     /**
-     * Try inference twice, once without views and once with views,
+     * Try inference twice: once without views and once with views,
      *  unless views are already disabled.
      */
     abstract class TryTwice {
       def tryOnce(isLastTry: Boolean): Unit
 
-      def apply(): Unit = {
-        var doLastTry = !implicitsEnabled
-
-        // do first try if implicits are enabled
-        if (implicitsEnabled) {
-          val savedReporter = _reporter
-          val savedContextMode = contextMode
-
-          _reporter = new BufferingReporter
-          setAmbiguousErrors(false) // this means ambiguous errors will not be force-fed to the reporter
-
-          // We create a new BufferingReporter to
-          // distinguish errors that occurred before entering tryTwice
-          // and our first attempt in 'withImplicitsDisabled'. If the
-          // first attempt fails, we try with implicits on
-          // and the original reporter.
-          try {
-            withImplicitsDisabled(tryOnce(false))
-            doLastTry = reporter.hasErrors
-          } catch {
-            case ex: CyclicReference => throw ex
-            case ex: TypeError       => doLastTry = true // recoverable cyclic references?
-          } finally {
-            contextMode = savedContextMode
-            _reporter = savedReporter
-          }
-        }
+      final def apply(): Unit = {
+        val doLastTry =
+          // do first try if implicits are enabled
+          if (implicitsEnabled) {
+            // We create a new BufferingReporter to
+            // distinguish errors that occurred before entering tryTwice
+            // and our first attempt in 'withImplicitsDisabled'. If the
+            // first attempt fails, we try with implicits on
+            // and the original reporter.
+            // immediate reporting of ambiguous errors is suppressed, so that they are buffered
+            withReporterSuppressAmbiguous(new BufferingReporter) {
+              try {
+                set(disable = ImplicitsEnabled | EnrichmentEnabled) // restored by withReporterSuppressAmbiguous
+                tryOnce(false)
+                reporter.hasErrors
+              } catch {
+                case ex: CyclicReference => throw ex
+                case ex: TypeError => true // recoverable cyclic references?
+              }
+            }
+          } else true
 
         // do last try if try with implicits enabled failed
         // (or if it was not attempted because they were disabled)
-        if (doLastTry) tryOnce(true)
+        if (doLastTry)
+          tryOnce(true)
       }
     }
 
@@ -418,18 +411,25 @@ trait Contexts { self: Analyzer =>
     // See comment on FormerNonStickyModes.
     @inline final def withOnlyStickyModes[T](op: => T): T = withMode(disabled = FormerNonStickyModes)(op)
 
-    /** @return true if the `expr` evaluates to true within a silent Context that incurs no errors */
-    @inline final def inSilentMode(expr: => Boolean): Boolean = {
-      val savedReporter = _reporter
-      withMode() { // TODO: rework -- withMode with no arguments to restore the mode mutated by `setBufferErrors` (no longer mutated!)
-        _reporter = reporter.makeBuffering
-        setAmbiguousErrors(false)
-        try expr && !reporter.hasErrors
-        finally {
-          _reporter = savedReporter
-          _reporter.clearAll() // TODO: ???
-        }
-      }
+    // inliner note: this has to be a simple method for inlining to work -- moved the `&& !reporter.hasErrors` out
+    @inline final def inSilentMode(expr: => Boolean): Boolean =
+      withReporterSuppressAmbiguous(reporter.makeBuffering)(expr) // _reporter.clearAll() // TODO: ???
+
+    @inline final def withReporterSuppressAmbiguous[@specialized(Boolean) T](tmpReporter: Reporter)(expr: => T): T = {
+      val savedCntextMode = contextMode
+      setAmbiguousErrors(false)
+
+      try withReporter(tmpReporter)(expr)
+      finally contextMode = savedCntextMode
+    }
+
+    @inline final def withReporter[@specialized(Boolean) T](tmpReporter: Reporter = new BufferingReporter)(expr: => T): T = {
+      val savedReporter = reporter
+
+      _reporter = tmpReporter
+
+      try expr
+      finally _reporter = savedReporter
     }
 
     //
