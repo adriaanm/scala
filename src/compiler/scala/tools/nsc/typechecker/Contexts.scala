@@ -1277,6 +1277,15 @@ trait Contexts { self: Analyzer =>
       res
     }
 
+    @inline final def withFreshErrorBufferFeedBack[T](expr: => T): T = {
+      val previousBuffer = _errorBuffer
+      _errorBuffer = newBuffer
+      val res = expr
+      if (previousBuffer ne null) previousBuffer ++= errors
+      _errorBuffer = previousBuffer
+      res
+    }
+
     protected final def info0(pos: Position, msg: String, severity: Severity, force: Boolean): Unit =
       severity match {
         case ERROR   => handleError(pos, msg)

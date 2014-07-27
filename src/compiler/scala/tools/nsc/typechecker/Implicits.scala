@@ -1360,24 +1360,25 @@ trait Implicits {
       }
 
       if (result.isFailure) {
-        val previousErrs = context.reporter.errors
-        context.reporter.clearAllErrors()
         val failstart = if (stats) Statistics.startTimer(oftypeFailNanos) else null
         val succstart = if (stats) Statistics.startTimer(oftypeSucceedNanos) else null
 
         val wasAmbigious = result.isAmbiguousFailure // SI-6667, never search companions after an ambiguous error in in-scope implicits
-        result = materializeImplicit(pt)
+
+        // retry while ignoring previous errors; new errors are fed back to us
+        result = context.reporter.withFreshErrorBufferFeedBack { materializeImplicit(pt) }
+
         // `materializeImplicit` does some preprocessing for `pt`
         // is it only meant for manifests/tags or we need to do the same for `implicitsOfExpectedType`?
         if (result.isFailure && !wasAmbigious)
           result = searchImplicit(implicitsOfExpectedType, isLocalToCallsite = false)
 
-        if (result.isFailure) {
-          context.reporter ++= previousErrs
-          if (Statistics.canEnable) Statistics.stopTimer(oftypeFailNanos, failstart)
-        } else {
-          if (Statistics.canEnable) Statistics.stopTimer(oftypeSucceedNanos, succstart)
-          if (Statistics.canEnable) Statistics.incCounter(oftypeImplicitHits)
+        if (stats) {
+          if (result.isFailure) Statistics.stopTimer(oftypeFailNanos, failstart)
+          else {
+            Statistics.stopTimer(oftypeSucceedNanos, succstart)
+            Statistics.incCounter(oftypeImplicitHits)
+          }
         }
       }
       if (result.isSuccess && isView) {
@@ -1432,8 +1433,7 @@ trait Implicits {
           // thus, start each type var off with a fresh for every typedImplicit
           resetTVars()
           // any previous errors should not affect us now
-        context.reporter.clearAllErrors()
-        val res = typedImplicit(ii, ptChecked = false, isLocalToCallsite)
+          val res = context.reporter.withFreshErrorBuffer(typedImplicit(ii, ptChecked = false, isLocalToCallsite))
           if (res.tree ne EmptyTree) List((res, tvars map (_.constr)))
           else Nil
         }
