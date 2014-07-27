@@ -1260,32 +1260,6 @@ trait Contexts { self: Analyzer =>
       if (context.ambiguousErrors) reporter.error(err.errPos, addDiagString(err.errMsg)) // force reporting... see TODO above
       else handleSuppressedAmbiguous(err)
 
-    private def ++=(errors: Traversable[AbsTypeError]): Unit = errorBuffer ++= errors
-
-    @inline final def withFreshErrorBuffer[T](expr: => T): T = {
-      val previousBuffer = _errorBuffer
-      _errorBuffer = newBuffer
-      val res = expr // expr will read _errorBuffer
-      _errorBuffer = previousBuffer
-      res
-    }
-
-    // TODO: optimize
-    @inline final def propagatingErrorsTo[T](target: ContextReporter)(expr: => T): T = {
-      val res = expr // TODO: make sure we're okay skipping the try/finally overhead
-      if (hasErrors) target ++= errors
-      res
-    }
-
-    @inline final def withFreshErrorBufferFeedBack[T](expr: => T): T = {
-      val previousBuffer = _errorBuffer
-      _errorBuffer = newBuffer
-      val res = expr
-      if (previousBuffer ne null) previousBuffer ++= errors
-      _errorBuffer = previousBuffer
-      res
-    }
-
     protected final def info0(pos: Position, msg: String, severity: Severity, force: Boolean): Unit =
       severity match {
         case ERROR   => handleError(pos, msg)
@@ -1293,7 +1267,15 @@ trait Contexts { self: Analyzer =>
         case INFO    => reporter.echo(pos, msg)
       }
 
+    protected def addDiagString(msg: String)(implicit context: Context): String = {
+      val diagUsedDefaultsMsg = "Error occurred in an application involving default arguments."
+      if (context.diagUsedDefaults && !(msg endsWith diagUsedDefaultsMsg)) msg + "\n" + diagUsedDefaultsMsg
+      else msg
+    }
+
     final override def hasErrors = super.hasErrors || errorBuffer.nonEmpty
+
+    // TODO: everything below should be pushed down to BufferingReporter (related to buffering)
 
     // have to pass in context because multiple contexts may share the same ReportBuffer
     def reportFirstDivergentError(fun: Tree, param: Symbol, paramTp: Type)(implicit context: Context): Unit =
@@ -1327,13 +1309,28 @@ trait Contexts { self: Analyzer =>
       _warningBuffer = null
     }
 
-    protected def addDiagString(msg: String)(implicit context: Context): String = {
-      val diagUsedDefaultsMsg = "Error occurred in an application involving default arguments."
-      if (context.diagUsedDefaults && !(msg endsWith diagUsedDefaultsMsg)) msg + "\n" + diagUsedDefaultsMsg
-      else msg
+    @inline final def withFreshErrorBuffer[T](expr: => T): T = {
+      val previousBuffer = _errorBuffer
+      _errorBuffer = newBuffer
+      val res = expr // expr will read _errorBuffer
+      _errorBuffer = previousBuffer
+      res
     }
 
-    // TODO: everything below should be pushed down to BufferingReporter (related to buffering)
+    @inline final def propagatingErrorsTo[T](target: ContextReporter)(expr: => T): T = {
+      val res = expr // TODO: make sure we're okay skipping the try/finally overhead
+      if (hasErrors) target.errorBuffer ++= errors
+      res
+    }
+
+    @inline final def withFreshErrorBufferFeedBack[T](expr: => T): T = {
+      val previousBuffer = _errorBuffer
+      _errorBuffer = newBuffer
+      val res = expr
+      if (previousBuffer ne null) previousBuffer ++= errors
+      _errorBuffer = previousBuffer
+      res
+    }
 
     // [JZ] Contexts, pre- the SI-7345 refactor, avoided allocating the buffers until needed. This
     // is replicated here out of conservatism.
