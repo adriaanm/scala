@@ -338,43 +338,38 @@ trait Contexts { self: Analyzer =>
     private def setAmbiguousErrors(report: Boolean): Unit = this(AmbiguousErrors) = report
 
     /**
-     * Try inference twice, once without views and once with views,
+     * Try inference twice: once without views and once with views,
      *  unless views are already disabled.
      */
     abstract class TryTwice {
       def tryOnce(isLastTry: Boolean): Unit
 
-      def apply(): Unit = {
-        var doLastTry = !implicitsEnabled
-
-        // do first try if implicits are enabled
-        if (implicitsEnabled) {
-          val savedReporter = _reporter
-          val savedContextMode = contextMode
-
-          _reporter = new BufferingReporter
-          setAmbiguousErrors(false) // this means ambiguous errors will not be force-fed to the reporter
-
-          // We create a new BufferingReporter to
-          // distinguish errors that occurred before entering tryTwice
-          // and our first attempt in 'withImplicitsDisabled'. If the
-          // first attempt fails, we try with implicits on
-          // and the original reporter.
-          try {
-            withImplicitsDisabled(tryOnce(false))
-            doLastTry = reporter.hasErrors
-          } catch {
-            case ex: CyclicReference => throw ex
-            case ex: TypeError       => doLastTry = true // recoverable cyclic references?
-          } finally {
-            contextMode = savedContextMode
-            _reporter = savedReporter
-          }
-        }
+      final def apply(): Unit = {
+        val doLastTry =
+          // do first try if implicits are enabled
+          if (implicitsEnabled) {
+            // We create a new BufferingReporter to
+            // distinguish errors that occurred before entering tryTwice
+            // and our first attempt in 'withImplicitsDisabled'. If the
+            // first attempt fails, we try with implicits on
+            // and the original reporter.
+            // immediate reporting of ambiguous errors is suppressed, so that they are buffered
+            withReporterSuppressAmbiguous(new BufferingReporter) {
+              try {
+                set(disable = ImplicitsEnabled | EnrichmentEnabled) // restored by withReporterSuppressAmbiguous
+                tryOnce(false)
+                reporter.hasErrors
+              } catch {
+                case ex: CyclicReference => throw ex
+                case ex: TypeError => true // recoverable cyclic references?
+              }
+            }
+          } else true
 
         // do last try if try with implicits enabled failed
         // (or if it was not attempted because they were disabled)
-        if (doLastTry) tryOnce(true)
+        if (doLastTry)
+          tryOnce(true)
       }
     }
 
@@ -429,6 +424,23 @@ trait Contexts { self: Analyzer =>
         }
       }
     }
+
+    @inline final def withReporterSuppressAmbiguous[@specialized(Boolean) T](tmpReporter: ContextReporter)(expr: => T): T = {
+      val savedCntextMode = contextMode
+      setAmbiguousErrors(false)
+
+      try withReporter(tmpReporter)(expr)
+      finally contextMode = savedCntextMode
+    }
+
+    @inline final def withReporter[@specialized(Boolean) T](tmpReporter: ContextReporter = new BufferingReporter)(expr: => T): T = {
+      val savedReporter = reporter
+
+      _reporter = tmpReporter
+
+      try expr
+      finally _reporter = savedReporter
+     }
 
     //
     // Child Context Creation
