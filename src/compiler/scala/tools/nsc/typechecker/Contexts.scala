@@ -1262,6 +1262,15 @@ trait Contexts { self: Analyzer =>
 
     def ++=(errors: Traversable[AbsTypeError]): Unit = errorBuffer ++= errors
 
+    // TODO: optimize
+    @inline final def withFreshErrorBuffer[T](expr: => T): T = {
+      val previousBuffer = _errorBuffer
+      _errorBuffer = newBuffer
+      try expr
+      finally _errorBuffer = previousBuffer
+    }
+
+
     protected final def info0(pos: Position, msg: String, severity: Severity, force: Boolean): Unit =
       severity match {
         case ERROR   => handleError(pos, msg)

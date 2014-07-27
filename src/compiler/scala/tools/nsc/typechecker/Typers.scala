@@ -474,14 +474,6 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
       res
     }
 
-    @inline
-    final def withSavedContext[T](c: Context)(f: => T) = {
-      val savedErrors = c.reporter.errors
-      c.reporter.clearAllErrors()
-      val res = f
-      c.reporter ++= savedErrors
-      res
-    }
 
     /** The typer for a label definition. If this is part of a template we
      *  first have to enter the label definition.
@@ -700,11 +692,11 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
           }
         } else {
           assert(context.bufferErrors || isPastTyper, "silent mode is not available past typer")
-          withSavedContext(context){
+
+          context.reporter.withFreshErrorBuffer {
             val res = op(this)
-            val errorsToReport = context.reporter.errors
-            context.reporter.clearAllErrors()
-            if (errorsToReport.isEmpty) SilentResultValue(res) else SilentTypeError(errorsToReport.head)
+            if (!context.reporter.hasErrors) SilentResultValue(res)
+            else SilentTypeError(context.reporter.firstError.get)
           }
         }
       } catch {
