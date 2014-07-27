@@ -155,7 +155,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
           } else {
             mkArg = gen.mkNamedArg // don't pass the default argument (if any) here, but start emitting named arguments for the following args
             if (!param.hasDefault && !paramFailed) {
-              context.reporter.reportFirstDivergentError(fun, param, paramTp)(context)
+              context.reporter.asInstanceOf[BufferingReporter].reportFirstDivergentError(fun, param, paramTp)(context)
               paramFailed = true
             }
             /* else {
@@ -465,7 +465,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
 
     @inline
     final def typerWithLocalContext[T](c: Context)(f: Typer => T): T =
-      c.reporter.propagatingErrorsTo(context.reporter)(f(newTyper(c)))
+      c.reporter.asInstanceOf[BufferingReporter].propagatingErrorsTo(context.reporter.asInstanceOf[BufferingReporter])(f(newTyper(c)))
 
     /** The typer for a label definition. If this is part of a template we
      *  first have to enter the label definition.
@@ -658,7 +658,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
         if (Statistics.canEnable) Statistics.stopCounter(subtypeFailed, subtypeStart)
         if (Statistics.canEnable) Statistics.stopTimer(failedSilentNanos, failedSilentStart)
       }
-      @inline def wrapResult(reporter: ContextReporter, result: T, reportWarnings: Boolean) =
+      @inline def wrapResult(reporter: BufferingReporter, result: T, reportWarnings: Boolean) =
         if (reporter.hasErrors) {
           stopStats()
           SilentTypeError(reporter.errors: _*)
@@ -681,13 +681,13 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
           context.undetparams = context1.undetparams
           context.savedTypeBounds = context1.savedTypeBounds
           context.namedApplyBlockInfo = context1.namedApplyBlockInfo
-          wrapResult(context1.reporter, result, reportWarnings = true)
+          wrapResult(context1.reporter.asInstanceOf[BufferingReporter], result, reportWarnings = true)
         } else {
           assert(context.bufferErrors || isPastTyper, "silent mode is not available past typer")
 
-          context.reporter.withFreshErrorBuffer {
+          context.reporter.asInstanceOf[BufferingReporter].withFreshErrorBuffer {
             val result = op(this)
-            wrapResult(context.reporter, result, reportWarnings = false)
+            wrapResult(context.reporter.asInstanceOf[BufferingReporter], result, reportWarnings = false)
           }
         }
       } catch {
@@ -1034,7 +1034,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
                 val silentContext = context.makeImplicit(context.ambiguousErrors)
                 val res = newTyper(silentContext).typed(
                   new ApplyImplicitView(coercion, List(tree)) setPos tree.pos, mode, pt)
-                silentContext.reporter.firstError match {
+                silentContext.reporter.asInstanceOf[BufferingReporter].firstError match {
                   case Some(err) => context.issue(err)
                   case None      => return res
                 }
