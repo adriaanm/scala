@@ -183,7 +183,7 @@ trait Contexts { self: Analyzer =>
    */
   class Context private[typechecker](val tree: Tree, val owner: Symbol, val scope: Scope,
                                      val unit: CompilationUnit, _outer: Context,
-                                     private var _reporter: ContextReporter = new ThrowingReporter) {
+                                     private[this] var _reporter: ContextReporter = new ThrowingReporter) {
     private def outerIsNoContext = _outer eq null
     final def outer: Context = if (outerIsNoContext) NoContext else _outer
 
@@ -1260,7 +1260,7 @@ trait Contexts { self: Analyzer =>
       if (context.ambiguousErrors) reporter.error(err.errPos, addDiagString(err.errMsg)) // force reporting... see TODO above
       else handleSuppressedAmbiguous(err)
 
-    def ++=(errors: Traversable[AbsTypeError]): Unit = errorBuffer ++= errors
+    private def ++=(errors: Traversable[AbsTypeError]): Unit = errorBuffer ++= errors
 
     @inline final def withFreshErrorBuffer[T](expr: => T): T = {
       val previousBuffer = _errorBuffer
@@ -1345,9 +1345,7 @@ trait Contexts { self: Analyzer =>
     final def warnings: immutable.Seq[Warning] = warningBuffer.toVector
     final def firstError: Option[AbsTypeError] = errorBuffer.headOption
 
-    final def clearAll(): Unit         = { clearAllErrors(); clearAllWarnings() }
-    final def clearAllErrors(): Unit   = errorBuffer.clear()
-    final def clearAllWarnings(): Unit = warningBuffer.clear()
+    final def clearAll(): Unit = { _errorBuffer = null; _warningBuffer = null }
   }
 
   private[typechecker] class ImmediateReporter(_errorBuffer: mutable.LinkedHashSet[AbsTypeError] = null, _warningBuffer: mutable.LinkedHashSet[(Position, String)] = null) extends ContextReporter(_errorBuffer, _warningBuffer) {

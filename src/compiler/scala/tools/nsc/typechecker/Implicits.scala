@@ -72,10 +72,10 @@ trait Implicits {
     val implicitSearchContext = context.makeImplicit(reportAmbiguous)
     val result = new ImplicitSearch(tree, pt, isView, implicitSearchContext, pos).bestImplicit
     if (result.isFailure && saveAmbiguousDivergent && implicitSearchContext.reporter.hasErrors) {
-      context.reporter ++= (implicitSearchContext.reporter.errors.collect {
-        case dte: DivergentImplicitTypeError => dte
-        case ate: AmbiguousImplicitTypeError => ate
-      })
+      implicitSearchContext.reporter.errors.foreach {
+        case err@(_: DivergentImplicitTypeError | _: AmbiguousImplicitTypeError) => context.reporter.issue(err)(context)
+        case _ =>
+      }
       debuglog("update buffer: " + implicitSearchContext.reporter.errors)
     }
     // SI-7944 undetermined type parameters that result from inference within typedImplicit land in
