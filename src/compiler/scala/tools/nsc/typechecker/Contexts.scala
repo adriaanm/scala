@@ -1270,6 +1270,12 @@ trait Contexts { self: Analyzer =>
       finally _errorBuffer = previousBuffer
     }
 
+    // TODO: optimize
+    @inline final def propagatingErrorsTo[T](target: ContextReporter)(expr: => T): T = {
+      val res = expr // TODO: make sure we're okay skipping the try/finally overhead
+      if (hasErrors) target ++= errors
+      res
+    }
 
     protected final def info0(pos: Position, msg: String, severity: Severity, force: Boolean): Unit =
       severity match {

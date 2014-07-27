@@ -464,16 +464,8 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
       if (cond) typerWithLocalContext(c)(f) else f(this)
 
     @inline
-    final def typerWithLocalContext[T](c: Context)(f: Typer => T): T = {
-      val res = f(newTyper(c))
-      val errors = c.reporter.errors
-      if (errors.nonEmpty) {
-        c.reporter.clearAllErrors()
-        context.reporter ++= errors
-      }
-      res
-    }
-
+    final def typerWithLocalContext[T](c: Context)(f: Typer => T): T =
+      c.reporter.propagatingErrorsTo(context.reporter)(f(newTyper(c)))
 
     /** The typer for a label definition. If this is part of a template we
      *  first have to enter the label definition.
