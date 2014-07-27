@@ -658,6 +658,16 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
         if (Statistics.canEnable) Statistics.stopCounter(subtypeFailed, subtypeStart)
         if (Statistics.canEnable) Statistics.stopTimer(failedSilentNanos, failedSilentStart)
       }
+      @inline def wrapResult(reporter: ContextReporter, result: T, reportWarnings: Boolean) =
+        if (reporter.hasErrors) {
+          stopStats()
+          SilentTypeError(reporter.errors: _*)
+        } else {
+          // If we have a successful result, emit any warnings it created.
+          if (reportWarnings) reporter.emitWarnings()
+          SilentResultValue(result)
+        }
+
       try {
         if (context.reportErrors ||
             reportAmbiguousErrors != context.ambiguousErrors ||
@@ -671,24 +681,13 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
           context.undetparams = context1.undetparams
           context.savedTypeBounds = context1.savedTypeBounds
           context.namedApplyBlockInfo = context1.namedApplyBlockInfo
-          if (context1.reporter.hasErrors) {
-            stopStats()
-            SilentTypeError(context1.reporter.errors: _*)
-          } else {
-            // If we have a successful result, emit any warnings it created.
-            context1.reporter.warnings foreach {
-              case (pos, msg) => reporter.warning(pos, msg)
-            }
-            context1.reporter.clearAllWarnings()
-            SilentResultValue(result)
-          }
+          wrapResult(context1.reporter, result, reportWarnings = true)
         } else {
           assert(context.bufferErrors || isPastTyper, "silent mode is not available past typer")
 
           context.reporter.withFreshErrorBuffer {
-            val res = op(this)
-            if (!context.reporter.hasErrors) SilentResultValue(res)
-            else SilentTypeError(context.reporter.firstError.get)
+            val result = op(this)
+            wrapResult(context.reporter, result, reportWarnings = false)
           }
         }
       } catch {

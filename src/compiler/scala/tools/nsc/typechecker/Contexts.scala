@@ -1262,12 +1262,12 @@ trait Contexts { self: Analyzer =>
 
     def ++=(errors: Traversable[AbsTypeError]): Unit = errorBuffer ++= errors
 
-    // TODO: optimize
     @inline final def withFreshErrorBuffer[T](expr: => T): T = {
       val previousBuffer = _errorBuffer
       _errorBuffer = newBuffer
-      try expr
-      finally _errorBuffer = previousBuffer
+      val res = expr // expr will read _errorBuffer
+      _errorBuffer = previousBuffer
+      res
     }
 
     // TODO: optimize
@@ -1310,6 +1310,13 @@ trait Contexts { self: Analyzer =>
         case err: DivergentImplicitTypeError => err ne saved
         case _ => false
       }
+
+    final def emitWarnings() = if (_warningBuffer != null) {
+      _warningBuffer foreach {
+        case (pos, msg) => reporter.warning(pos, msg)
+      }
+      _warningBuffer = null
+    }
 
     protected def addDiagString(msg: String)(implicit context: Context): String = {
       val diagUsedDefaultsMsg = "Error occurred in an application involving default arguments."
