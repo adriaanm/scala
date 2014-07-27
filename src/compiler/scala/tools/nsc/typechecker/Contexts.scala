@@ -411,19 +411,8 @@ trait Contexts { self: Analyzer =>
     // See comment on FormerNonStickyModes.
     @inline final def withOnlyStickyModes[T](op: => T): T = withMode(disabled = FormerNonStickyModes)(op)
 
-    /** @return true if the `expr` evaluates to true within a silent Context that incurs no errors */
-    @inline final def inSilentMode(expr: => Boolean): Boolean = {
-      val savedReporter = _reporter
-      withMode() { // TODO: rework -- withMode with no arguments to restore the mode mutated by `setBufferErrors` (no longer mutated!)
-        _reporter = reporter.makeBuffering
-        setAmbiguousErrors(false)
-        try expr && !reporter.hasErrors
-        finally {
-          _reporter = savedReporter
-          _reporter.clearAll() // TODO: ???
-        }
-      }
-    }
+    // inliner note: this has to be a simple method for inlining to work -- moved the `&& !reporter.hasErrors` out
+    @inline final def inSilentMode(expr: => Boolean): Boolean = withReporterSuppressAmbiguous(new BufferingReporter)(expr)
 
     @inline final def withReporterSuppressAmbiguous[@specialized(Boolean) T](tmpReporter: ContextReporter)(expr: => T): T = {
       val savedCntextMode = contextMode
