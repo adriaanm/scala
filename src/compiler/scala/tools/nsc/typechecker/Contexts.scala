@@ -326,18 +326,16 @@ trait Contexts { self: Analyzer =>
     //
 
     // the reporter for this context
-
-    def reporter = _reporter
+    def reporter: ContextReporter = _reporter
 
     // if set, errors will not be reporter/thrown
-    def bufferErrors    = reporter.isBuffering
-    def reportErrors    = !bufferErrors
+    def bufferErrors = reporter.isBuffering
+    def reportErrors = !bufferErrors
 
     // whether to *report* (which is separate from buffering/throwing) ambiguity errors
     def ambiguousErrors = this(AmbiguousErrors)
 
     private def setAmbiguousErrors(report: Boolean): Unit = this(AmbiguousErrors) = report
-
 
     /**
      * Try inference twice, once without views and once with views,
