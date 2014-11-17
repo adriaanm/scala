@@ -869,6 +869,18 @@ abstract class Erasure extends AddInterfaces
      *   - Reset all other type attributes to null, thus enforcing a retyping.
      */
     private val preTransformer = new TypingTransformer(unit) {
+      // TODO: since the spec defines instanceOf checks in terms of pattern matching,
+      // this extractor should share code with TypeTestTreeMaker
+      object SingletonInstanceCheck {
+        def unapply(pt: Type): Option[(TermSymbol, Tree)] = pt match {
+          case SingleType(_, _) | LiteralType(_) | ThisType(_) | SuperType(_, _) =>
+            val cmpOp  = if (pt <:< AnyValTpe) Any_equals else Object_eq
+            val cmpArg = gen.mkAttributedQualifier(pt)
+            Some((cmpOp, cmpArg))
+          case _ =>
+            None
+        }
+      }
 
       private def preEraseNormalApply(tree: Apply) = {
         val fn = tree.fun
@@ -878,19 +890,36 @@ abstract class Erasure extends AddInterfaces
           case Select(qual, _) => qual
           case TypeApply(Select(qual, _), _) => qual
         }
+
+        // TODO SPEC: this should share logic with TypeTestTreeMaker in the pattern matcher,
+        // since `x.asInstanceOf[T]` is specified as the pattern match
+        // `x match { case x: T => x  case null => null  case _ => throw new ClassCastException }` (why is the null case needed?)
         def preEraseAsInstanceOf = {
           (fn: @unchecked) match {
             case TypeApply(Select(qual, _), List(targ)) =>
-              if (qual.tpe <:< targ.tpe)
-                atPos(tree.pos) { Typed(qual, TypeTree(targ.tpe)) }
-              else if (isNumericValueClass(qual.tpe.typeSymbol) && isNumericValueClass(targ.tpe.typeSymbol))
-                atPos(tree.pos)(numericConversion(qual, targ.tpe.typeSymbol))
-              else
-                tree
+              targ.tpe match {
+                case argTp@SingletonInstanceCheck(cmpOp, cmpArg) if sip23 => // compiler has an unsound asInstanceOf[global.type]...
+                  atPos(tree.pos) {
+                    gen.evalOnce(qual, currentOwner, currentUnit) { qual =>
+                      If(Apply(Select(qual(), cmpOp), List(cmpArg)),
+                         Typed(qual(), TypeTree(argTp)),
+                         Throw(ClassCastExceptionClass.tpe_*))
+                    }
+                  }
+                case argTp if qual.tpe <:< argTp =>
+                  atPos(tree.pos) { Typed(qual, TypeTree(argTp)) }
+                case argTp if isNumericValueClass(qual.tpe.typeSymbol) && isNumericValueClass(argTp.typeSymbol) =>
+                  atPos(tree.pos)(numericConversion(qual, argTp.typeSymbol))
+                case _ =>
+                  tree
+              }
           }
           // todo: also handle the case where the singleton type is buried in a compound
         }
 
+        // TODO SPEC: this should share logic with TypeTestTreeMaker in the pattern matcher,
+        // since `x.isInstanceOf[T]` is specified as the pattern match
+        // `x match { case _: T => true case _ => false }` (modulo numeric conversion)
         def preEraseIsInstanceOf = {
           fn match {
             case TypeApply(sel @ Select(qual, name), List(targ)) =>
@@ -904,11 +933,8 @@ abstract class Erasure extends AddInterfaces
                     List(TypeTree(tp) setPos targ.pos)) setPos fn.pos,
                   List()) setPos tree.pos
               targ.tpe match {
-                case SingleType(_, _) | LiteralType(_) | ThisType(_) | SuperType(_, _) =>
-                  val cmpOp = if (targ.tpe <:< AnyValTpe) Any_equals else Object_eq
-                  atPos(tree.pos) {
-                    Apply(Select(qual, cmpOp), List(gen.mkAttributedQualifier(targ.tpe)))
-                  }
+                case SingletonInstanceCheck(cmpOp, cmpArg) =>
+                  atPos(tree.pos) { Apply(Select(qual, cmpOp), List(cmpArg)) }
                 case RefinedType(parents, decls) if (parents.length >= 2) =>
                   gen.evalOnce(qual, currentOwner, unit) { q =>
                     // Optimization: don't generate isInstanceOf tests if the static type
