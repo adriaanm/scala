@@ -364,10 +364,10 @@ trait Symbols extends api.Symbols { self: SymbolTable =>
      *
      *    pre.memberType(m)
      */
-    final def newOverloaded(pre: Type, alternatives: List[Symbol]): TermSymbol = (
-      newTermSymbol(alternatives.head.name.toTermName, alternatives.head.pos, OVERLOADED)
-        setInfo OverloadedType(pre, alternatives)
-    )
+    final def newOverloaded(pre: Type, alternatives: List[Symbol]): TermSymbol = {
+      if (alternatives.exists(_.isType)) println(s"newOverloaded: $alternatives")
+      newTermSymbol(alternatives.head.name.toTermName, alternatives.head.pos, OVERLOADED) setInfo OverloadedType(pre, alternatives)
+    }
 
     final def newErrorValue(name: TermName): TermSymbol =
       newTermSymbol(name, pos, SYNTHETIC | IS_ERROR) setInfo ErrorType

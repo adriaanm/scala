@@ -3068,26 +3068,36 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
         || (looker.hasAccessorFlag && !accessed.hasAccessorFlag && accessed.isPrivate)
       )
 
+      def canOverload(sym: Symbol, sym1: Symbol): Boolean = (
+        (sym.isTerm && !inBlock && !(sym.tpe matches sym1.tpe))
+        || (sym.isAliasType && sym.info.typeParams.nonEmpty && sameLength(sym.info.typeParams, sym1.info.typeParams))
+        || (accesses(sym, sym1) || accesses(sym1, sym))
+      )
+
+      // default getters are defined twice when multiple overloads have defaults.
+      // an error for this is issued in RefChecks.checkDefaultsInOverloaded
+      def canOverloadExemption(sym: Symbol): Boolean =
+        sym.isErroneous || sym.hasDefault || sym.hasAnnotation(BridgeClass)
+
       def checkNoDoubleDefs: Unit = {
         val scope = if (inBlock) context.scope else context.owner.info.decls
         var e = scope.elems
         while ((e ne null) && e.owner == scope) {
+          val sym = e.sym
+          val symIgnoreCanOverload = canOverloadExemption(sym)
+
           var e1 = scope.lookupNextEntry(e)
           while ((e1 ne null) && e1.owner == scope) {
-            if (!accesses(e.sym, e1.sym) && !accesses(e1.sym, e.sym) &&
-                (e.sym.isType || inBlock || (e.sym.tpe matches e1.sym.tpe)))
-              // default getters are defined twice when multiple overloads have defaults. an
-              // error for this is issued in RefChecks.checkDefaultsInOverloaded
-              if (!e.sym.isErroneous && !e1.sym.isErroneous && !e.sym.hasDefault &&
-                  !e.sym.hasAnnotation(BridgeClass) && !e1.sym.hasAnnotation(BridgeClass)) {
-                log("Double definition detected:\n  " +
-                    ((e.sym.getClass, e.sym.info, e.sym.ownerChain)) + "\n  " +
-                    ((e1.sym.getClass, e1.sym.info, e1.sym.ownerChain)))
+            val sym1 = e1.sym
+            if (!(symIgnoreCanOverload || canOverload(sym, sym1) || canOverloadExemption(sym1))) {
+              log("Double definition detected:\n  " +
+                ((sym.getClass, sym.info, sym.ownerChain)) + "\n  " +
+                ((sym1.getClass, sym1.info, sym1.ownerChain)))
 
-                DefDefinedTwiceError(e.sym, e1.sym)
-                scope.unlink(e1) // need to unlink to avoid later problems with lub; see #2779
-              }
-              e1 = scope.lookupNextEntry(e1)
+              DefDefinedTwiceError(sym, sym1)
+              scope.unlink(e1) // need to unlink to avoid later problems with lub; see #2779
+            }
+            e1 = scope.lookupNextEntry(e1)
           }
           e = e.next
         }

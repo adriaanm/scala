@@ -33,11 +33,12 @@ abstract class OverridingPairs extends SymbolPairs {
     /** Types always match. Term symbols match if their member types
      *  relative to `self` match.
      */
-    override protected def matches(lo: Symbol, high: Symbol) = lo.isType || (
+    override protected def matches(lo: Symbol, high: Symbol) =  (
+      (lo.isType && (!lo.isAliasType || lo.owner != high.owner)) || (
          (lo.owner != high.owner)     // don't try to form pairs from overloaded members
       && !high.isPrivate              // private or private[this] members never are overridden
       && !exclude(lo)                 // this admits private, as one can't have a private member that matches a less-private member.
       && relatively.matches(lo, high)
-    ) // TODO we don't call exclude(high), should we?
+    )) // TODO we don't call exclude(high), should we?
   }
 }

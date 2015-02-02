@@ -220,7 +220,7 @@ trait Namers extends MethodSynthesis {
 
     private def allowsOverload(sym: Symbol) = (
       sym.isSourceMethod && sym.owner.isClass && !sym.isTopLevel
-    )
+    ) || sym.isAliasType // && sym.isPolyMorphic
 
     private def inCurrentScope(m: Symbol): Boolean = {
       if (owner.isClass) owner == m.owner
@@ -1610,8 +1610,8 @@ trait Namers extends MethodSynthesis {
       if (sym.isImplicit) {
         if (sym.isConstructor)
           fail(ImplicitConstr)
-        if (!(sym.isTerm || (sym.isClass && !sym.isTrait)))
-          fail(ImplicitNotTermOrClass)
+        if (!(sym.isTerm || (sym.isType && !sym.isTrait)))
+          fail(ImplicitNotTermOrClass) // or type member
         if (sym.isTopLevel)
           fail(ImplicitAtToplevel)
       }
