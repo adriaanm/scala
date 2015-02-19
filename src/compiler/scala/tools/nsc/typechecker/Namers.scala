@@ -260,6 +260,7 @@ trait Namers extends MethodSynthesis {
           // line it comments unlinks one of them.  What does it intend?
         }
       }
+      println(s"entering $sym")
       scope enter sym
     }
 

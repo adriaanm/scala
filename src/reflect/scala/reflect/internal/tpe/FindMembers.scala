@@ -150,14 +150,14 @@ trait FindMembers {
     }
 
     // True unless the already-found member of type `memberType` matches the candidate symbol `other`.
-    protected def isNewMember(member: Symbol, other: Symbol): Boolean =
+    protected def isNewMember(member: Symbol, other: Symbol): Boolean = logResult(s"$getClass isNewMember(${member.fullLocationString}, ${other.fullLocationString})")(
       (    (other ne member)
         && (    (member.owner eq other.owner)                         // same owner, therefore overload
              || (member.flags & PRIVATE) != 0                         // (unqualified) private members never participate in overriding
              || (other.flags & PRIVATE) != 0                          // ... as overrider or overridee.
              || !(memberTypeLow(member) matches memberTypeHi(other))  // do the member types match? If so, its an override. Otherwise it's an overload.
            )
-      )
+      ))
 
     // Cache for the member type of a candidate member when comparing against multiple, already-found existing members
     //
@@ -243,6 +243,7 @@ trait FindMembers {
         if (isNewMember(member0, sym)) {
           // ... make that two.
           lastM = new ::(sym, null)
+          println(s"adding second $sym to $member0")
           members = member0 :: lastM
         }
       } else {
@@ -283,6 +284,7 @@ trait FindMembers {
     } else {
       if (Statistics.canEnable) Statistics.incCounter(multMemberCount)
       lastM.tl = Nil
+      println(s"overloading! $members")
       initBaseClasses.head.newOverloaded(tpe, members)
     }
   }

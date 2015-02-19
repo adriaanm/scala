@@ -3387,6 +3387,7 @@ trait Types
       //         Here, we exclude the module symbol, which allows us to bind to the accessor.
       // SI-8054 We must only do this after refchecks, otherwise we exclude the module symbol which does not yet have an accessor!
       val isModuleWithAccessor = phase.refChecked && sym.isModuleNotMethod
+      println(s"rebind: $sym")
       sym.isType || (!isModuleWithAccessor && sym.isStable && !sym.hasVolatileType)
     } orElse sym
   }
