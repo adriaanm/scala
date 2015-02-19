@@ -556,6 +556,8 @@ trait Symbols extends api.Symbols { self: SymbolTable =>
     def isAbstractType = false
     def isSkolem       = false
 
+    def isOverloadableType = isImplicit // mustn't restrict to isAliasType for findMember's shortCircuit not to prefer abstract type members
+
     /** A Type, but not a Class. */
     def isNonClassType = false
 

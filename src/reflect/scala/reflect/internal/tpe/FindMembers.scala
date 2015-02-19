@@ -167,7 +167,7 @@ trait FindMembers {
 
     protected def memberTypeHi(sym: Symbol): Type = {
       if (_memberTypeHiCacheSym ne sym) {
-        _memberTypeHiCache = self.memberType(sym)
+        _memberTypeHiCache = self.memberInfo(sym) // use memberInfo, see specializesSym
         _memberTypeHiCacheSym = sym
       }
       _memberTypeHiCache
@@ -229,7 +229,8 @@ trait FindMembers {
       lastM = null
     }
 
-    protected def shortCircuit(sym: Symbol): Boolean = (name.isTypeName || (stableOnly && sym.isStable && !sym.hasVolatileType)) && {
+    protected def shortCircuit(sym: Symbol): Boolean = ((name.isTypeName && !sym.isOverloadableType) || (stableOnly && sym.isStable && !sym.hasVolatileType)) && {
+      if (members ne null) println(s"clearing: $members for $sym")
       clearAndAddResult(sym)
       true
     }
