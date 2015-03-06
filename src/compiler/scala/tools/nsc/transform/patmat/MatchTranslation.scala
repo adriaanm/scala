@@ -115,85 +115,51 @@ trait MatchTranslation {
       * The type of r must conform to the expected type of the pattern.
       */
     final case class PatternTranslation(scrutinee: Scrutinee, tree: Tree) {
-      private lazy val extractor = ExtractorCall(tree)
+      def translate: List[TreeMaker] = tree match {
+        case WildcardPattern() => Nil
+
+        // extractor (user-defined or case class), recurse on `extractor.subPatterns`
+        case _: UnApply | _: Apply         =>
+          val extractor = ExtractorCall(tree)
+          extractor.makers(scrutinee, tree.pos) ++ extractor.subPatterns.flatMap(_.translate)
+
+        // must treat Typed and Bind together -- we need to preserve the binder `sub` of the Bind pattern to get at the actual type
+        // (the recursive case below uses `scrutinee.sym`)
+        case Bound(sub, TypedIdent(subPt)) => List(TypeTestTreeMaker(sub,           scrutinee.sym, subPt, glbWith(subPt))(pos))
+        case TypedIdent(subPt)             => List(TypeTestTreeMaker(scrutinee.sym, scrutinee.sym, subPt, glbWith(subPt))(pos))
+
+        // recurse on subpat
+        case Bound(sub, subpat) => SubstOnlyTreeMaker(sub, scrutinee.sym) :: PatternTranslation(scrutinee, subpat).translate
+
+        // recurse on alternatives
+        case Alternative(alts)  =>
+          List(AlternativesTreeMaker(scrutinee.sym, alts map (alt => PatternTranslation(scrutinee, alt).translate), alts.head.pos))
+
+        case Literal(Constant(_)) | Ident(_) | Select(_, _) | This(_) =>
+          List(EqualityTestTreeMaker(scrutinee.sym, tree, pos))
+
+        case _ => reporter.error(pos, s"unsupported pattern: ${tree.shortClass} / $this (this is a scalac bug.)")
+          Nil
+      }
 
       def pos     = tree.pos
+
       def tpe     = scrutinee.info.dealiasWiden  // the type of the variable bound to the pattern
       def pt      = unbound match {
-        case Star(tpt)      => this glbWith seqType(tpt.tpe)
-        case TypedIdent(tpe) => tpe
-        case tree           => tree.tpe
-      }
+          case Star(tpt)      => this glbWith seqType(tpt.tpe)
+          case TypedIdent(tpe) => tpe
+          case tree           => tree.tpe
+        }
       def glbWith(other: Type) = glb(tpe :: other :: Nil).normalize
 
-      object SymbolAndTypedIdent {
-        def unapply(tree: Tree): Option[(Symbol, Type)] = tree match {
-          case Bound(sym, TypedIdent(tpe)) => Some(sym -> tpe)
-          case TypedIdent(tpe)                   => Some(scrutinee.sym -> tpe)
-          case _                                => None
-        }
-      }
-
-      private def rebindTo(pattern: Tree) = PatternTranslation(scrutinee, pattern)
-      private def step(treeMakers: TreeMaker*)(subpatterns: PatternTranslation*): TranslationStep = TranslationStep(treeMakers.toList, subpatterns.toList)
-
-      private def bindingStep(sub: Symbol, subpattern: Tree) = step(SubstOnlyTreeMaker(sub, scrutinee.sym))(rebindTo(subpattern))
-      private def equalityTestStep()                         = step(EqualityTestTreeMaker(scrutinee.sym, tree, pos))()
-      private def typeTestStep(sub: Symbol, subPt: Type)     = step(TypeTestTreeMaker(sub, scrutinee.sym, subPt, glbWith(subPt))(pos))()
-      private def alternativesStep(alts: List[Tree])         = step(AlternativesTreeMaker(scrutinee.sym, translatedAlts(alts), alts.head.pos))()
-      private def translatedAlts(alts: List[Tree])           = alts map (alt => rebindTo(alt).translate)
-      private def noStep()                                   = step()()
-
-      private def unsupportedPatternMsg = sm"""
-        |unsupported pattern: ${tree.shortClass} / $this (this is a scalac bug.)
-        |""".trim
-
-      // example check: List[Int] <:< ::[Int]
-      private def extractorStep(): TranslationStep = {
-        step(extractor.makers(scrutinee, pos): _*)(extractor.subPatterns: _*)
-      }
-
-      // Summary of translation cases. I moved the excerpts from the specification further below so all
-      // the logic can be seen at once.
-      //
-      // [1] skip wildcard trees -- no point in checking them
-      // [2] extractor and constructor patterns
-      // [3] replace subpatBinder by patBinder, as if the Bind was not there.
-      //     It must be patBinder, as subpatBinder has the wrong info: even if the bind assumes a better type,
-      //     this is not guaranteed until we cast
-      // [4] typed patterns - a typed pattern never has any subtrees
-      //     must treat Typed and Bind together -- we need to know the patBinder of the Bind pattern to get at the actual type
-      // [5] literal and stable id patterns
-      // [6] pattern alternatives
-      // [7] symbol-less bind patterns - this happens in certain ill-formed programs, there'll be an error later
-      //     don't fail here though (or should we?)
-      def nextStep(): TranslationStep = tree match {
-        case WildcardPattern()                                        => noStep()
-        case _: UnApply | _: Apply                                    => extractorStep()
-        case SymbolAndTypedIdent(sym, tpe)                             => typeTestStep(sym, tpe)
-        case TypedIdent(tpe)                                           => typeTestStep(scrutinee.sym, tpe)
-        case Bound(sym, expr)                                   => bindingStep(sym, expr)
-        case Literal(Constant(_)) | Ident(_) | Select(_, _) | This(_) => equalityTestStep()
-        case Alternative(alts)                                        => alternativesStep(alts)
-        case _                                                        => reporter.error(pos, unsupportedPatternMsg) ; noStep()
-      }
-      def translate: List[TreeMaker] = nextStep() merge (_.translate)
-
-
-      private def concreteType = tpe.bounds.hi
       private def unbound = unbind(tree)
-      private def tpe_s = if (pt <:< concreteType) "" + pt else s"$pt (binder: $tpe)"
+
+      private def tpe_s = if (pt <:< tpe.bounds.hi) "" + pt else s"$pt (binder: $tpe)"
       private def at_s = unbound match {
         case WildcardPattern() => ""
         case pat               => s" @ $pat"
       }
       override def toString = s"${scrutinee}: $tpe_s$at_s"
-    }
-
-    // a list of TreeMakers that encode `patTree`, and a list of arguments for recursive invocations of `translatePattern` to encode its subpatterns
-    final case class TranslationStep(makers: List[TreeMaker], subpatterns: List[PatternTranslation]) {
-      def merge(f: PatternTranslation => List[TreeMaker]): List[TreeMaker] = makers ::: (subpatterns flatMap f)
-      override def toString = if (subpatterns.isEmpty) "" else subpatterns.mkString("(", ", ", ")")
     }
 
     /** Implement a pattern match by turning its cases (including the implicit failure case)
