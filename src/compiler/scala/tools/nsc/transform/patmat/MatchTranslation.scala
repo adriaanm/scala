@@ -203,7 +203,7 @@ trait MatchTranslation {
     def translateMatch(match_ : Match): Tree = {
       val Match(selector, cases) = match_
 
-      val (nonSyntheticCases, defaultOverride) = cases match {
+      val (nonSyntheticCases, defaultCaseOverride) = cases match {
         case init :+ last if treeInfo isSyntheticDefaultCase last => (init, Some(last.body))
         case _                                                    => (cases, None)
       }
@@ -220,23 +220,27 @@ trait MatchTranslation {
 
       val start = if (Statistics.canEnable) Statistics.startTimer(patmatNanos) else null
 
-      val selectorTp = repeatedToSeq(elimAnonymousClass(selector.tpe.widen.withoutAnnotations))
-
       // when one of the internal cps-type-state annotations is present, strip all CPS annotations
       val origPt  = removeCPSFromPt(match_.tpe)
       // relevant test cases: pos/existentials-harmful.scala, pos/gadt-gilles.scala, pos/t2683.scala, pos/virtpatmat_exist4.scala
       // pt is the skolemized version
       val pt = repeatedToSeq(origPt)
 
-      // val packedPt = repeatedToSeq(typer.packedType(match_, context.owner))
-      val selectorSym = freshSym(selector.pos, pureType(selectorTp)) setFlag treeInfo.SYNTH_CASE_FLAGS
-      val scrutinee   = SingleScrutinee(selector, selectorSym)
+      val scrutinee = scrutineeFor(selector)
 
       // pt = Any* occurs when compiling test/files/pos/annotDepMethType.scala  with -Xexperimental
-      val combined = combineCases(scrutinee, nonSyntheticCases map translateCase(scrutinee, pt), pt, matchOwner, defaultOverride)
+      val combined = combineCases(scrutinee, nonSyntheticCases map translateCase(scrutinee, pt), pt, matchOwner, defaultCaseOverride)
 
       if (Statistics.canEnable) Statistics.stopTimer(patmatNanos, start)
       combined
+    }
+
+    def scrutineeFor(selector: Tree): SingleScrutinee = {
+      val selectorTp = repeatedToSeq(elimAnonymousClass(selector.tpe.widen.withoutAnnotations))
+      // val packedPt = repeatedToSeq(typer.packedType(match_, context.owner))
+      val selectorSym = freshSym(selector.pos, pureType(selectorTp)) setFlag treeInfo.SYNTH_CASE_FLAGS
+
+      SingleScrutinee(selector, selectorSym)
     }
 
     // return list of typed CaseDefs that are supported by the backend (typed/bind/wildcard)
