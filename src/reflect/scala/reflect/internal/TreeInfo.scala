@@ -825,6 +825,28 @@ abstract class TreeInfo {
     }
   }
 
+  // match a tree that's a tuple creation
+  object TupleCtor {
+    def unapplySeq(tree: Tree): Option[Seq[Tree]] =
+      tree match {
+        case Applied(fun, _, List(args)) if {
+          args.nonEmpty && (fun.symbol ne NoSymbol) &&
+          fun.symbol == TupleClass(args.length).companionModule.info.nonPrivateMember(nme.apply)
+        } => // Tuple::apply isn't currently specialized, so no need for `unspecializedSymbol`
+          Some(args.toSeq)
+        case _ => None
+      }
+  }
+
+  object UnboundTuplePattern {
+    def unapplySeq(tree: Tree): Option[Seq[Tree]] =
+      tree match {
+        case Apply(fun, args) if args.nonEmpty && fun.isTyped && definitions.isTupleType(fun.tpe.finalResultType) => Some(args.toSeq)
+        case Bind(nme.WILDCARD, UnboundTuplePattern(elems@_*)) => Some(elems)
+        case _ => None
+      }
+  }
+
   /** Is this file the body of a compilation unit which should not
    *  have Predef imported?
    */

@@ -136,6 +136,10 @@ trait Interface extends ast.TreeDSL {
   trait Scrutinee {
     // if there's a single symbol to represent this scrutinee, otherwise NoSymbol
     def sym: Symbol
+
+    // empty (if sym == NoSymbol), List(sym) (sym != NoSymbol), or multiple symbols (for tuple scrutinee)
+    def syms: List[Symbol] = if (sym.exists) List(sym) else Nil
+
     def info: Type
 
     // for MatchError thrown by default case

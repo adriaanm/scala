@@ -230,7 +230,7 @@ trait MatchApproximation extends TreeAndTypeAnalysis with ScalaLogic with MatchT
         uniqueTypeProps getOrElseUpdate((testedPath, pt), Eq(Var(testedPath), TypeConst(checkableType(pt))))
 
       // a variable in this set should never be replaced by a tree that "does not consist of a selection on a variable in this set" (intuitively)
-      private val pointsToBound = mutable.HashSet(scrutinee.sym)
+      private val pointsToBound = mutable.HashSet(scrutinee.syms : _*)
       private val trees         = mutable.HashSet.empty[Tree]
 
       // the substitution that renames variables to variables in pointsToBound
@@ -515,23 +515,27 @@ trait MatchAnalysis extends MatchApproximation {
         // find the models (under which the match fails)
         val matchFailModels = findAllModelsFor(propToSolvable(matchFails))
 
-        val prevBinderTree = approx.binderToUniqueTree(scrutinee.sym)
-        val scrutVar = Var(prevBinderTree)
-        val counterExamples = {
-          matchFailModels.flatMap {
-            model =>
+        val counterExamples =
+          if (matchFailModels.isEmpty) Nil
+          else {
+            val counterExamples = matchFailModels.flatMap { model =>
               val varAssignments = expandModel(model)
-              varAssignments.flatMap(modelToCounterExample(scrutVar) _)
-          }
-        }
+              def examplesFor(rootSym: Symbol) =
+                varAssignments.flatMap(modelToCounterExample(Var(approx.binderToUniqueTree(rootSym))))
 
-        // sorting before pruning is important here in order to
-        // keep neg/t7020.scala stable
-        // since e.g. List(_, _) would cover List(1, _)
-        val pruned = CounterExample.prune(counterExamples.sortBy(_.toString)).map(_.toString)
+              // is there a single scrutinee?
+              if (scrutinee.sym.exists) examplesFor(scrutinee.sym)
+              else (scrutinee.syms map examplesFor).transpose map TupleExample
+            }
+
+            // sorting before pruning is important here in order to
+            // keep neg/t7020.scala stable
+            // since e.g. List(_, _) would cover List(1, _)
+            CounterExample.prune(counterExamples.sortBy(_.toString)).map(_.toString)
+          }
 
         if (Statistics.canEnable) Statistics.stopTimer(patmatAnaExhaust, start)
-        pruned
+        counterExamples
       }
     }
 
