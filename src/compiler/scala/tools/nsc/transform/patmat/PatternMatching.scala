@@ -133,49 +133,52 @@ trait Interface extends ast.TreeDSL {
 
   /** Abstract over single-scrutinee and multi-scrutinee (packed in a tuple) matches.
    */
-  sealed abstract class Scrutinee {
-    def selector: Tree
+  trait Scrutinee {
+    // if there's a single symbol to represent this scrutinee, otherwise NoSymbol
     def sym: Symbol
     def info: Type
 
-    def defs: List[Tree]
     // for MatchError thrown by default case
     def ref: Tree
+
+    def defs: List[Tree]
+
+    def pos: Position
+  }
+
+  trait MatchScrutinee extends Scrutinee {
+    protected def selector: Tree
+
+    lazy val typeAscribed = selector match { case Typed(tree, tpt) => Some(tree, tpt.tpe) case _ => None }
+
+    private def ascribedTree = typeAscribed.map(_._1).getOrElse(EmptyTree)
+    private def ascribedType = typeAscribed.map(_._2).getOrElse(NoType)
+
+    lazy val suppressExhaustive  = treeInfo isUncheckedAnnotation ascribedType
+    lazy val hasSwitchAnnotation = treeInfo isSwitchAnnotation ascribedType
+    lazy val supressUnreachable  = ascribedTree match {
+      case Ident(name) if name startsWith nme.CHECK_IF_REFUTABLE_STRING => true // SI-7183 don't warn for withFilter's that turn out to be irrefutable.
+      case _                                                            => false
+    }
+
     def pos = selector.pos
   }
 
-  // standard match
-  case class SingleScrutinee(selector: Tree, sym: Symbol) extends Scrutinee {
-    assert(sym ne NoSymbol, "Use NoScrutinee for no-symbol scrutinee "+ selector)
-
-    def info: Type = sym.info
-
-    def defs = List(ValDef(sym, selector))
+  // for patterns and try/catch translation
+  case class SubScrutinee(sym: Symbol) extends Scrutinee { // assert(sym ne NoSymbol, "Use NoScrutinee for no-symbol scrutinee ")
+    def info = sym.info
     def ref  = CODE.REF(sym)
-  }
-
-  // not meant to emit a match, for try/catch translation
-  case class SymbolScrutinee(sym: Symbol) extends Scrutinee {
-    assert(sym ne NoSymbol, "Use NoScrutinee for no-symbol scrutinee "+ selector)
-
-    def info: Type = sym.info
-
-    def ref = CODE.REF(sym)
-
-    def selector: Tree   = abort("SymbolScrutinee does not have a selector.")
-    def defs: List[Tree] = abort("SymbolScrutinee cannot emit a match. Use SingleScrutinee.")
+    def pos  = sym.pos
+    def defs = Nil
   }
 
   // for alternatives
   case object NoScrutinee extends Scrutinee {
-    def sym: Symbol               = NoSymbol
-    def info: Type                = NoType
-
-    def ref: Tree                 = EmptyTree
-    def defs: List[Tree]          = Nil
-    override def pos              = NoPosition
-
-    def selector: Tree            = abort("NoScrutinee does not have a selector.")
+    def sym: Symbol      = NoSymbol
+    def info: Type       = NoType
+    def ref: Tree        = EmptyTree
+    def defs: List[Tree] = Nil
+    def pos              = NoPosition
   }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

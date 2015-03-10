@@ -34,6 +34,29 @@ trait MatchCodeGen extends Interface {
     def newSynthCaseLabel(name: String) =
       NoSymbol.newLabel(freshName(name), NoPosition) setFlag treeInfo.SYNTH_CASE_FLAGS
 
+    // standard match
+    case class SimpleMatchScrutinee(selector: Tree, tp: Type) extends MatchScrutinee {
+      lazy val sym: Symbol = freshSym(pos, pureType(tp)) setFlag treeInfo.SYNTH_CASE_FLAGS
+
+      def info = sym.info
+      def ref  = CODE.REF(sym)
+
+      override def defs = List(ValDef(sym, selector))
+    }
+
+    // for an optimized match that unrolls the tuple that is the selector
+    case class TupleMatchScrutinee(selector: Tree, elems: List[Tree])(matchOwner: Symbol) extends MatchScrutinee {
+      def sym = NoSymbol
+      override lazy val syms = elems map { el =>
+        matchOwner.newTermSymbol(currentUnit.freshTermName("tupEl"), el.pos, newFlags = Flag.SYNTHETIC) setInfo el.tpe.deconst
+      }
+
+      def info = selector.tpe
+      def ref  = gen.mkTuple(syms map gen.mkAttributedRef)
+
+      override def defs = map2(syms, elems)(ValDef(_, _))
+    }
+
     // codegen relevant to the structure of the translation (how extractors are combined)
     trait AbsCodegen {
       def matcher(scrutinee: Scrutinee, restpe: Type)(cases: List[Casegen => Tree], defaultCase: Option[Tree]): Tree
@@ -110,7 +133,7 @@ trait MatchCodeGen extends Interface {
       // __match.runOrElse(`scrut`)(`scrutSym` => `matcher`)
       // TODO: consider catchAll, or virtualized matching will break in exception handlers
       def matcher(scrutinee: Scrutinee, restpe: Type)(cases: List[Casegen => Tree], defaultCase: Option[Tree]): Tree =
-        _match(vpmName.runOrElse) APPLY (scrutinee.selector) APPLY (fun(scrutinee.sym, cases map (f => f(this)) reduceLeft typedOrElse))
+        _match(vpmName.runOrElse) APPLY (scrutinee.asInstanceOf[SimpleMatchScrutinee].selector) APPLY (fun(scrutinee.sym, cases map (f => f(this)) reduceLeft typedOrElse))
 
       // __match.one(`res`)
       def one(res: Tree): Tree = (_match(vpmName.one)) (res)

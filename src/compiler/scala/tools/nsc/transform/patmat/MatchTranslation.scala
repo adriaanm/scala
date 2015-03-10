@@ -224,7 +224,7 @@ trait MatchTranslation {
             // generate a fresh symbol for each case, hoping we'll end up emitting a type-switch (we don't have a global scrut there)
             // if we fail to emit a fine-grained switch, have to do translateCase again with a single scrutSym (TODO: uniformize substitution on treemakers so we can avoid this)
             val caseScrutSym = freshSym(pos, pureType(ThrowableTpe))
-            (caseScrutSym, propagateSubstitution(translateCase(SymbolScrutinee(caseScrutSym), pt)(caseDef), EmptySubstitution))
+            (caseScrutSym, propagateSubstitution(translateCase(SubScrutinee(caseScrutSym), pt)(caseDef), EmptySubstitution))
           }
 
           for(cases <- emitTypeSwitch(bindersAndCases, pt).toList
@@ -233,18 +233,18 @@ trait MatchTranslation {
         }
 
         val catches = if (swatches.nonEmpty) swatches else {
-          val scrutSym = freshSym(pos, pureType(ThrowableTpe))
-          val casesNoSubstOnly = caseDefs map { caseDef => (propagateSubstitution(translateCase(SymbolScrutinee(scrutSym), pt)(caseDef), EmptySubstitution))}
+          val exSym     = freshSym(pos, pureType(ThrowableTpe), "ex")
+          val selector  = REF(exSym) setPos pos
+          val scrutinee = SimpleMatchScrutinee(selector, ThrowableTpe)
 
-          val exSym = freshSym(pos, pureType(ThrowableTpe), "ex")
-          val selector = REF(exSym)
+          val casesNoSubstOnly = caseDefs map { caseDef => (propagateSubstitution(translateCase(SubScrutinee(scrutinee.sym), pt)(caseDef), EmptySubstitution))}
 
           List(
               atPos(pos) {
                 CaseDef(
                   Bind(exSym, Ident(nme.WILDCARD)), // TODO: does this need fixing upping?
                   EmptyTree,
-                  combineCasesNoSubstOnly(SingleScrutinee(selector, scrutSym), casesNoSubstOnly, pt, matchOwner, Some(Throw(selector)))
+                  combineCasesNoSubstOnly(scrutinee, casesNoSubstOnly, pt, matchOwner, Some(Throw(selector)))
                 )
               })
         }
@@ -303,12 +303,11 @@ trait MatchTranslation {
 // helper methods: they analyze types and trees in isolation, but they are not (directly) concerned with the structure of the overall translation
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    def scrutineeFor(selector: Tree): Scrutinee = {
+    def scrutineeFor(selector: Tree): MatchScrutinee = {
       val selectorTp = repeatedToSeq(elimAnonymousClass(selector.tpe.widen.withoutAnnotations))
       // val packedPt = repeatedToSeq(typer.packedType(match_, context.owner))
-      val selectorSym = freshSym(selector.pos, pureType(selectorTp)) setFlag treeInfo.SYNTH_CASE_FLAGS
 
-      SingleScrutinee(selector, selectorSym)
+      SimpleMatchScrutinee(selector, selectorTp)
     }
 
     object ExtractorCall {
@@ -360,8 +359,8 @@ trait MatchTranslation {
       protected def subPatBinders = subPatterns map (_.scrutinee.sym)
 
       lazy val subPatterns = (args, subPatTypes).zipped map {
-        case (Bound(sym, expr), pt) => PatternTranslation(SymbolScrutinee(setVarInfo(sym, pt)), expr)
-        case (tree            , pt) => PatternTranslation(SymbolScrutinee(setVarInfo(freshSym(tree.pos, prefix = "p"), pt)), tree)
+        case (Bound(sym, expr), pt) => PatternTranslation(SubScrutinee(setVarInfo(sym, pt)), expr)
+        case (tree            , pt) => PatternTranslation(SubScrutinee(setVarInfo(freshSym(tree.pos, prefix = "p"), pt)), tree)
       }
 
       // never store these in local variables (for PreserveSubPatBinders)

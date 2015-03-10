@@ -541,49 +541,41 @@ trait MatchTreeMaking extends MatchCodeGen with Debugging {
     }
 
     // calls propagateSubstitution on the treemakers
-    def combineCases(scrutinee: Scrutinee, casesRaw: List[List[TreeMaker]], pt: Type, owner: Symbol, defaultCaseOverride: Option[Tree]): Tree = {
+    def combineCases(scrutinee: MatchScrutinee, casesRaw: List[List[TreeMaker]], pt: Type, owner: Symbol, defaultCaseOverride: Option[Tree]): Tree = {
       // drops SubstOnlyTreeMakers, since their effect is now contained in the TreeMakers that follow them
       val casesNoSubstOnly = casesRaw map (propagateSubstitution(_, EmptySubstitution))
       combineCasesNoSubstOnly(scrutinee, casesNoSubstOnly, pt, owner, defaultCaseOverride)
     }
 
     // pt is the fully defined type of the cases (either pt or the lub of the types of the cases)
-    def combineCasesNoSubstOnly(scrutinee: Scrutinee, casesNoSubstOnly: List[List[TreeMaker]], pt: Type, owner: Symbol, defaultCaseOverride: Option[Tree]): Tree =
+    def combineCasesNoSubstOnly(scrutinee: MatchScrutinee, casesNoSubstOnly: List[List[TreeMaker]], pt: Type, owner: Symbol, defaultCaseOverride: Option[Tree]): Tree =
       fixerUpper(owner, scrutinee.pos) {
         debug.patmat("combining cases: "+ (casesNoSubstOnly.map(_.mkString(" >> ")).mkString("{", "\n", "}")))
 
         val (suppression, requireSwitch): (Suppression, Boolean) =
           if (settings.XnoPatmatAnalysis) (Suppression.FullSuppression, false)
-          else scrutinee.selector match {
-            case Typed(tree, tpt) =>
-              val suppressExhaustive = tpt.tpe hasAnnotation UncheckedClass
-              val supressUnreachable = tree match {
-                case Ident(name) if name startsWith nme.CHECK_IF_REFUTABLE_STRING => true // SI-7183 don't warn for withFilter's that turn out to be irrefutable.
-                case _ => false
+          else if (scrutinee.typeAscribed.nonEmpty) {
+            val suppression = Suppression(scrutinee.suppressExhaustive, scrutinee.supressUnreachable)
+            // matches with two or fewer cases need not apply for switchiness (if-then-else will do)
+            // `case 1 | 2` is considered as two cases.
+            def exceedsTwoCasesOrAlts = {
+              // avoids traversing the entire list if there are more than 3 elements
+              def lengthMax3[T](l: List[T]): Int = l match {
+                case a :: b :: c :: _ => 3
+                case cases            =>
+                  cases.map({
+                    case AlternativesTreeMaker(_, alts, _) :: _ => lengthMax3(alts)
+                    case c                                      => 1
+                  }).sum
               }
-              val suppression = Suppression(suppressExhaustive, supressUnreachable)
-              val hasSwitchAnnotation = treeInfo.isSwitchAnnotation(tpt.tpe)
-              // matches with two or fewer cases need not apply for switchiness (if-then-else will do)
-              // `case 1 | 2` is considered as two cases.
-              def exceedsTwoCasesOrAlts = {
-                // avoids traversing the entire list if there are more than 3 elements
-                def lengthMax3[T](l: List[T]): Int = l match {
-                  case a :: b :: c :: _ => 3
-                  case cases =>
-                    cases.map({
-                      case AlternativesTreeMaker(_, alts, _) :: _ => lengthMax3(alts)
-                      case c => 1
-                    }).sum
-                }
-                lengthMax3(casesNoSubstOnly) > 2
-              }
-              val requireSwitch = hasSwitchAnnotation && exceedsTwoCasesOrAlts
-              if (hasSwitchAnnotation && !requireSwitch)
-                reporter.warning(scrutinee.pos, "matches with two cases or fewer are emitted using if-then-else instead of switch")
-              (suppression, requireSwitch)
-            case _ =>
-              (Suppression.NoSuppression, false)
-          }
+              lengthMax3(casesNoSubstOnly) > 2
+            }
+            val requireSwitch = scrutinee.hasSwitchAnnotation && exceedsTwoCasesOrAlts
+            if (scrutinee.hasSwitchAnnotation && !requireSwitch)
+              reporter.warning(scrutinee.pos, "matches with two cases or fewer are emitted using if-then-else instead of switch")
+
+            (suppression, requireSwitch)
+          } else (Suppression.NoSuppression, false)
 
         emitSwitch(scrutinee, casesNoSubstOnly, pt, defaultCaseOverride, unchecked = suppression.suppressExhaustive).getOrElse{
           if (requireSwitch) reporter.warning(scrutinee.pos, "could not emit switch for @switch annotated match")
