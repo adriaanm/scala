@@ -47,8 +47,8 @@ trait MatchCodeGen extends Interface {
     // for an optimized match that unrolls the tuple that is the selector
     case class TupleMatchScrutinee(selector: Tree, elems: List[Tree])(matchOwner: Symbol) extends MatchScrutinee {
       def sym = NoSymbol
-      override lazy val syms = elems map { el =>
-        matchOwner.newTermSymbol(currentUnit.freshTermName("tupEl"), el.pos, newFlags = Flag.SYNTHETIC) setInfo el.tpe.deconst
+      override lazy val syms = elems.zipWithIndex map { case (el, idx) =>
+        matchOwner.newTermSymbol(currentUnit.freshTermName(s"detupled_${idx+1}$$"), el.pos, newFlags = Flag.SYNTHETIC) setInfo el.tpe.deconst
       }
 
       def info = selector.tpe
