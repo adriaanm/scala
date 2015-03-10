@@ -8,8 +8,7 @@ import asm.tree.{ClassNode, InsnList}
 import scala.collection.JavaConverters._
 
 object Test extends BytecodeTest {
-  def show: Unit = {
-    val classNode = loadClassNode("SameBytecode")
+  def show: Unit = List("Simple", "Constructor", "Sneaky") map (loadClassNode(_)) foreach { classNode =>
     sameBytecode(getMethod(classNode, "a"), getMethod(classNode, "b"))
   }
 }
