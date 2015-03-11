@@ -8,7 +8,8 @@ trait Trav[T] {
   // new:
   implicit type BuilderFor[U] <: Builder[U]
   // desugars to a synthetic method like this, the only way to get an implicit value of type BuilderFor[_]
-  implicit def BuilderFor[T]: BuilderFor[T] = ??? // = new BuilderFor[T] <-- must consider exact type of this
+  // (aside from the local scope, for chaining calls to pass the implicit value of unknown static type through)
+  // implicit def BuilderFor[T]: BuilderFor[T] = ??? // = new BuilderFor[T] <-- must consider exact type of this
   
   def foreach(f: T => Unit): Unit
 
