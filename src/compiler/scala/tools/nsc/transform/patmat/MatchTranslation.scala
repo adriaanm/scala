@@ -311,7 +311,7 @@ trait MatchTranslation {
       import treeInfo._
 
       selector match {
-        case TupledScrutinee(elems @ _*) if settings.Xexperimental && nonSyntheticCases.forall {
+        case TupledScrutinee(elems @ _*) if nonSyntheticCases.forall {
             case CaseDef(UnboundTuplePattern(elems @ _*), _, _) => !isStar(elems.last) // `isRepeatedParamType(tuple.tpe.paramTypes.last))` should be impossible: can't instantiate TupleN's type param to the repeated param marker type constructor
             case CaseDef(WildcardPattern(), _, _)             => true
             case _                                            => false
