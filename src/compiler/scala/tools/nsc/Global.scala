@@ -85,7 +85,7 @@ class Global(var currentSettings: Settings, var reporter: Reporter)
   override def settings = currentSettings
 
   // TODO: introduce a real -Xsip:NNN flag
-  override def sip23: Boolean = settings.Xexperimental.value
+  override def sip23: Boolean = true // settings.Xexperimental.value
 
   /** Switch to turn on detailed type logs */
   var printTypings = settings.Ytyperdebug.value
