@@ -7,7 +7,7 @@
 if [ "woele$_scabot_last" != "woele1" ]; then echo "Scabot didn't mark this as last commit -- skipping."; exit 0; fi
 
 baseDir=${WORKSPACE-`pwd`}
-uberBuildUrl=${uberBuildUrl-"https://github.com/scala-ide/uber-build.git"}
+uberBuildUrl=${uberBuildUrl-"https://github.com/adriaanm/uber-build.git"}
 uberBuildConfig=${uberBuildConfig-"validator.conf"} # TODO: backport to 2.10.x: uberBuildConfig="validator-2.10.conf"
 
 uberBuildDir="$baseDir/uber-build/"
@@ -23,7 +23,7 @@ echo "maven.version.number=$scalaVersion" >> versions.properties
 
 # pass prRepoUrl in, which uber-build passes along to dbuild (in sbt-builds-for-ide)
 # the "-P pr-scala" maven arg accomplishes the same thing for maven (directly used in uber-build)
-BASEDIR="$baseDir" prRepoUrl="$prRepoUrl" MAVEN_ARGS="-P pr-scala"\
+BASEDIR="$baseDir" prRepoUrl="$prRepoUrl" IDE_M2_REPO="$prRepoUrl" MAVEN_ARGS="-P pr-scala"\
   $uberBuildDir/uber-build.sh $uberBuildDir/config/$uberBuildConfig $repo_ref $scalaVersion
 
 # uber-build puts its local repo under target/m2repo
