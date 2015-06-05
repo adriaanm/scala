@@ -466,9 +466,13 @@ class IMain(@BeanProperty val factory: ScriptEngineFactory, initialSettings: Set
     pos
   }
 
-  private def requestFromLine(line: String, synthetic: Boolean): Either[IR.Result, Request] = {
+  private def requestFromLine(line: String, synthetic: Boolean, forPresentationCompile: Boolean = false): Either[IR.Result, Request] = {
     val content = line  //indentCode(line)
-    val trees = parse(content) match {
+
+    if (forPresentationCompile)
+      return Right(buildRequest(line, Nil))
+
+    val trees: List[global.Tree] = parse(content) match {
       case parse.Incomplete     => return Left(IR.Incomplete)
       case parse.Error          => return Left(IR.Error)
       case parse.Success(trees) => trees
@@ -536,7 +540,7 @@ class IMain(@BeanProperty val factory: ScriptEngineFactory, initialSettings: Set
         // Rewriting    "foo ; bar ; 123"
         // to           "foo ; bar ; val resXX = 123"
         requestFromLine(rewrittenLine, synthetic) match {
-          case Right(req) => return Right(req withOriginalLine line)
+          case Right(req) if !forPresentationCompile => return Right(req withOriginalLine line)
           case x          => return x
         }
       case _ =>
@@ -573,6 +577,17 @@ class IMain(@BeanProperty val factory: ScriptEngineFactory, initialSettings: Set
        // null indicates a disallowed statement type; otherwise compile and
        // fail if false (implying e.g. a type error)
        if (req == null || !req.compile) Left(IR.Error) else Right(req)
+    }
+  }
+
+  private[scala] def presentationCompile(line: String, synthetic: Boolean): Either[IR.Result, Request] = {
+    if (global == null) Left(IR.Error)
+    else requestFromLine(line, synthetic, forPresentationCompile = true) match {
+      case Left(result) => Left(result)
+      case Right(req)   =>
+       // null indicates a disallowed statement type; otherwise compile and
+       // fail if false (implying e.g. a type error)
+       if (req == null || !req.presentationCompile) Left(IR.Error) else Right(req)
     }
   }
 
@@ -1009,6 +1024,23 @@ class IMain(@BeanProperty val factory: ScriptEngineFactory, initialSettings: Set
         val handls = if (printResults) handlers else Nil
         withoutWarnings(lineRep compile ResultObjectSourceCode(handls))
       }
+    }
+
+    lazy val presentationCompile: Boolean = {
+      reporter.reset()
+      val wrappedCode: String = ObjectSourceCode(handlers)
+      parseAndTypeCheck(wrappedCode)
+      reporter.hasErrors
+    }
+
+    private[this] def parseAndTypeCheck(code: String): global.CompilationUnit = {
+      val unit = global.newCompilationUnit(code)
+      val parser = global.newUnitParser(unit)
+      val parserPhase = global.syntaxAnalyzer.newPhase(NoPhase)
+      val run: global.Run = new global.Run()
+      run.parserPhase.asInstanceOf[GlobalPhase].applyPhase(unit)
+      println(showCode(unit.body))
+      unit
     }
 
     lazy val resultSymbol = lineRep.resolvePathToSymbol(fullAccessPath)
