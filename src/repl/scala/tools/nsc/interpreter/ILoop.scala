@@ -861,7 +861,7 @@ class ILoop(in0: Option[BufferedReader], protected val out: JPrintWriter)
 
       def mkReader(maker: ReaderMaker) =
         if (settings.noCompletion) maker(() => NoCompletion)
-        else maker(() => new ReplCompletion(intp))
+        else maker(() => new ReplCompletion(intp)) // TODO: new PresentationCompilerCompleter(intp)
 
       def internalClass(kind: String) = s"scala.tools.nsc.interpreter.$kind.InteractiveReader"
       val readerClasses = sys.props.get("scala.repl.reader").toStream ++ Stream(internalClass("jline"), internalClass("jline_embedded"))
