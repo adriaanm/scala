@@ -110,7 +110,7 @@ trait Imports {
         /* While defining classes in class based mode - implicits are not needed. */
           case h: ImportHandler if isClassBased && definesClass => h.importedNames.exists(x => wanted.contains(x))
           case _: ImportHandler => true
-          case x                => x.definesImplicit || (x.definedNames exists wanted)
+          case x                => x.definesImplicit || (x.definedNames exists (d => wanted.exists(w => d.startsWith(w))))
         }
 
         reqs match {
