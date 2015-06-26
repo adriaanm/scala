@@ -149,66 +149,55 @@ abstract class Constructors extends Statics with Transform with ast.TreeDSL {
    *
    */
   private trait OmittablesHelper { self: TemplateTransformer =>
-
-    /*
-     * Initially populated with all elision candidates.
-     * Trees are traversed, and those candidates are removed which are actually needed.
-     * After that, `omittables` doesn't shrink anymore: each symbol it contains can be unlinked from clazz.info.decls.
-     */
-    val omittables = mutable.Set.empty[Symbol]
-
-    def populateOmittables() = {
-
-      omittables.clear()
-
-      if(isDelayedInitSubclass) {
-        return
-      }
-
+    def omittables: Set[Symbol] = {
       // Is it sound for detectUsages to only look at classes in scope here?
       // I.e., that we will see all potential uses of the outer accessor here.
       // NOTE: we actually ignore the possibility that the outer accessor is needed for a type pattern in a pattern match somewhere
       // those will actually be weakened if we decide to elide the outer field here...
       def allSubclassesSeenHere(cls: Symbol) = cls.isEffectivelyFinal || cls.isPrivate || cls.isLocalToBlock
 
-      def isParamCandidateForElision(sym: Symbol) = (sym.isParamAccessor && sym.isPrivateLocal)
-      def isOuterCandidateForElision(sym: Symbol) = (sym.isOuterAccessor && allSubclassesSeenHere(sym.owner) && !sym.isOverridingSymbol)
+      // outer accessor methods defined in a class for which a closed world assumption is sound
+      // (they are effectively not overridden outside of the scope of this analysis)
+      def eligibleOuterAccessor(sym: Symbol) = (sym.isOuterAccessor && allSubclassesSeenHere(sym.owner) && !sym.isOverridingSymbol)
 
-      val paramCandidatesForElision: Set[ /*Field*/  Symbol] = (clazz.info.decls.toSet filter isParamCandidateForElision)
-      val outerCandidatesForElision: Set[ /*Method*/ Symbol] = (clazz.info.decls.toSet filter isOuterCandidateForElision)
-
-      omittables ++= paramCandidatesForElision
-      omittables ++= outerCandidatesForElision
-
-      val bodyOfOuterAccessor: Map[Symbol, DefDef] =
-        defBuf.collect { case dd: DefDef if outerCandidatesForElision(dd.symbol) => dd.symbol -> dd }.toMap
+      /*
+       * Start with all elision candidates (outer fields and their accessor methods).
+       * Then, traverse all trees in defBuf and auxConstructorBuf, removing usages that preclude the optimization.
+       * After that, each symbol in `candidates` can be unlinked from clazz.info.decls.
+       */
+      val candidates = mutable.Set.empty[Symbol] ++
+        clazz.info.decls.filter( sym => (sym.isParamAccessor && sym.isPrivateLocal) || eligibleOuterAccessor(sym) ).toSet
 
       // no point traversing further once omittables is empty, all candidates ruled out already.
       object detectUsages extends Traverser {
-        private def markUsage(sym: Symbol) {
-          omittables -= debuglogResult("omittables -= ")(sym)
-          // recursive call to mark as needed the field supporting the outer-accessor-method.
-          bodyOfOuterAccessor get sym foreach (this traverse _.rhs)
-        }
-        override def traverse(tree: Tree): Unit = if (omittables.nonEmpty) {
-          def sym = tree.symbol
+        private lazy val bodyOfOuterAccessor: Map[Symbol, Tree] =
+          defBuf.collect{ case dd: DefDef if eligibleOuterAccessor(dd.symbol) => (dd.symbol, dd.rhs) }.toMap
+
+        override def traverse(tree: Tree): Unit = if (candidates.nonEmpty) {
           tree match {
-            // don't mark as "needed" the field supporting this outer-accessor, ie not just yet.
-            case _: DefDef if outerCandidatesForElision(sym) => ()
-            case _: Select if omittables(sym)                => markUsage(sym) ; super.traverse(tree)
-            case _                                           => super.traverse(tree)
+            case _: DefDef if eligibleOuterAccessor(tree.symbol) =>
+              // don't mark as "needed" the field supporting this outer-accessor -- not just yet.
+
+            case _: Select if candidates.remove(tree.symbol) =>
+              // mark usage
+              debuglog(s"Can't omit outer accessor for ${tree.symbol} (because used)")
+
+              // recursive call to mark as needed the field supporting the outer-accessor-method.
+              bodyOfOuterAccessor get tree.symbol foreach traverse
+
+              super.traverse(tree)
+            case _ => super.traverse(tree)
           }
         }
-        def walk(xs: Seq[Tree]) = xs.iterator foreach traverse
       }
 
-      if (omittables.nonEmpty) {
-        detectUsages walk defBuf
-        detectUsages walk auxConstructorBuf
+      if (candidates.nonEmpty) {
+        detectUsages traverseTrees defBuf.toList
+        detectUsages traverseTrees auxConstructorBuf.toList
       }
+
+      candidates.toSet
     }
-    def mustBeKept(sym: Symbol) = !omittables(sym)
-
   } // OmittablesHelper
 
   /*
@@ -683,7 +672,12 @@ abstract class Constructors extends Statics with Transform with ast.TreeDSL {
         constrStatBuf += intoConstructor(impl.symbol, stat)
     }
 
-    populateOmittables()
+
+    val omittable =
+      if (!isDelayedInitSubclass) omittables
+      else Set.empty
+
+    def mustBeKept(sym: Symbol) = !omittables(sym)
 
     // Initialize all parameters fields that must be kept.
     val paramInits = paramAccessors filter mustBeKept map { acc =>
