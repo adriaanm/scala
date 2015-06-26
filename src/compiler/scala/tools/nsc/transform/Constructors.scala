@@ -157,7 +157,7 @@ abstract class Constructors extends Statics with Transform with ast.TreeDSL {
      */
     val omittables = mutable.Set.empty[Symbol]
 
-    def populateOmittables() {
+    def populateOmittables() = {
 
       omittables.clear()
 
@@ -165,8 +165,14 @@ abstract class Constructors extends Statics with Transform with ast.TreeDSL {
         return
       }
 
+      // Is it sound for detectUsages to only look at classes in scope here?
+      // I.e., that we will see all potential uses of the outer accessor here.
+      // NOTE: we actually ignore the possibility that the outer accessor is needed for a type pattern in a pattern match somewhere
+      // those will actually be weakened if we decide to elide the outer field here...
+      def allSubclassesSeenHere(cls: Symbol) = cls.isEffectivelyFinal || cls.isPrivate || cls.isLocalToBlock
+
       def isParamCandidateForElision(sym: Symbol) = (sym.isParamAccessor && sym.isPrivateLocal)
-      def isOuterCandidateForElision(sym: Symbol) = (sym.isOuterAccessor && sym.owner.isEffectivelyFinal && !sym.isOverridingSymbol)
+      def isOuterCandidateForElision(sym: Symbol) = (sym.isOuterAccessor && allSubclassesSeenHere(sym.owner) && !sym.isOverridingSymbol)
 
       val paramCandidatesForElision: Set[ /*Field*/  Symbol] = (clazz.info.decls.toSet filter isParamCandidateForElision)
       val outerCandidatesForElision: Set[ /*Method*/ Symbol] = (clazz.info.decls.toSet filter isOuterCandidateForElision)
@@ -195,6 +201,7 @@ abstract class Constructors extends Statics with Transform with ast.TreeDSL {
         }
         def walk(xs: Seq[Tree]) = xs.iterator foreach traverse
       }
+
       if (omittables.nonEmpty) {
         detectUsages walk defBuf
         detectUsages walk auxConstructorBuf

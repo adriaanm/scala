@@ -984,15 +984,22 @@ trait Symbols extends api.Symbols { self: SymbolTable =>
       )
     )
 
-    /** Is this symbol effectively final? I.e, it cannot be overridden */
+    /** Do we know this symbol could not possibly be overridden/subclassed?
+     *
+     *  For a term member (or an abstract type), this means it cannot be overridden.
+     *  For a class, this means it cannot be subclassed.
+     *  (TODO: create isEffectivelyFinalOrNotSubclassed, since we need to look in the current scope
+     *         even for private/block-local classes, as they may be subclassed where accessible.)
+     */
     final def isEffectivelyFinal: Boolean = (
          (this hasFlag FINAL | PACKAGE)
-      || isModuleOrModuleClass && (isTopLevel || !settings.overrideObjects)
+      || isModuleOrModuleClass && (isTopLevel || !settings.overrideObjects) // TODO: isImplClass
       || isTerm && (
              isPrivate
           || isLocalToBlock
          )
     )
+
     /** Is this symbol effectively final or a concrete term member of sealed class whose children do not override it */
     final def isEffectivelyFinalOrNotOverridden: Boolean = isEffectivelyFinal || (isTerm && !isDeferred && isNotOverridden)
 
