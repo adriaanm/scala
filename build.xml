@@ -267,7 +267,7 @@ TODO:
       <mkdir dir="${user.home}/.m2/repository"/>
       <!-- This task has an issue where if the user directory does not exist, so we create it above. UGH. -->
       <artifact:dependencies pathId="extra.tasks.classpath" filesetId="extra.tasks.fileset">
-        <dependency groupId="biz.aQute" artifactId="bnd" version="1.50.0"/>
+        <dependency groupId="biz.aQute.bnd" artifactId="bnd" version="2.4.0"/>
       </artifact:dependencies>
 
       <artifact:dependencies pathId="jarjar.classpath">
