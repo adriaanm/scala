@@ -10,3 +10,4 @@ Import-Package: jline.*;resolution:=optional, \
                 scala.*;version="${range;[==,=+);${ver}}", \
                 *
 Bundle-RequiredExecutionEnvironment: JavaSE-1.8
+Include-Resource: /=../quick/classes/compiler;filter:=*.css|*.custom|*.dll|*.gif|*.jnilib|*.js|*.layout|*.png|*.properties|*.so|*.tmpl|*.tooltip|*.txt|*.xml
