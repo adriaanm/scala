@@ -267,7 +267,7 @@ TODO:
       <mkdir dir="${user.home}/.m2/repository"/>
       <!-- This task has an issue where if the user directory does not exist, so we create it above. UGH. -->
       <artifact:dependencies pathId="extra.tasks.classpath" filesetId="extra.tasks.fileset">
-        <dependency groupId="biz.aQute.bnd" artifactId="bnd" version="2.4.0"/>
+        <dependency groupId="biz.aQute.bnd" artifactId="biz.aQute.bnd" version="2.4.1"/>
       </artifact:dependencies>
 
       <artifact:dependencies pathId="jarjar.classpath">
@@ -282,8 +282,8 @@ TODO:
       <copy-deps project="junit"/>
 
       <!-- Pax runner -->
-      <property name="pax.exam.version" value="3.5.0"/><!-- Last version which supports Java 6 -->
-      <property name="osgi.felix.version" value="4.4.0"/>
+      <property name="pax.exam.version" value="4.5.0"/>
+      <property name="osgi.felix.version" value="5.0.1"/>
       <property name="osgi.equinox.version" value="3.7.1"/>
       <artifact:dependencies pathId="pax.exam.classpath" filesetId="pax.exam.fileset">
         <dependency groupId="org.ops4j.pax.exam" artifactId="pax-exam-container-native" version="${pax.exam.version}">
@@ -291,11 +291,12 @@ TODO:
         </dependency>
         <dependency groupId="org.ops4j.pax.exam" artifactId="pax-exam-junit4" version="${pax.exam.version}"/>
         <dependency groupId="org.ops4j.pax.exam" artifactId="pax-exam-link-assembly" version="${pax.exam.version}"/>
-        <dependency groupId="org.ops4j.pax.url" artifactId="pax-url-aether" version="2.2.0"/>
-        <dependency groupId="org.ops4j.pax.swissbox" artifactId="pax-swissbox-tracker" version="1.8.0"/>
-        <dependency groupId="ch.qos.logback" artifactId="logback-core" version="1.1.2"/>
-        <dependency groupId="ch.qos.logback" artifactId="logback-classic" version="1.1.2"/>
+        <dependency groupId="org.ops4j.pax.url" artifactId="pax-url-aether" version="2.4.1"/>
+        <dependency groupId="org.ops4j.pax.swissbox" artifactId="pax-swissbox-tracker" version="1.8.1"/>
+        <dependency groupId="ch.qos.logback" artifactId="logback-core" version="1.1.3"/>
+        <dependency groupId="ch.qos.logback" artifactId="logback-classic" version="1.1.3"/>
         <dependency groupId="junit" artifactId="junit" version="${junit.version}"/>
+        <dependency groupId="org.slf4j" artifactId="slf4j-api" version="1.7.12"/>
       </artifact:dependencies>
       <copy-deps project="pax.exam"/>
 
