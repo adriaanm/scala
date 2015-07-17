@@ -790,7 +790,7 @@ class ILoop(in0: Option[BufferedReader], protected val out: JPrintWriter)
     */
   def interpretStartingWith(code: String): Option[String] = {
     // signal completion non-completion input has been received
-    in.completion.resetVerbosity()
+    in.completions foreach (_.resetVerbosity())
 
     def reallyInterpret = intp.interpret(code) match {
       case IR.Error      => None
@@ -849,7 +849,7 @@ class ILoop(in0: Option[BufferedReader], protected val out: JPrintWriter)
   def chooseReader(settings: Settings): InteractiveReader = {
     if (settings.Xnojline || Properties.isEmacsShell) SimpleReader()
     else {
-      type Completer = () => Completion
+      type Completer = List[Completion]
       type ReaderMaker = Completer => InteractiveReader
 
       def instantiate(className: String): ReaderMaker = completer => {
@@ -860,8 +860,8 @@ class ILoop(in0: Option[BufferedReader], protected val out: JPrintWriter)
       }
 
       def mkReader(maker: ReaderMaker) =
-        if (settings.noCompletion) maker(() => NoCompletion)
-        else maker(() => new ReplCompletion(intp)) // TODO: new PresentationCompilerCompleter(intp)
+        if (settings.noCompletion) maker(Nil)
+        else maker(List(new ReplCompletion(intp), new PresentationCompilerCompletion(intp)))
 
       def internalClass(kind: String) = s"scala.tools.nsc.interpreter.$kind.InteractiveReader"
       val readerClasses = sys.props.get("scala.repl.reader").toStream ++ Stream(internalClass("jline"), internalClass("jline_embedded"))

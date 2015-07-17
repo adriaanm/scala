@@ -18,7 +18,7 @@ class SimpleReader(
 extends InteractiveReader
 {
   val history = NoHistory
-  val completion = NoCompletion
+  val completions = Nil
 
   def reset() = ()
   def redrawLine() = ()

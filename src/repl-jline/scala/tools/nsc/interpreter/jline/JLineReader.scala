@@ -10,7 +10,8 @@ package scala.tools.nsc.interpreter.jline
 import java.io.IOException
 
 import scala.reflect.internal.interactive
-import scala.reflect.internal.interactive.{InteractiveProps, NoCompletion, Completion}
+import scala.reflect.internal.interactive.Completion.ScalaCompleter
+import scala.reflect.internal.interactive.{InteractiveProps, Completion}
 import scala.reflect.internal.interactive.session.{SimpleHistory, History}
 
 import scala.reflect.internal.util.VariColumnTabulator
@@ -18,7 +19,7 @@ import scala.reflect.internal.util.VariColumnTabulator
 import java.util.{Collection => JCollection, List => JList}
 
 import _root_.jline.{console => jconsole}
-import jconsole.completer.{Completer, ArgumentCompleter}
+import jline.console.completer.{ArgumentCompleter, Completer}
 import jconsole.history.{History => JHistory}
 
 /**
@@ -26,7 +27,7 @@ import jconsole.history.{History => JHistory}
  *
  * Eagerly instantiates all relevant JLine classes, so that we can detect linkage errors on `new JLineReader` and retry.
  */
-class InteractiveReader(val replProps: InteractiveProps, completer: () => Completion) extends interactive.InteractiveReader {
+class InteractiveReader(val replProps: InteractiveProps, val completions: List[Completion]) extends interactive.InteractiveReader {
   val interactive = true
 
   trait HistoryDebugging extends History {
@@ -51,14 +52,8 @@ class InteractiveReader(val replProps: InteractiveProps, completer: () => Comple
     reader
   }
 
-  private[this] var _completion: Completion = NoCompletion
-
-  def completion: Completion = _completion
-
   override def postInit() = {
-    _completion = completer()
-
-    consoleReader.initCompletion(completion)
+    consoleReader.initCompletion(completions)
   }
 
   def reset() = consoleReader.reset()
@@ -143,31 +138,29 @@ class InteractiveReader(val replProps: InteractiveProps, completer: () => Comple
       flush()
     }
 
+    class JLineCompleter(completer: ScalaCompleter) extends Completer {
+      def complete(_buf: String, cursor: Int, candidates: JList[CharSequence]): Int = {
+        import Completion.Candidates
+
+        val buf = if (_buf == null) "" else _buf
+        val Candidates(newCursor, newCandidates) = completer.complete(buf, cursor)
+        newCandidates foreach (candidates add _)
+        newCursor
+      }
+    }
+
     // A hook for running code after the repl is done initializing.
-    def initCompletion(completion: Completion): Unit = {
+    def initCompletion(completions: List[Completion]): Unit = {
       this setBellEnabled false
 
-      if (completion ne NoCompletion) {
-        val jlineCompleter = new ArgumentCompleter(new JLineDelimiter,
-          new Completer {
-            val tc = completion.completer()
-
-            def complete(_buf: String, cursor: Int, candidates: JList[CharSequence]): Int = {
-              import Completion.Candidates
-
-              val buf = if (_buf == null) "" else _buf
-              val Candidates(newCursor, newCandidates) = tc.complete(buf, cursor)
-              newCandidates foreach (candidates add _)
-              newCursor
-            }
-          }
-        )
-
-        jlineCompleter setStrict false
-
-        this addCompleter jlineCompleter
-        this setAutoprintThreshold 400 // max completion candidates without warning
+      completions foreach { completion =>
+        val argumentCompleter = new ArgumentCompleter(new JLineDelimiter, new JLineCompleter(completion.completer()))
+        argumentCompleter setStrict false
+        this addCompleter argumentCompleter
       }
+
+      if (completions.nonEmpty)
+        this setAutoprintThreshold 400 // max completion candidates without warning
     }
   }
 

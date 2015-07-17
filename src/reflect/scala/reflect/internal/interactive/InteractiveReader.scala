@@ -15,7 +15,7 @@ trait InteractiveReader {
 
   def reset(): Unit
   def history: History
-  def completion: Completion
+  def completions: List[Completion]
   def redrawLine(): Unit
 
   def readYesOrNo(prompt: String, alt: => Boolean): Boolean = readOneKey(prompt) match {

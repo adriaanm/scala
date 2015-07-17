@@ -15,7 +15,7 @@ import scala.tools.nsc.interactive.Global
 // REPL completor - queries supplied interpreter for valid
 // completions based on current contents of buffer.
 class ReplCompletion(val intp: IMain) extends Completion with CompletionOutput {
-  val global: intp.global.type = intp.global
+  lazy val global: intp.global.type = intp.global
   import global._
   import definitions._
   import rootMirror.{ RootClass, getModuleIfDefined }

@@ -7,25 +7,19 @@ package scala.reflect.internal.interactive
 
 import Completion._
 
-/** An implementation-agnostic completion interface which makes no
- *  reference to the jline classes.
- */
+/** A stateful factory for ScalaCompleters
+  * The factory itself should be cheap to initialize (no side-effects on compiler!)
+  */
 trait Completion {
   def resetVerbosity(): Unit
+  // will be called after repl is initialized
   def completer(): ScalaCompleter
-}
-object NoCompletion extends Completion {
-  def resetVerbosity() = ()
-  def completer() = NullCompleter
 }
 
 object Completion {
   case class Candidates(cursor: Int, candidates: List[String]) { }
   val NoCandidates = Candidates(-1, Nil)
 
-  object NullCompleter extends ScalaCompleter {
-    def complete(buffer: String, cursor: Int): Candidates = NoCandidates
-  }
   trait ScalaCompleter {
     def complete(buffer: String, cursor: Int): Candidates
   }
