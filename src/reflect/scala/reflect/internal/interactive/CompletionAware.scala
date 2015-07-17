@@ -3,8 +3,7 @@
  * @author Paul Phillips
  */
 
-package scala.tools.nsc
-package interpreter
+package scala.reflect.internal.interactive
 
 /** An interface for objects which are aware of tab completion and
  *  will supply their own candidates and resolve their own paths.
@@ -37,7 +36,7 @@ trait CompletionAware {
    *  to other CompletionAware objects.
    */
   def completionsFor(parsed: Parsed): List[String] = {
-    import parsed.{ buffer, verbosity }
+    import parsed.{buffer, verbosity}
     val comps = completions(verbosity) filter (_ startsWith buffer)
     val exact = comps contains buffer
 

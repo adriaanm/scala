@@ -3,7 +3,14 @@
  * @author Paul Phillips
  */
 
-package scala.tools.nsc.interpreter
+package scala.reflect.internal.util
+
+private[util] object SimpleMath {
+  implicit final class DivRem(private val i: Int) extends AnyVal {
+    /** i/n + if (i % n != 0) 1 else 0 */
+    def /%(n: Int): Int = (i + n - 1) / n
+  }
+}
 
 trait Tabulator {
   def isAcross: Boolean
@@ -19,7 +26,7 @@ trait Tabulator {
   )
   protected def columnize(ss: Seq[String]): Seq[Seq[String]] = ss map (s => Seq(s))
   protected def printMultiLineColumns(items: Seq[String]): Seq[Seq[String]] = {
-    import scala.tools.nsc.interpreter.SimpleMath._
+    import SimpleMath._
     val longest     = (items map (_.length)).max
     val columnWidth = longest + marginSize
     val maxcols = (
@@ -48,7 +55,7 @@ trait Tabulator {
 /** Adjust the column width and number of columns to minimize the row count. */
 trait VariColumnTabulator extends Tabulator {
   override protected def printMultiLineColumns(items: Seq[String]): Seq[Seq[String]] = {
-    import scala.tools.nsc.interpreter.SimpleMath._
+    import SimpleMath._
     val longest  = (items map (_.length)).max
     val shortest = (items map (_.length)).min
     val fattest  = longest + marginSize
@@ -101,12 +108,5 @@ trait VariColumnTabulator extends Tabulator {
         case (s, i) => s"%-${columnWidths(i)}s" format s
       })
     }
-  }
-}
-
-private[interpreter] object SimpleMath {
-  implicit class DivRem(private val i: Int) extends AnyVal {
-    /** i/n + if (i % n != 0) 1 else 0 */
-    def /%(n: Int): Int = (i + n - 1) / n
   }
 }

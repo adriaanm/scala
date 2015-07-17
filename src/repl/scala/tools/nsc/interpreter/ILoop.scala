@@ -10,7 +10,8 @@ package interpreter
 import scala.language.{ implicitConversions, existentials }
 import scala.annotation.tailrec
 import Predef.{ println => _, _ }
-import interpreter.session._
+import scala.reflect.internal.interactive._
+import scala.reflect.internal.interactive.session._
 import StdReplTags._
 import scala.tools.asm.ClassReader
 import scala.util.Properties.{ jdkHome, javaVersion, versionString, javaVmName }
@@ -853,14 +854,14 @@ class ILoop(in0: Option[BufferedReader], protected val out: JPrintWriter)
 
       def instantiate(className: String): ReaderMaker = completer => {
         if (settings.debug) Console.println(s"Trying to instantiate a InteractiveReader from $className")
-        Class.forName(className).getConstructor(classOf[Completer]).
-          newInstance(completer).
+        Class.forName(className).getConstructor(classOf[InteractiveProps], classOf[Completer]).
+          newInstance(replProps, completer).
           asInstanceOf[InteractiveReader]
       }
 
       def mkReader(maker: ReaderMaker) =
         if (settings.noCompletion) maker(() => NoCompletion)
-        else maker(() => new JLineCompletion(intp)) // JLineCompletion is a misnomer -- it's not tied to jline
+        else maker(() => new ReplCompletion(intp))
 
       def internalClass(kind: String) = s"scala.tools.nsc.interpreter.$kind.InteractiveReader"
       val readerClasses = sys.props.get("scala.repl.reader").toStream ++ Stream(internalClass("jline"), internalClass("jline_embedded"))

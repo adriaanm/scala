@@ -3,10 +3,7 @@
  * @author Paul Phillips
  */
 
-package scala.tools.nsc
-package interpreter
-
-import util.returning
+package scala.reflect.internal.interactive
 
 trait Delimited {
   self: Parsed =>
@@ -41,7 +38,7 @@ class Parsed private (
   private var _verbosity = 0
 
   def verbosity = _verbosity
-  def withVerbosity(v: Int): this.type = returning[this.type](this)(_ => _verbosity = v)
+  def withVerbosity(v: Int): this.type = {_verbosity = v; this}
 
   def args = toArgs(buffer take cursor).toList
   def bufferHead = args.head

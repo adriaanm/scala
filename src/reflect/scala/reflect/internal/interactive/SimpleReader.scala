@@ -3,12 +3,12 @@
  * @author Stepan Koltsov
  */
 
-package scala
-package tools.nsc
-package interpreter
+package scala.reflect.internal.interactive
 
-import java.io.{ BufferedReader }
-import session.NoHistory
+import java.io.BufferedReader
+import java.io.{PrintWriter => JPrintWriter}
+
+import scala.reflect.internal.interactive.session.NoHistory
 
 /** Reads using standard JDK API */
 class SimpleReader(

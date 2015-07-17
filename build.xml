@@ -806,7 +806,7 @@ TODO:
     </path>
 
     <path id="quick.repl-jline.build.path">
-      <path refid="quick.repl.build.path"/>
+      <path refid="quick.reflect.build.path"/>
       <pathelement location="${build-quick.dir}/classes/repl-jline"/>
       <path refid="repl.deps.classpath"/>
     </path>

@@ -6,6 +6,9 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.junit.runners.JUnit4
 
+import scala.reflect.internal.util.Tabulator
+import scala.reflect.internal.util.VariColumnTabulator
+
 case class Tabby(width: Int = 80, isAcross: Boolean = false, marginSize: Int = 3) extends Tabulator
 case class VTabby(width: Int = 80, isAcross: Boolean = false, marginSize: Int = 3) extends VariColumnTabulator
 

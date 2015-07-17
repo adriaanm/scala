@@ -6,14 +6,14 @@
 package scala.tools.nsc
 package interpreter
 
+import scala.reflect.internal.interactive.{Parsed, Completion, CompletionAware}
 import Completion._
 import scala.collection.mutable.ListBuffer
 import scala.reflect.internal.util.StringOps.longestCommonPrefix
 
 // REPL completor - queries supplied interpreter for valid
 // completions based on current contents of buffer.
-// TODO: change class name to reflect it's not specific to jline (nor does it depend on it)
-class JLineCompletion(val intp: IMain) extends Completion with CompletionOutput {
+class ReplCompletion(val intp: IMain) extends Completion with CompletionOutput {
   val global: intp.global.type = intp.global
   import global._
   import definitions._
@@ -275,7 +275,7 @@ class JLineCompletion(val intp: IMain) extends Completion with CompletionOutput 
     if (parsed.isEmpty) xs map ("." + _) else xs
   }
 
-  def completer(): ScalaCompleter = new JLineTabCompletion
+  def completer(): ScalaCompleter = new TabCompletion
 
   /** This gets a little bit hairy.  It's no small feat delegating everything
    *  and also keeping track of exactly where the cursor is and where it's supposed
@@ -283,7 +283,7 @@ class JLineCompletion(val intp: IMain) extends Completion with CompletionOutput 
    *  string in the list of completions, that means we are expanding a unique
    *  completion, so don't update the "last" buffer because it'll be wrong.
    */
-  class JLineTabCompletion extends ScalaCompleter {
+  class TabCompletion extends ScalaCompleter {
     // For recording the buffer on the last tab hit
     private var lastBuf: String = ""
     private var lastCursor: Int = -1
@@ -292,7 +292,7 @@ class JLineCompletion(val intp: IMain) extends Completion with CompletionOutput 
     def isConsecutiveTabs(buf: String, cursor: Int) =
       cursor == lastCursor && buf == lastBuf
 
-    // This is jline's entry point for completion.
+    // This is the entry point for completion.
     override def complete(buf: String, cursor: Int): Candidates = {
       verbosity = if (isConsecutiveTabs(buf, cursor)) verbosity + 1 else 0
       repldbg(f"%ncomplete($buf, $cursor%d) last = ($lastBuf, $lastCursor%d), verbosity: $verbosity")

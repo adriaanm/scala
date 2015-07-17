@@ -7,32 +7,41 @@
 
 package scala.tools.nsc.interpreter.jline
 
+import java.io.IOException
+
+import scala.reflect.internal.interactive
+import scala.reflect.internal.interactive.{InteractiveProps, NoCompletion, Completion}
+import scala.reflect.internal.interactive.session.{SimpleHistory, History}
+
+import scala.reflect.internal.util.VariColumnTabulator
+
 import java.util.{Collection => JCollection, List => JList}
 
 import _root_.jline.{console => jconsole}
 import jconsole.completer.{Completer, ArgumentCompleter}
 import jconsole.history.{History => JHistory}
 
-
-import scala.tools.nsc.interpreter
-import scala.tools.nsc.interpreter.Completion
-import scala.tools.nsc.interpreter.Completion.Candidates
-import scala.tools.nsc.interpreter.session.History
-
 /**
  * Reads from the console using JLine.
  *
  * Eagerly instantiates all relevant JLine classes, so that we can detect linkage errors on `new JLineReader` and retry.
  */
-class InteractiveReader(completer: () => Completion) extends interpreter.InteractiveReader {
+class InteractiveReader(val replProps: InteractiveProps, completer: () => Completion) extends interactive.InteractiveReader {
   val interactive = true
 
-  val history: History = new JLineHistory.JLineFileHistory()
+  trait HistoryDebugging extends History {
+    override def debug(msg: String): Unit = if (replProps.debug || replProps.trace) println(msg)
+  }
+
+  val history: History =
+    try new JLineFileHistory with HistoryDebugging
+    catch { case x: Exception => new SimpleHistory with HistoryDebugging }
+
 
   private val consoleReader = {
-    val reader = new JLineConsoleReader()
+    val reader = new JLineConsoleReader
 
-    reader setPaginationEnabled interpreter.`package`.isPaged
+    reader setPaginationEnabled replProps.isPaged
 
     // ASAP
     reader setExpandEvents false
@@ -42,7 +51,8 @@ class InteractiveReader(completer: () => Completion) extends interpreter.Interac
     reader
   }
 
-  private[this] var _completion: Completion = interpreter.NoCompletion
+  private[this] var _completion: Completion = NoCompletion
+
   def completion: Completion = _completion
 
   override def postInit() = {
@@ -51,81 +61,100 @@ class InteractiveReader(completer: () => Completion) extends interpreter.Interac
     consoleReader.initCompletion(completion)
   }
 
-  def reset()                     = consoleReader.getTerminal().reset()
-  def redrawLine()                = consoleReader.redrawLineAndFlush()
+  def reset() = consoleReader.reset()
+
+  def redrawLine() = consoleReader.redrawLineAndFlush()
+
   def readOneLine(prompt: String) = consoleReader.readLine(prompt)
-  def readOneKey(prompt: String)  = consoleReader.readOneKey(prompt)
-}
 
-// implements a jline interface
-private class JLineConsoleReader extends jconsole.ConsoleReader with interpreter.VariColumnTabulator {
-  val isAcross   = interpreter.`package`.isAcross
-  val marginSize = 3
+  def readOneKey(prompt: String) = consoleReader.readOneKey(prompt)
 
-  def width  = getTerminal.getWidth()
-  def height = getTerminal.getHeight()
+  class JLineConsoleReader extends jconsole.ConsoleReader with VariColumnTabulator {
+    val marginSize = 3
 
-  private def morePrompt = "--More--"
+    def isAcross = replProps.isAcross
+    def width    = getTerminal.getWidth()
+    def height   = getTerminal.getHeight()
 
-  private def emulateMore(): Int = {
-    val key = readOneKey(morePrompt)
-    try key match {
-      case '\r' | '\n' => 1
-      case 'q' => -1
-      case _ => height - 1
-    }
-    finally {
-      eraseLine()
-      // TODO: still not quite managing to erase --More-- and get
-      // back to a scala prompt without another keypress.
-      if (key == 'q') {
-        putString(getPrompt())
-        redrawLine()
-        flush()
+    private def morePrompt = "--More--"
+
+    private def emulateMore(): Int = {
+      val key = readOneKey(morePrompt)
+      try key match {
+        case '\r' | '\n' => 1
+        case 'q' => -1
+        case _ => height - 1
+      }
+      finally {
+        eraseLine()
+        // TODO: still not quite managing to erase --More-- and get
+        // back to a scala prompt without another keypress.
+        if (key == 'q') {
+          putString(getPrompt())
+          redrawLine()
+          flush()
+        }
       }
     }
-  }
 
-  override def printColumns(items: JCollection[_ <: CharSequence]): Unit = {
-    import scala.tools.nsc.interpreter.javaCharSeqCollectionToScala
-    printColumns_(items: List[String])
-  }
+    override def printColumns(items: JCollection[_ <: CharSequence]): Unit = {
+      import scala.collection.JavaConverters._
+      printColumns_(items.asScala.toList map ("" + _))
+    }
 
-  private def printColumns_(items: List[String]): Unit = if (items exists (_ != "")) {
-    val grouped = tabulate(items)
-    var linesLeft = if (isPaginationEnabled()) height - 1 else Int.MaxValue
-    grouped foreach { xs =>
-      println(xs.mkString)
-      linesLeft -= 1
-      if (linesLeft <= 0) {
-        linesLeft = emulateMore()
-        if (linesLeft < 0)
-          return
+    private def printColumns_(items: List[String]): Unit = if (items exists (_ != "")) {
+      val grouped = tabulate(items)
+      var linesLeft = if (isPaginationEnabled()) height - 1 else Int.MaxValue
+      grouped foreach { xs =>
+        println(xs.mkString)
+        linesLeft -= 1
+        if (linesLeft <= 0) {
+          linesLeft = emulateMore()
+          if (linesLeft < 0)
+            return
+        }
       }
     }
-  }
 
-  def readOneKey(prompt: String) = {
-    this.print(prompt)
-    this.flush()
-    this.readCharacter()
-  }
+    def readOneKey(prompt: String) = {
+      this.print(prompt)
+      this.flush()
+      this.readCharacter()
+    }
 
-  def eraseLine() = resetPromptLine("", "", 0)
+    private val msgEINTR = "Interrupted system call"
+    private def restartSysCalls[R](body: => R, reset: => Unit): R =
+      try body catch {
+        case e: IOException if e.getMessage == msgEINTR => reset; body
+      }
 
-  def redrawLineAndFlush(): Unit = {
-    flush(); drawLine(); flush()
-  }
+    def reset() = getTerminal().reset()
 
-  // A hook for running code after the repl is done initializing.
-  def initCompletion(completion: Completion): Unit = {
-    this setBellEnabled false
+    override def readLine(prompt: String) =
+    // hack necessary for OSX jvm suspension because read calls are not restarted after SIGTSTP
+      if (scala.util.Properties.isMac) restartSysCalls(super.readLine(prompt), reset())
+      else super.readLine(prompt)
 
-    if (completion ne interpreter.NoCompletion) {
-      val jlineCompleter = new ArgumentCompleter(new JLineDelimiter,
+    def eraseLine() = resetPromptLine("", "", 0)
+
+    def redrawLineAndFlush(): Unit = {
+      flush()
+      drawLine()
+      flush()
+    }
+
+    // A hook for running code after the repl is done initializing.
+    def initCompletion(completion: Completion): Unit = {
+      this setBellEnabled false
+
+      if (completion ne NoCompletion) {
+        val jlineCompleter = new ArgumentCompleter(new JLineDelimiter,
           new Completer {
             val tc = completion.completer()
+
             def complete(_buf: String, cursor: Int, candidates: JList[CharSequence]): Int = {
+              import Completion.Candidates
+
               val buf = if (_buf == null) "" else _buf
               val Candidates(newCursor, newCandidates) = tc.complete(buf, cursor)
               newCandidates foreach (candidates add _)
@@ -134,10 +163,12 @@ private class JLineConsoleReader extends jconsole.ConsoleReader with interpreter
           }
         )
 
-      jlineCompleter setStrict false
+        jlineCompleter setStrict false
 
-      this addCompleter jlineCompleter
-      this setAutoprintThreshold 400 // max completion candidates without warning
+        this addCompleter jlineCompleter
+        this setAutoprintThreshold 400 // max completion candidates without warning
+      }
     }
   }
+
 }

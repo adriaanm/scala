@@ -8,11 +8,12 @@ package interpreter
 
 import Properties.{ javaVersion, javaVmName, shellPromptString, shellWelcomeString,
                     versionString, versionNumberString }
+import scala.reflect.internal.interactive.InteractiveProps
 import scala.sys._
 import Prop._
 import java.util.{ Formattable, FormattableFlags, Formatter }
 
-class ReplProps {
+class ReplProps extends InteractiveProps {
   private def bool(name: String) = BooleanProp.keyExists(name)
   private def int(name: String)  = Prop[Int](name)
 
@@ -77,4 +78,8 @@ class ReplProps {
 
   val vids = bool("scala.repl.vids")
   val maxPrintString = int("scala.repl.maxprintstring")
+
+  private def csv(p: String, v: String) = p split "," contains v
+  def isPaged: Boolean     = format.isSet && csv(format.get, "paged")
+  def isAcross: Boolean    = format.isSet && csv(format.get, "across")
 }

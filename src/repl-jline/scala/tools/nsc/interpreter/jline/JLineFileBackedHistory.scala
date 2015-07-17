@@ -5,18 +5,19 @@
 
 package scala.tools.nsc.interpreter.jline
 
-import _root_.jline.console.history.PersistentHistory
+import scala.reflect.internal.interactive.session
+import scala.reflect.io.File
 
-import scala.tools.nsc.interpreter
-import scala.reflect.io.{ File, Path }
-import scala.tools.nsc.Properties.{ propOrNone, userHome }
+import _root_.jline.console.history.PersistentHistory
 
 /** TODO: file locking.
   */
-trait FileBackedHistory extends JLineHistory with PersistentHistory {
+trait JLineFileBackedHistory extends PersistentHistory with session.History {
   def maxSize: Int
 
-  protected lazy val historyFile: File = FileBackedHistory.defaultFile
+  def defaultFile: File
+
+  protected lazy val historyFile: File = defaultFile
   private var isPersistent = true
 
   locally {
@@ -64,13 +65,13 @@ trait FileBackedHistory extends JLineHistory with PersistentHistory {
       }
     }
 
-    interpreter.repldbg("Loading " + lines.size + " into history.")
+    debug("Loading " + lines.size + " into history.")
 
     // avoid writing to the history file
     withoutSaving(lines takeRight maxSize foreach add)
     // truncate the history file if it's too big.
     if (lines.size > maxSize) {
-      interpreter.repldbg("File exceeds maximum size: truncating to " + maxSize + " entries.")
+      debug("File exceeds maximum size: truncating to " + maxSize + " entries.")
       sync()
     }
     moveToEnd()
@@ -81,13 +82,3 @@ trait FileBackedHistory extends JLineHistory with PersistentHistory {
   def purge(): Unit = historyFile.truncate()
 }
 
-object FileBackedHistory {
-  //   val ContinuationChar = '\003'
-  //   val ContinuationNL: String = Array('\003', '\n').mkString
-
-  final val defaultFileName = ".scala_history"
-
-  def defaultFile: File = File(
-    propOrNone("scala.shell.histfile") map (Path.apply) getOrElse (Path(userHome) / defaultFileName)
-  )
-}
