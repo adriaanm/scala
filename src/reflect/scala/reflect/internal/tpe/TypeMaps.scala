@@ -393,11 +393,13 @@ private[internal] trait TypeMaps {
             val word = if (variance.isPositive) "upper" else "lower"
             s"Widened lone occurrence of $tp1 inside existential to $word bound"
           }
+          // println(s"maybe: $tp1 -> $repl ($count, $containsTypeParam)")
           if (!repl.typeSymbol.isBottomClass && count == 1 && !containsTypeParam)
             debuglogResult(msg)(repl)
           else
             tp1
         case _ =>
+          // println(s"nope: $tp1")
           tp1
       }
     }

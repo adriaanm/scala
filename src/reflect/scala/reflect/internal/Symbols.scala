@@ -1735,11 +1735,7 @@ trait Symbols extends api.Symbols { self: SymbolTable =>
           // todo: what about public references to private symbols?
           if (sym.isPublic && !sym.isConstructor) {
             oldsymbuf += sym
-            newsymbuf += (
-              if (sym.isClass)
-                tp.typeSymbol.newAbstractType(sym.name.toTypeName, sym.pos).setInfo(sym.existentialBound)
-              else
-                sym.cloneSymbol(tp.typeSymbol))
+            newsymbuf += sym.classBoundSym(tp.typeSymbol)
           }
         }
         val oldsyms = oldsymbuf.toList
@@ -1757,6 +1753,24 @@ trait Symbols extends api.Symbols { self: SymbolTable =>
      */
     def existentialBound: Type
 
+    def existentialSym(owner: Symbol) = {
+      val existentialName = name match {
+        case x: TypeName => x
+        case x           => tpnme.singletonName(x)
+      }
+
+      // val fresh = owner.newExistential(name, pos)
+      // fresh setInfo (existentialBound cloneInfo fresh)
+      owner.newExistential(existentialName, pos).setInfo(existentialBound)
+    }
+
+    def classBoundSym(owner: Symbol) = {
+      val ALLOWED = (STABLE | METHOD | MUTABLE | IMPLICIT)
+
+      if (isType) owner.newAbstractType(name.toTypeName, pos).setInfo(existentialBound)
+      else owner.newValue(name.toTermName, pos, (flags & ALLOWED) | DEFERRED).setInfo(sym.tpe)
+    }
+    
     /** Reset symbol to initial state
      */
     def reset(completer: Type): this.type = {
