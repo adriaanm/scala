@@ -72,21 +72,15 @@ abstract class Constructors extends Statics with Transform with ast.TreeDSL {
     } // end of checkUninitializedReads()
 
     override def transform(tree: Tree): Tree = {
+      @inline def skip = (currentOwner eq AnyValClass) || currentOwner.isInterface || isPrimitiveValueClass(currentOwner)
+
+      // ModuleDefs are eliminated during refchecks
       tree match {
-        case cd @ ClassDef(mods0, name0, tparams0, impl0) if !cd.symbol.isInterface && !isPrimitiveValueClass(cd.symbol) =>
-          if(cd.symbol eq AnyValClass) {
-            cd
-          }
-          else {
-            checkUninitializedReads(cd)
-            val tplTransformer = new TemplateTransformer(unit, impl0)
-            treeCopy.ClassDef(cd, mods0, name0, tparams0, tplTransformer.transformed)
-          }
-        case _ =>
-          super.transform(tree)
+        case cd: ClassDef   if !skip => checkUninitializedReads(cd); super.transform(tree)
+        case impl: Template if !skip => new TemplateTransformer(unit, impl).transformed
+        case _ => super.transform(tree)
       }
     }
-
   } // ConstructorTransformer
 
   /*

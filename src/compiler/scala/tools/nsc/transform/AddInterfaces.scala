@@ -147,10 +147,7 @@ abstract class AddInterfaces extends InfoTransform { self: Erasure =>
       if ((ifaceDecls lookup nme.MIXIN_CONSTRUCTOR) == NoSymbol) {
         log("Adding mixin constructor to " + implClass)
 
-        decls enter (
-          implClass.newMethod(nme.MIXIN_CONSTRUCTOR, implClass.pos)
-            setInfo MethodType(Nil, UnitTpe)
-        )
+        decls enter implClass.newMixinConstructor
       }
 
       for (sym <- ifaceDecls) {

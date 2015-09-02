@@ -298,6 +298,9 @@ trait Symbols extends api.Symbols { self: SymbolTable =>
     def newClassConstructor(pos: Position): MethodSymbol =
       newConstructor(pos) setInfo MethodType(Nil, this.tpe)
 
+    final def newMixinConstructor: MethodSymbol =
+      newMethod(nme.MIXIN_CONSTRUCTOR, pos) setInfo MethodType(Nil, UnitTpe)
+
     def newLinkedModule(clazz: Symbol, newFlags: Long = 0L): ModuleSymbol = {
       val m = newModuleSymbol(clazz.name.toTermName, clazz.pos, MODULE | newFlags)
       connectModuleToClass(m, clazz.asInstanceOf[ClassSymbol])
