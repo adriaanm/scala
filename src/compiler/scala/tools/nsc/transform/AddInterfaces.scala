@@ -208,6 +208,7 @@ abstract class AddInterfaces extends InfoTransform { self: Erasure =>
       if (clazz.needsImplClass)
         implClass(clazz setFlag lateINTERFACE) // generate an impl class
 
+      // TODO: move parent-normalization for traits to Erasure
       val parents1 = parents match {
         case Nil      => Nil
         case hd :: tl =>
@@ -273,19 +274,10 @@ abstract class AddInterfaces extends InfoTransform { self: Erasure =>
     new ChangeOwnerAndReturnTraverser(newTree.symbol, impl)(newTree setSymbol impl)
   }
 
-  /** Add mixin constructor definition
-   *    def $init$(): Unit = ()
-   *  to `stats` unless there is already one.
-   */
-  private def addMixinConstructorDef(clazz: Symbol, stats: List[Tree]): List[Tree] =
-    if (treeInfo.firstConstructor(stats) != EmptyTree) stats
-    else DefDef(clazz.primaryConstructor, Block(List(), Literal(Constant(())))) :: stats
-
   private def implTemplate(clazz: Symbol, templ: Template): Template = atPos(templ.pos) {
-    val templ1 = (
-      Template(templ.parents, noSelfType, addMixinConstructorDef(clazz, templ.body map implMemberDef))
-        setSymbol clazz.newLocalDummy(templ.pos)
-    )
+    val templ1 = Template(templ.parents, noSelfType, templ.body map implMemberDef).
+      setSymbol(clazz.newLocalDummy(templ.pos))
+
     templ1.changeOwner(templ.symbol.owner -> clazz, templ.symbol -> templ1.symbol)
     templ1
   }
@@ -295,35 +287,6 @@ abstract class AddInterfaces extends InfoTransform { self: Erasure =>
       case cd: ClassDef if cd.symbol.needsImplClass =>
         val clazz = implClass(cd.symbol).initialize
         ClassDef(clazz, implTemplate(clazz, cd.impl))
-    }
-  }
-
-  /** Add calls to supermixin constructors
-   *    `super[mix].$init$()`
-   *  to tree, which is assumed to be the body of a constructor of class clazz.
-   */
-  private def addMixinConstructorCalls(tree: Tree, clazz: Symbol): Tree = {
-    def mixinConstructorCall(impl: Symbol): Tree = atPos(tree.pos) {
-      Apply(Select(This(clazz), impl.primaryConstructor), List())
-    }
-    val mixinConstructorCalls: List[Tree] = {
-      for (mc <- clazz.mixinClasses.reverse
-           if mc.hasFlag(lateINTERFACE))
-      yield mixinConstructorCall(implClass(mc))
-    }
-    tree match {
-      case Block(Nil, expr) =>
-        // AnyVal constructor - have to provide a real body so the
-        // jvm doesn't throw a VerifyError. But we can't add the
-        // body until now, because the typer knows that Any has no
-        // constructor and won't accept a call to super.init.
-        assert((clazz isSubClass AnyValClass) || clazz.info.parents.isEmpty, clazz)
-        Block(List(Apply(gen.mkSuperInitCall, Nil)), expr)
-
-      case Block(stats, expr) =>
-        // needs `hasSymbolField` check because `supercall` could be a block (named / default args)
-        val (presuper, supercall :: rest) = stats span (t => t.hasSymbolWhich(_ hasFlag PRESUPER))
-        treeCopy.Block(tree, presuper ::: (supercall :: mixinConstructorCalls ::: rest), expr)
     }
   }
 
@@ -337,8 +300,6 @@ abstract class AddInterfaces extends InfoTransform { self: Erasure =>
         case ClassDef(mods, _, _, impl) if sym.needsImplClass =>
           implClass(sym).initialize // to force lateDEFERRED flags
           copyClassDef(tree)(mods = mods | INTERFACE, impl = ifaceTemplate(impl))
-        case DefDef(_,_,_,_,_,_) if sym.isClassConstructor && sym.isPrimaryConstructor && sym.owner != ArrayClass =>
-          deriveDefDef(tree)(addMixinConstructorCalls(_, sym.owner)) // (3)
         case Template(parents, self, body) =>
           val parents1 = sym.owner.info.parents map (t => TypeTree(t) setPos tree.pos)
           treeCopy.Template(tree, parents1, noSelfType, body)

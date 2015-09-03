@@ -13,7 +13,7 @@ import symtab.Flags._
 /** This phase converts classes with parameters into Java-like classes with
  *  fields, which are assigned to from constructors.
  */
-abstract class Constructors extends Statics with Transform with ast.TreeDSL {
+abstract class Constructors extends Statics with InfoTransform with ast.TreeDSL {
   import global._
   import definitions._
 
@@ -25,6 +25,16 @@ abstract class Constructors extends Statics with Transform with ast.TreeDSL {
 
   private val guardedCtorStats: mutable.Map[Symbol, List[Tree]] = perRunCaches.newMap[Symbol, List[Tree]]()
   private val ctorParams: mutable.Map[Symbol, List[Symbol]] = perRunCaches.newMap[Symbol, List[Symbol]]()
+
+  // Forcibly add a mixin constructor to traits without a primary constructor
+  // TODO: make this unnecessary by adding a constructor from the start to traits that don't explicitly define one
+  override def transformInfo(sym: Symbol, tp: Type): Type = tp match {
+    case ClassInfoType(parents, decls, clazz) if clazz.isTrait && !clazz.primaryConstructor.exists =>
+      // no need to add to non-trait classes, if they don't have one by now, they never will (???)
+      decls enter clazz.newMixinConstructor
+      tp
+    case tp => tp
+  }
 
   class ConstructorTransformer(unit: CompilationUnit) extends Transformer {
     /*
@@ -72,12 +82,15 @@ abstract class Constructors extends Statics with Transform with ast.TreeDSL {
     } // end of checkUninitializedReads()
 
     override def transform(tree: Tree): Tree = {
-      @inline def skip = (currentOwner eq AnyValClass) || currentOwner.isInterface || isPrimitiveValueClass(currentOwner)
-
+      // Skip interfaces (they have no concrete methods, so no work to be done)
       // ModuleDefs are eliminated during refchecks
       tree match {
-        case cd: ClassDef   if !skip => checkUninitializedReads(cd); super.transform(tree)
-        case impl: Template if !skip => new TemplateTransformer(unit, impl).transformed
+        case cd: ClassDef   if !currentOwner.isInterface => checkUninitializedReads(cd); super.transform(tree)
+        case impl: Template if !currentOwner.isInterface =>
+          // must run our infotransformer so that we can always find a primary ctor
+          exitingPhase(currentRun.constructorsPhase)(
+            new TemplateTransformer(unit, impl).transformed
+          )
         case _ => super.transform(tree)
       }
     }
@@ -462,7 +475,16 @@ abstract class Constructors extends Statics with Transform with ast.TreeDSL {
     private val (primaryConstr, _primaryConstrParams, primaryConstrBody) = stats collectFirst {
       case dd@DefDef(_, _, _, vps :: Nil, _, rhs: Block) if dd.symbol.isPrimaryConstructor => (dd, vps map (_.symbol), rhs)
     } getOrElse {
-      abort("no constructor in template: impl = " + impl)
+      // TODO: make this unnecessary by construction (add Trees along with symbols! see also note in infoTransform above)
+      // the constructor should've (at the latest) been added by our infoTransform
+      assert(clazz.primaryConstructor.exists, s"no primary constructor for $clazz")
+      // this is pretty rare -- during bootstrap, it only triggers for:
+      //    [strap.library] Function[012]$mc*$sp$class, Product[12]$mc*$sp$class, ScanTree$class
+      //    [strap.reflect] Reifiers$class, SyntacticTermIdentExtractor$class
+      // println(s"adding constructor body to template of $clazz")
+      val rhs = Block(Nil, Literal(Constant(())))
+      val dd = localTyper.typedPos(impl.pos)(DefDef(clazz.primaryConstructor, rhs))
+      (dd, Nil, rhs)
     }
 
 
@@ -587,9 +609,19 @@ abstract class Constructors extends Statics with Transform with ast.TreeDSL {
       // The early initialized field definitions of the class (these are the class members)
       val presupers = treeInfo.preSuperFields(stats)
 
-      // generate code to copy pre-initialized fields
-      for (stat <- primaryConstrBody.stats) {
+      val primaryCtorStats = primaryConstrBody.stats
+
+      if (primaryCtorStats.isEmpty && !clazz.isImplClass) {
+        // AnyVal constructor - have to provide a real body so the
+        // jvm doesn't throw a VerifyError. But we can't add the
+        // body until now, because the typer knows that Any has no
+        // constructor and won't accept a call to super.init.
+        //assert((clazz isSubClass AnyValClass) || clazz.info.parents.isEmpty, clazz)
+        assert((clazz eq AnyValClass) || isPrimitiveValueClass(clazz), clazz)
+        constrStatBuf += localTyper.typedPos(primaryConstr.pos) { Apply(gen.mkSuperInitCall, Nil) }
+      } else for (stat <- primaryCtorStats) {
         constrStatBuf += stat
+        // generate code to copy pre-initialized fields
         stat match {
           case ValDef(mods, name, _, _) if mods hasFlag PRESUPER =>
             // stat is the constructor-local definition of the field value
@@ -631,7 +663,7 @@ abstract class Constructors extends Statics with Transform with ast.TreeDSL {
           case _: ClassDef => defBuf += new ConstructorTransformer(unit).transform(stat)
 
           // Triage methods -- they all end up in the template --
-          // regular ones go to `defBuf`, secondary contructors go to `auxConstructorBuf`.
+          // regular ones go (to `defBuf|| currentOwner.isImplClass)`, secondary contructors go to `auxConstructorBuf`.
           // The primary constructor is dealt with separately (we're massaging it here).
           case _: DefDef if statSym.isPrimaryConstructor => ()
           case _: DefDef if statSym.isConstructor => auxConstructorBuf += stat
@@ -685,6 +717,16 @@ abstract class Constructors extends Statics with Transform with ast.TreeDSL {
         copyParam(acc, parameter(acc))
       }
 
+      // Mixin supercalls go after the existing supercalls.
+      // Filter out interfaces from mixinClasses (traits without concrete methods) since they don't have constructors
+      // (example: Serializable)
+      def mixinConstructorCalls: List[Tree] =
+        if (primaryConstr.symbol.isClassConstructor)
+          clazz.mixinClasses.reverse.collect { case mixinWithImplClass if mixinWithImplClass hasFlag lateINTERFACE =>
+            localTyper.typedPos(impl.pos)(Apply(Select(This(clazz), mixinWithImplClass.implClass.primaryConstructor), Nil))
+          }
+        else Nil
+
       // Return a pair consisting of (all statements up to and including superclass and trait constr calls, rest)
       def splitAtSuper(stats: List[Tree]) = {
         def isConstr(tree: Tree): Boolean = tree match {
@@ -693,13 +735,14 @@ abstract class Constructors extends Statics with Transform with ast.TreeDSL {
         }
         val (pre, rest0)       = stats span (!isConstr(_))
         val (supercalls, rest) = rest0 span (isConstr(_))
-        (pre ::: supercalls, rest)
+        (pre ::: supercalls ::: mixinConstructorCalls, rest)
       }
 
       val (uptoSuperStats, remainingConstrStats) = splitAtSuper(constructorStats)
       val (delayedHookDefs, remainingConstrStatsDelayedInit) =
         if (isDelayedInitSubclass && remainingConstrStats.nonEmpty) delayedInitDefsAndConstrStats(defs, remainingConstrStats)
         else (Nil, remainingConstrStats)
+
 
       // Assemble final constructor
       val primaryConstructor = deriveDefDef(primaryConstr)(_ => {
@@ -713,12 +756,13 @@ abstract class Constructors extends Statics with Transform with ast.TreeDSL {
 
       // Unlink all fields that can be dropped from class scope
       // Iterating on toList is cheaper (decls.filter does a toList anyway)
+      // TODO: this should be part of the infoTransform, but how do we do that without access to trees??
       val decls = clazz.info.decls
       decls.toList.filter(omittableSym).foreach(decls.unlink)
 
       // Eliminate all field/accessor definitions that can be dropped from template
       // We never eliminate delayed hooks or the constructors, so, only filter `defs`.
-      val prunedStats = (defs filterNot omittableStat) ::: delayedHookDefs ::: constructors
+      val prunedStats = constructors ::: (defs filterNot omittableStat) ::: delayedHookDefs
 
       //  Add the static initializers
       if (classInitStats.isEmpty) deriveTemplate(impl)(_ => prunedStats)
