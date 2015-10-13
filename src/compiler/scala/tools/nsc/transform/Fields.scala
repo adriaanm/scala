@@ -50,6 +50,7 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
   private def excludedAccessorOrFieldByFlags(statSym: Symbol): Boolean = statSym hasFlag LAZY | PRESUPER
 
   // used for internal communication between info and tree transform of this phase -- not pickled, not in initialflags
+  // TODO: reuse TRANS_FLAG for NEEDS_TREES
   override def phaseNewFlags: Long = NEEDS_TREES | OVERRIDDEN_TRAIT_SETTER
 
   final val TRAIT_SETTER_FLAGS = NEEDS_TREES | DEFERRED
@@ -77,6 +78,15 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
         | (if (accessor hasFlag STABLE) 0 else MUTABLE)
       )
 
+
+  def checkAndClearOverridden(setter: Symbol) = checkAndClear(OVERRIDDEN_TRAIT_SETTER)(setter)
+  def checkAndClearNeedsTrees(setter: Symbol) = checkAndClear(NEEDS_TREES)(setter)
+  def checkAndClear(flag: Long)(sym: Symbol) =
+    sym.hasFlag(flag) match {
+      case overridden =>
+        sym resetFlag flag
+        overridden
+    }
 
 
   private def isOverriddenAccessor(member: Symbol, site: Symbol): Boolean = {
@@ -175,6 +185,7 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
           // If we don't add notPROTECTED to the synthesized one, the member will not be seen as overriding the trait member.
           // Therefore, addForwarders's call to membersBasedOnFlags would see the deferred member in the trait,
           // instead of the concrete (desired) one in the class
+          // TODO: encapsulate as makeNotProtected, similar to makeNotPrivate (also do moduleClass, e.g.)
           if (accessor hasFlag PROTECTED) accessor setFlag notPROTECTED
 
           // must not reset LOCAL, as we must maintain protected[this]ness to allow that variance hole
@@ -335,15 +346,14 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
         Select(This(clazz), field)
       }
 
-      val accessorsAndFieldsNeedingTrees = clazz.info.decls.toList.filter(_ hasFlag NEEDS_TREES)
-      accessorsAndFieldsNeedingTrees foreach (_ resetFlag NEEDS_TREES) // emitting the needed trees now
+      val accessorsAndFieldsNeedingTrees = clazz.info.decls.toList.filter(checkAndClearNeedsTrees)
 
 //      println(s"accessorsAndFieldsNeedingTrees: $accessorsAndFieldsNeedingTrees")
       def setterBody(setter: Symbol): Tree = {
         // trait setter in trait
         if (clazz.isTrait) EmptyTree
         // trait setter for overridden val in class
-        else if (setter hasFlag OVERRIDDEN_TRAIT_SETTER) { setter resetFlag OVERRIDDEN_TRAIT_SETTER ; mkTypedUnit(setter.pos) }
+        else if (checkAndClearOverridden(setter)) mkTypedUnit(setter.pos)
         // trait val/var setter mixed into class
         else Assign(fieldAccess(setter), Ident(setter.firstParam))
       }
