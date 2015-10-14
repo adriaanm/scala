@@ -309,17 +309,22 @@ abstract class LambdaLift extends InfoTransform {
       afterOwnPhase {
         for ((owner, freeValues) <- free.toList) {
           val newFlags = SYNTHETIC | (
-            if (owner.isClass) PARAMACCESSOR | PrivateLocal
+            if (owner.isTrait) PARAMACCESSOR | TRANS_FLAG // will need an impl in subclass that mixes in the trait
+            else if (owner.isClass) PARAMACCESSOR | PrivateLocal
             else PARAM)
 
           proxies(owner) =
             for (fv <- freeValues.toList) yield {
               val proxyName = proxyNames.getOrElse(fv, fv.name)
-              debuglog(s"new proxy ${proxyName} in ${owner.fullLocationString}")
-              val proxy = owner.newValue(proxyName.toTermName, owner.pos, newFlags.toLong) setInfo fv.info
+              println(s"new proxy ${proxyName} in ${owner.fullLocationString}")
+              val proxy =
+                if (owner.isTrait) owner.newMethod(proxyName.toTermName, owner.pos, newFlags.toLong) setInfo MethodType(Nil, fv.info)
+                else owner.newValue(proxyName.toTermName, owner.pos, newFlags.toLong) setInfo fv.info
               if (owner.isClass) owner.info.decls enter proxy
               proxy
             }
+
+          proxies(owner.toInterface) = proxies(owner)
         }
       }
     }
@@ -368,7 +373,11 @@ abstract class LambdaLift extends InfoTransform {
 
       qual match {
         case EmptyTree => EmptyTree
-        case qual      => Select(qual, sym) setType sym.tpe
+        case qual      =>
+          val sel = Select(qual, sym) setType sym.tpe
+
+          if (sym.isParamAccessor && (sym hasFlag TRANS_FLAG)) Apply(sel, Nil) setType sym.tpe.finalResultType
+          else sel
       }
     }
 
@@ -379,19 +388,43 @@ abstract class LambdaLift extends InfoTransform {
 
     def freeArgsOrNil(sym: Symbol) = free.getOrElse(sym, Nil).toList
 
-    private def freeArgs(sym: Symbol): List[Symbol] =
-      freeArgsOrNil(sym)
+    private def transformApply(tree: Apply) = {
+      val Apply(fn, args) = tree
+      val sym = tree.symbol
+      val pos = tree.pos
 
-    private def addFreeArgs(pos: Position, sym: Symbol, args: List[Tree]) =
-      freeArgs(sym) match {
-        case Nil => args
-        case fvs => addFree(sym, free = fvs map (fv => atPos(pos)(proxyRef(fv))), original = args)
+      if (sym.isMethod && sym.isConstructor && sym.owner.isTrait) {
+        // TODO: add types / symbols
+        val inits = freeParams(currentOwner).map { ctorParam =>
+           ugh, since we just mutate trees without first transforming infos, we can't get to the symbol
+          val proxyFieldSym = currentClass.info.decl(ctorParam.name)
+          val proxyField = gen.mkAttributedSelect(gen.mkAttributedThis(currentClass), proxyFieldSym)
+
+          atPos(currentOwner.pos)(Assign(proxyField, Ident(ctorParam))) setType BoxedUnitTpe
+        }
+        Block(inits, tree) setType tree.tpe setPos tree.pos
+      } else {
+        val newArgs =
+          freeArgsOrNil(sym) match {
+            case Nil => args
+            case fvs => addFree (sym, free = fvs map (fv => atPos (pos) (proxyRef (fv) ) ), original = args)
+          }
+
+        treeCopy.Apply(tree, fn, newArgs)
       }
+    }
 
     def proxiesOrNil(sym: Symbol) = proxies.getOrElse(sym, Nil)
 
+    private def mixinProxies(mixin: Symbol): List[Symbol] = {
+      proxiesOrNil(mixin) map (mixedin => mixedin.cloneSymbol setFlag TRANS_FLAG)
+    }
+
     private def freeParams(sym: Symbol): List[Symbol] =
-      proxiesOrNil(sym)
+      if (sym.isMethod && sym.isConstructor && sym.owner.isTrait) Nil
+      else if (sym.isClass && !sym.isTrait)
+        proxiesOrNil(sym) ++ (sym.mixinClasses flatMap mixinProxies)
+      else proxiesOrNil(sym)
 
     private def addFreeParams(tree: Tree, sym: Symbol): Tree =
       tree match {
@@ -407,11 +440,30 @@ abstract class LambdaLift extends InfoTransform {
             copyDefDef(tree)(vparamss = List(addFree(sym, free = paramDefs, original = vparams)))
           }
 
-        case ClassDef(_, _, _, _) =>
+        case ClassDef(_, _, _, _) if !sym.isTrait =>
           val freeParamDefs = freeParams(sym) map (p => ValDef(p) setPos tree.pos setType NoType)
 
           if (freeParamDefs isEmpty) tree
           else deriveClassDef(tree)(impl => deriveTemplate(impl)(_ ::: freeParamDefs))
+
+        case ClassDef(_, _, _, _) =>
+          // SI-2897, SI-6231
+          // Disabled attempt to to add getters to freeParams
+          // this does not work yet. Problem is that local symbols need local names
+          // and references to local symbols need to be transformed into
+          // method calls to setters.
+          // def paramGetter(param: Symbol): Tree = {
+          //   val getter = param.newGetter setFlag TRANS_FLAG resetFlag PARAMACCESSOR // mark because we have to add them to interface
+          //   sym.info.decls.enter(getter)
+          //   val rhs = Select(gen.mkAttributedThis(sym), param) setType param.tpe
+          //   DefDef(getter, rhs) setPos tree.pos setType NoType
+          // }
+          val ps = freeParams(sym)
+          if (ps isEmpty) tree
+          else {
+            val freeParams = ps map (p => DefDef(p, EmptyTree) setPos tree.pos setType NoType)
+            deriveClassDef(tree)(impl => deriveTemplate(impl)(_ ::: freeParams))
+          }
 
         case _ => tree
       }
@@ -504,8 +556,7 @@ abstract class LambdaLift extends InfoTransform {
         case Return(expr) =>
           assert(sym == currentMethod, sym)
           tree
-        case Apply(fn, args) =>
-          treeCopy.Apply(tree, fn, addFreeArgs(tree.pos, sym, args))
+        case tree: Apply => transformApply(tree)
         case Assign(Apply(TypeApply(sel @ Select(qual, _), _), List()), rhs) =>
           // eliminate casts introduced by selecting a captured variable field
           // on the lhs of an assignment.
