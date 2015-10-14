@@ -46,7 +46,7 @@ abstract class Mixin extends InfoTransform with ast.TreeDSL {
        sym.owner.isImplClass
     && sym.isMethod
     && (!sym.isModule || sym.hasFlag(PRIVATE | LIFTED))
-    && (!(sym hasFlag (ACCESSOR | SUPERACCESSOR)) || sym.isLazy || !(sym hasFlag SYNTHESIZE_IMPL_IN_SUBCLASS))
+    && (!(sym hasFlag (ACCESSOR | SUPERACCESSOR)) || (sym hasFlag LAZY | PARAMACCESSOR)|| !(sym hasFlag SYNTHESIZE_IMPL_IN_SUBCLASS))
   )
 
   /** A member of a trait is static only if it belongs only to the
@@ -159,7 +159,7 @@ abstract class Mixin extends InfoTransform with ast.TreeDSL {
   /** Add given member to given class, and mark member as mixed-in.
    */
   def addMember(clazz: Symbol, member: Symbol): Symbol = {
-    debuglog("new member of " + clazz + ":" + member.defString)
+//    println(s"mixing into $clazz: ${member.defString}")
     clazz.info.decls enter member setFlag MIXEDIN
   }
   def cloneAndAddMember(mixinClass: Symbol, mixinMember: Symbol, clazz: Symbol): Symbol =
@@ -288,16 +288,18 @@ abstract class Mixin extends InfoTransform with ast.TreeDSL {
     def mixinTraitMembers(mixinClass: Symbol) {
       // For all members of a trait's interface do:
       for (mixinMember <- mixinClass.info.decls) {
-        if (isConcreteAccessor(mixinMember) && mixinMember.isLazy) {
+        if (isConcreteAccessor(mixinMember) && (mixinMember hasFlag LAZY | PARAMACCESSOR)) {
           if (isOverriddenAccessor(mixinMember, clazz.info.baseClasses))
             devWarning(s"Overridden concrete accessor: ${mixinMember.fullLocationString}")
           else {
             // mixin field accessors
             val mixedInAccessor = cloneAndAddMixinMember(mixinClass, mixinMember)
-            initializer(mixedInAccessor) = (
-              implClass(mixinClass).info.decl(mixinMember.name)
-                orElse abort("Could not find initializer for " + mixinMember.name)
-            )
+            if (mixinMember hasFlag LAZY)
+              initializer(mixedInAccessor) = (
+                implClass(mixinClass).info.decl(mixinMember.name)
+                  orElse abort("Could not find initializer for " + mixinMember.name)
+                )
+
             if (!mixinMember.isSetter)
               mixinMember.tpe match {
                 case MethodType(Nil, ConstantType(_)) =>
@@ -320,7 +322,7 @@ abstract class Mixin extends InfoTransform with ast.TreeDSL {
 
                   val newFlags = (
                       ( PrivateLocal )
-                    | ( mixinMember getFlag MUTABLE | LAZY)
+                    | ( mixinMember getFlag MUTABLE | LAZY | PARAMACCESSOR )
                     | ( if (mixinMember.hasStableFlag) 0 else MUTABLE )
                   )
 
@@ -1063,7 +1065,7 @@ abstract class Mixin extends InfoTransform with ast.TreeDSL {
         }
         // if class is not a trait add accessor definitions
         else if (!clazz.isTrait) {
-          if (isConcreteAccessor(sym) && sym.isLazy) {
+          if (isConcreteAccessor(sym) && (sym hasFlag LAZY | PARAMACCESSOR)) {
             // add accessor definitions
             addDefDef(sym, {
               if (sym.isSetter) {
@@ -1090,7 +1092,7 @@ abstract class Mixin extends InfoTransform with ast.TreeDSL {
 
             addDefDef(sym, rhs1)
           }
-          else if (!sym.isMethod && sym.isLazy) {
+          else if (!sym.isMethod && (sym hasFlag LAZY | PARAMACCESSOR)) {
             // add fields
             addValDef(sym)
           }

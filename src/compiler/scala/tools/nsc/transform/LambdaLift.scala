@@ -148,7 +148,7 @@ abstract class LambdaLift extends InfoTransform {
      *  }
      */
     private def markFree(sym: Symbol, enclosure: Symbol): Boolean = {
-      println(s"mark free: ${sym.fullLocationString} marked free in $enclosure")
+//      println(s"mark free: ${sym.fullLocationString} marked free in $enclosure")
       (enclosure == sym.owner.logicallyEnclosingMember) || {
         debuglog("%s != %s".format(enclosure, sym.owner.logicallyEnclosingMember))
         if (enclosure.isPackageClass || !markFree(sym, enclosure.skipConstructor.owner.logicallyEnclosingMember)) false
@@ -167,7 +167,7 @@ abstract class LambdaLift extends InfoTransform {
     }
 
     private def markCalled(sym: Symbol, owner: Symbol) {
-      println(s"mark called: $sym of ${sym.owner} is called by $owner")
+//      println(s"mark called: $sym of ${sym.owner} is called by $owner")
       symSet(called, owner) += sym
       if (sym.enclClass != owner.enclClass) calledFromInner += sym
     }
@@ -175,7 +175,7 @@ abstract class LambdaLift extends InfoTransform {
     /** The traverse function */
     private val freeVarTraverser = new Traverser {
       override def traverse(tree: Tree) {
-       try { //debug
+//       try { //debug
         val sym = tree.symbol
         tree match {
           case ClassDef(_, _, _, _) =>
@@ -222,11 +222,11 @@ abstract class LambdaLift extends InfoTransform {
           case _ =>
         }
         super.traverse(tree)
-       } catch {//debug
-         case ex: Throwable =>
-           Console.println(s"$ex while traversing $tree")
-           throw ex
-       }
+//       } catch {//debug
+//         case ex: Throwable =>
+//           Console.println(s"$ex while traversing $tree")
+//           throw ex
+//       }
       }
     }
 
