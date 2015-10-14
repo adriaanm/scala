@@ -148,7 +148,7 @@ abstract class LambdaLift extends InfoTransform {
      *  }
      */
     private def markFree(sym: Symbol, enclosure: Symbol): Boolean = {
-      debuglog("mark free: " + sym.fullLocationString + " marked free in " + enclosure)
+      println(s"mark free: ${sym.fullLocationString} marked free in $enclosure")
       (enclosure == sym.owner.logicallyEnclosingMember) || {
         debuglog("%s != %s".format(enclosure, sym.owner.logicallyEnclosingMember))
         if (enclosure.isPackageClass || !markFree(sym, enclosure.skipConstructor.owner.logicallyEnclosingMember)) false
@@ -158,7 +158,7 @@ abstract class LambdaLift extends InfoTransform {
             ss += sym
             renamable += sym
             changedFreeVars = true
-            debuglog("" + sym + " is free in " + enclosure)
+            debuglog(s"$sym is free in $enclosure")
             if (sym.isVariable) sym setFlag CAPTURED
           }
           !enclosure.isClass
@@ -167,7 +167,7 @@ abstract class LambdaLift extends InfoTransform {
     }
 
     private def markCalled(sym: Symbol, owner: Symbol) {
-      debuglog("mark called: " + sym + " of " + sym.owner + " is called by " + owner)
+      println(s"mark called: $sym of ${sym.owner} is called by $owner")
       symSet(called, owner) += sym
       if (sym.enclClass != owner.enclClass) calledFromInner += sym
     }
@@ -240,7 +240,7 @@ abstract class LambdaLift extends InfoTransform {
 
       do {
         changedFreeVars = false
-        for (caller <- called.keys ; callee <- called(caller) ; fvs <- free get callee ; fv <- fvs)
+        for ((caller, callees) <- called ; callee <- callees ; fvs <- free get callee ; fv <- fvs)
           markFree(fv, caller)
       } while (changedFreeVars)
 
@@ -468,12 +468,11 @@ abstract class LambdaLift extends InfoTransform {
     private def postTransform(tree: Tree, isBoxedRef: Boolean = false): Tree = {
       val sym = tree.symbol
       tree match {
-        case ClassDef(_, _, _, _) =>
-          val tree1 = addFreeParams(tree, sym)
-          if (sym.isLocalToBlock) liftDef(tree1) else tree1
-        case DefDef(_, _, _, _, _, _) =>
-          val tree1 = addFreeParams(tree, sym)
-          if (sym.isLocalToBlock) liftDef(tree1) else tree1
+        case _: ClassDef | _: DefDef =>
+          val withFreeParams = addFreeParams(tree, sym)
+          if (sym.isLocalToBlock) liftDef(withFreeParams)
+          else withFreeParams
+
         case ValDef(mods, name, tpt, rhs) =>
           if (sym.isCapturedVariable) {
             val tpt1 = TypeTree(sym.tpe) setPos tpt.pos
