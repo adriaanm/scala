@@ -468,10 +468,16 @@ class Global(var currentSettings: Settings, var reporter: Reporter)
     val runsRightAfter = None
   } with Pickler
 
+  object API extends {
+    val global: Global.this.type = Global.this
+    val runsAfter = List("pickler")
+    val runsRightAfter = None
+  } with scala.tools.sbt.ExtractAPI
+
   // phaseName = "refchecks"
   override object refChecks extends {
     val global: Global.this.type = Global.this
-    val runsAfter = List("pickler")
+    val runsAfter = List("xsbt-api")
     val runsRightAfter = None
   } with RefChecks
 
@@ -619,6 +625,7 @@ class Global(var currentSettings: Settings, var reporter: Reporter)
       superAccessors          -> "add super accessors in traits and nested classes",
       extensionMethods        -> "add extension methods for inline classes",
       pickler                 -> "serialize symbol tables",
+      API                     -> "summarize symbol tables as API for sbt",
       refChecks               -> "reference/override checking, translate nested objects",
       uncurry                 -> "uncurry, translate function values to anonymous classes",
       tailCalls               -> "replace tail calls by jumps",
