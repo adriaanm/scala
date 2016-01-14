@@ -72,11 +72,14 @@ abstract class ExtractAPI extends SubComponent {
       Arrays.sort(deps)
       Arrays.sort(inhDeps)
 
-      println(s"[usedNames for $sourceFile]\t${names.mkString(",")}")
-      println(s"[topLevelDependencies for $sourceFile]\t${deps.mkString(",")}")
-      println(s"[topLevelInheritanceDependencies for $sourceFile]\t${inhDeps.mkString(",")}")
-      println(s"[API for $sourceFile]")
-      println(DefaultShowAPI(source))
+      val pw = Path(sourceFile).changeExtension("api").toFile.printWriter()
+      try {
+        pw.println(s"// usedNames: ${names.mkString(",")}")
+        pw.println(s"// topLevelDependencies: ${deps.mkString(",")}")
+        pw.println(s"// topLevelInheritanceDependencies: ${inhDeps.mkString(",")}")
+        pw.println()
+        pw.println(DefaultShowAPI(source))
+      } finally pw.close()
 
       if (callback != null) {
         callback.api(sourceFile, source)
