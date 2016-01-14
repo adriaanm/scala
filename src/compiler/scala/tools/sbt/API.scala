@@ -65,9 +65,16 @@ abstract class ExtractAPI extends SubComponent {
       val source = new xsbti.api.SourceAPI(apiTraverser.packages.toArray.map(new xsbti.api.Package(_)), apiTraverser.defs.toArray)
       apiTraverser.forceStructures()
 
-      println(s"[usedNames for $sourceFile]\t${apiTraverser.usedNames.mkString(",")}")
-      println(s"[topLevelDependencies for $sourceFile]\t${apiTraverser.topLevelDependencies.mkString(",")}")
-      println(s"[topLevelInheritanceDependencies for $sourceFile]\t${apiTraverser.topLevelInheritanceDependencies.mkString(",")}")
+      val names   = apiTraverser.usedNames.map(_.toString).toArray[Object]
+      val deps    = apiTraverser.topLevelDependencies.map(_.toString).toArray[Object]
+      val inhDeps = apiTraverser.topLevelInheritanceDependencies.map(_.toString).toArray[Object]
+      Arrays.sort(names)
+      Arrays.sort(deps)
+      Arrays.sort(inhDeps)
+
+      println(s"[usedNames for $sourceFile]\t${names.mkString(",")}")
+      println(s"[topLevelDependencies for $sourceFile]\t${deps.mkString(",")}")
+      println(s"[topLevelInheritanceDependencies for $sourceFile]\t${inhDeps.mkString(",")}")
       println(s"[API for $sourceFile]")
       println(DefaultShowAPI(source))
 
