@@ -121,14 +121,8 @@ abstract class ExtractAPI extends SubComponent {
         }
       }
 
-    private def flatname(s: Symbol, separator: Char) =
-      atPhase(currentRun.flattenPhase.next) {s fullName separator}
-
-    protected def isTopLevelModule(sym: Symbol): Boolean =
-      atPhase(currentRun.picklerPhase.next) {
-        sym.isModuleClass && !sym.isImplClass && !sym.isNestedClass
-      }
-
+    private def flatname(s: Symbol, separator: Char) = exitingFlatten { s fullName separator }
+    protected def isTopLevelModule(sym: Symbol): Boolean = exitingPickler { sym.isModuleClass && !sym.isImplClass && !sym.isNestedClass }
   }
 
 
@@ -323,16 +317,15 @@ abstract class ExtractAPI extends SubComponent {
         )
       }
 
-    private def annotations(in: Symbol, s: Symbol): Array[xsbti.api.Annotation] =
-      atPhase(currentRun.typerPhase) {
-        val base = if (s.hasFlag(Flags.ACCESSOR)) s.accessed else NoSymbol
-        val b = if (base == NoSymbol) s else base
-        // annotations from bean methods are not handled because:
-        //  a) they are recorded as normal source methods anyway
-        //  b) there is no way to distinguish them from user-defined methods
-        val associated = List(b, b.getter(b.enclClass), b.setter(b.enclClass)).filter(_ != NoSymbol)
-        associated.flatMap(ss => mkAnnotations(in, ss.annotations)).distinct.toArray
-      }
+    private def annotations(in: Symbol, s: Symbol): Array[xsbti.api.Annotation] = exitingTyper {
+      val base = if (s.hasFlag(Flags.ACCESSOR)) s.accessed else NoSymbol
+      val b = if (base == NoSymbol) s else base
+      // annotations from bean methods are not handled because:
+      //  a) they are recorded as normal source methods anyway
+      //  b) there is no way to distinguish them from user-defined methods
+      val associated = List(b, b.getter(b.enclClass), b.setter(b.enclClass)).filter(_ != NoSymbol)
+      associated.flatMap(ss => mkAnnotations(in, ss.annotations)).distinct.toArray
+    }
 
     private def viewer(s: Symbol) = (if (s.isModule) s.moduleClass else s).thisType
     private def printMember(label: String, in: Symbol, t: Type) = println(label + " in " + in + " : " + t + " (debug: " + debugString(t) + " )")
@@ -769,12 +762,7 @@ abstract class ExtractAPI extends SubComponent {
       n2.toString.trim
     }
 
-    private def staticAnnotations(annotations: List[AnnotationInfo]): List[AnnotationInfo] = {
-      // compat stub for 2.8/2.9
-      class IsStatic(ann: AnnotationInfo) {def isStatic: Boolean = ann.atp.typeSymbol isNonBottomSubClass definitions.StaticAnnotationClass}
-      implicit def compat(ann: AnnotationInfo): IsStatic = new IsStatic(ann)
-      annotations.filter(_.isStatic)
-    }
+    private def staticAnnotations(annotations: List[AnnotationInfo]): List[AnnotationInfo] = annotations.filter(_.isStatic)
   }
 
 
