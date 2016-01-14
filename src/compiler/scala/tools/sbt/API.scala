@@ -816,6 +816,9 @@ abstract class ExtractAPI extends SubComponent {
       * in TypeTree.original but Tree.forech doesn't walk into original
       * tree so we missed it
       *
+      * TODO: retronym says: this should also walk into the original trees of symbol annotations
+      *       (via `sym.annotations.map(_.original)`.)
+      *
       * The tree walking algorithm walks into TypeTree.original explicitly.
       *
       */
