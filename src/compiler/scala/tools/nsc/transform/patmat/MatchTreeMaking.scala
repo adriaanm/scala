@@ -316,6 +316,7 @@ trait MatchTreeMaking extends MatchCodeGen with Debugging {
       trait TypeTestCondStrategy {
         type Result
 
+        def outerTestNeeded(testedBinder: Symbol, expectedTp: Type): Boolean = true
         def outerTest(testedBinder: Symbol, expectedTp: Type): Result
         // TODO: can probably always widen
         def typeTest(testedBinder: Symbol, expectedTp: Type): Result
@@ -335,6 +336,25 @@ trait MatchTreeMaking extends MatchCodeGen with Debugging {
         def nonNullTest(testedBinder: Symbol)                = REF(testedBinder) OBJ_NE NULL
         def equalsTest(pat: Tree, testedBinder: Symbol)      = codegen._equals(pat, testedBinder)
         def eqTest(pat: Tree, testedBinder: Symbol)          = REF(testedBinder) OBJ_EQ pat
+
+        override def outerTestNeeded(testedBinder: Symbol, expectedTp: Type): Boolean = {
+//          val selType = testedBinder.info
+//
+//          // See the test for SI-7214 for motivation for dealias. Later `treeCondStrategy#outerTest`
+//          // generates an outer test based on `patType.prefix` with automatically dealises.
+//          // Prefixes can have all kinds of shapes SI-9110
+//          val patPre = expectedTp.dealiasWiden.prefix
+//          val selPre = selType.dealiasWiden.prefix
+//
+//          // Optimization: which prefixes can we disqualify from the need for an outer reference check?
+//          //   - classes in static owners do not get outer pointers
+//          //   - if the prefixes are statically known to be equal, the type system ensures an outer test is redundant
+//          !((patPre eq NoPrefix) || (selPre eq NoPrefix)
+//            || patPre.typeSymbol.isPackageClass
+//            || selPre =:= patPre)
+          println(s"outer needed? ${testedBinder.info} $expectedTp")
+          true
+        }
 
         def outerTest(testedBinder: Symbol, expectedTp: Type): Tree = {
           val expectedOuter = expectedTp.prefix match {
@@ -405,12 +425,6 @@ trait MatchTreeMaking extends MatchCodeGen with Debugging {
       import TypeTestTreeMaker._
       debug.patmat("TTTM"+((prevBinder, extractorArgTypeTest, testedBinder, expectedTp, nextBinderTp)))
 
-      lazy val outerTestNeeded = (
-           (expectedTp.prefix ne NoPrefix)
-        && !expectedTp.prefix.typeSymbol.isPackageClass
-        && needsOuterTest(expectedTp, testedBinder.info, matchOwner)
-      )
-
       // the logic to generate the run-time test that follows from the fact that
       // a `prevBinder` is expected to have type `expectedTp`
       // the actual tree-generation logic is factored out, since the analyses generate Cond(ition)s rather than Trees
@@ -434,7 +448,7 @@ trait MatchTreeMaking extends MatchCodeGen with Debugging {
 
         def mkEqualsTest(lhs: Tree): cs.Result      = equalsTest(lhs, testedBinder)
         def mkEqTest(lhs: Tree): cs.Result          = eqTest(lhs, testedBinder)
-        def addOuterTest(res: cs.Result): cs.Result = if (outerTestNeeded) and(res, mkOuterTest) else res
+        def addOuterTest(res: cs.Result): cs.Result = if (outerTestNeeded(testedBinder, expectedTp)) and(res, mkOuterTest) else res
 
         // If we conform to expected primitive type:
         //   it cannot be null and cannot have an outer pointer. No further checking.
