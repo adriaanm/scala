@@ -1950,7 +1950,7 @@ trait Types
 
     private[Types] def relativeInfo = /*trace(s"relativeInfo(${safeToString}})")*/{
       if (relativeInfoPeriod != currentPeriod) {
-        relativeInfoCache = memberInfoInstantiated
+        relativeInfoCache = infoAlignedWithPrefixAndArgs
         relativeInfoPeriod = currentPeriod
       }
       relativeInfoCache
@@ -1989,7 +1989,7 @@ trait Types
     //
     // this crashes pos/depmet_implicit_tpbetareduce.scala
     // appliedType(sym.info, typeArgs).asSeenFrom(pre, sym.owner)
-    override def betaReduce = transform(sym.info.resultType)
+    override def betaReduce = alignedWithPrefixAndArgs(sym.info.resultType)
 
     /** SI-3731, SI-8177: when prefix is changed to `newPre`, maintain consistency of prefix and sym
      *  (where the symbol refers to a declaration "embedded" in the prefix).
@@ -2048,7 +2048,7 @@ trait Types
       val symInfo = sym.info
       if (thisInfoCache == null || (symInfo ne symInfoCache)) {
         symInfoCache = symInfo
-        thisInfoCache = memberInfoInstantiated match {
+        thisInfoCache = infoAlignedWithPrefixAndArgs match {
           // If a subtyping cycle is not detected here, we'll likely enter an infinite
           // loop before a sensible error can be issued.  SI-5093 is one example.
           case x: SubType if x.supertype eq this =>
@@ -2063,7 +2063,7 @@ trait Types
       thisInfoCache = null
     }
     override def bounds   = thisInfo.bounds
-    override protected[Types] def baseTypeSeqImpl: BaseTypeSeq = transform(bounds.hi).baseTypeSeq prepend this
+    override protected[Types] def baseTypeSeqImpl: BaseTypeSeq = alignedWithPrefixAndArgs(bounds.hi).baseTypeSeq prepend this
     override def kind = "AbstractTypeRef"
   }
 
@@ -2107,23 +2107,22 @@ trait Types
         finalizeHash(h, 2)
     }
 
+    //@M! use appliedType on the polytype that represents the bounds (or if aliastype, the rhs)
+    final protected def infoAlignedWithPrefixAndArgs: Type = appliedType(sym.info.asSeenFrom(pre, sym.owner), argsOrDummies)
+
     // @M: propagate actual type params (args) to `tp`, by replacing
     // formal type parameters with actual ones. If tp is higher kinded,
     // the "actual" type arguments are types that simply reference the
     // corresponding type parameters (unbound type variables)
-    final def transform(tp: Type): Type =
-      if (args.isEmpty) {
-        if (isHigherKinded && (phase.erasedTypes || !isRawIfWithoutArgs(sym)))
-          tp.asSeenFrom(pre, sym.owner).instantiateTypeParams(typeParams, dummyArgs)
-        else
-          tp.asSeenFrom(pre, sym.owner)
-      } else {
-        // This situation arises when a typevar is encountered for which
+    final def alignedWithPrefixAndArgs(tp: Type): Type =
+      if (tp.isTrivial) tp // important to skip e.g., NoType (since instantiateTypeParams would turn it into ErrorType, which behaves differently during subtyping)
+      else if (args.isEmpty && (!isHigherKinded || (!phase.erasedTypes && isRawIfWithoutArgs(sym)))) tp.asSeenFrom(pre, sym.owner)
+      else {
+        val formals = sym.typeParams
+        // The type params and type args should always match in lengtg,
+        // though a mismatch can arise when a typevar is encountered for which
         // too little information is known to determine its kind, and
-        // it later turns out not to have kind *. See SI-4070.  Only
-        // logging it for now.
-        val tparams = sym.typeParams
-        if (!sameLength(tparams, args)) devWarning(s"$this.transform($tp), but tparams.isEmpty and args=$args")
+        // it later turns out not to have kind *. See SI-4070.
 
         // If we're called with a poly type, and we were to run the `asSeenFrom`, over the entire
         // type, we can end up with new symbols for the type parameters (clones from TypeMap).
@@ -2149,30 +2148,31 @@ trait Types
         //      It's kind of a helper for computing baseType (since it tries to propagate our type args to some
         //      other type, which has to be related to this type for that to make sense).
         //
+        def seenFromOwnerInstantiated(tp: Type): Type =
+          tp.asSeenFrom(pre, sym.owner).instantiateTypeParams(formals, argsOrDummies)
+
         tp match {
-          case PolyType(`tparams`, result) => PolyType(tparams, result.asSeenFrom(pre, sym.owner).instantiateTypeParams(tparams, args))
-          case _ => tp.asSeenFrom(pre, sym.owner).instantiateTypeParams(tparams, args)
+          case PolyType(`formals`, result) => PolyType(formals, seenFromOwnerInstantiated(result))
+          case _ => seenFromOwnerInstantiated(tp)
         }
       }
 
+    private def argsOrDummies = if (args.isEmpty) dummyArgs else args
+
     final override def baseType(clazz: Symbol): Type =
       if (sym == clazz) this
-      else if (sym.isClass) transform(sym.info.baseType(clazz))
+      else if (sym.isClass) alignedWithPrefixAndArgs(sym.info.baseType(clazz))
       else baseTypeOfNonClassTypeRef(clazz)
-
-    //@M! use appliedType on the polytype that represents the bounds (or if aliastype, the rhs)
-    final protected def memberInfoInstantiated: Type =
-      appliedType(sym.info.asSeenFrom(pre, sym.owner), if (args.isEmpty) dummyArgs else args)
 
     private def baseTypeOfNonClassTypeRef(clazz: Symbol) =
       try {
         basetypeRecursions += 1
         if (basetypeRecursions >= LogPendingBaseTypesThreshold) baseTypeOfNonClassTypeRefLogged(clazz)
-        else memberInfoInstantiated.baseType(clazz)
+        else infoAlignedWithPrefixAndArgs.baseType(clazz)
       } finally basetypeRecursions -= 1
 
     private def baseTypeOfNonClassTypeRefLogged(clazz: Symbol) =
-      if (pendingBaseTypes add this) try memberInfoInstantiated.baseType(clazz) finally pendingBaseTypes -= this
+      if (pendingBaseTypes add this) try infoAlignedWithPrefixAndArgs.baseType(clazz) finally pendingBaseTypes -= this
       else if (clazz == AnyClass) clazz.tpe
       else NoType
 
@@ -2217,7 +2217,7 @@ trait Types
     override def termSymbol       = super.termSymbol
     override def termSymbolDirect = super.termSymbol
     override def typeArgs         = args
-    override def typeOfThis       = transform(sym.typeOfThis)
+    override def typeOfThis       = alignedWithPrefixAndArgs(sym.typeOfThis)
     override def typeSymbol       = sym
     override def typeSymbolDirect = sym
 
@@ -2241,11 +2241,11 @@ trait Types
     protected[Types] def baseTypeSeqImpl: BaseTypeSeq =
       if (sym.info.baseTypeSeq exists (_.typeSymbolDirect.isAbstractType))
         // SI-8046 base type sequence might have more elements in a subclass, we can't map it element wise.
-        transform(sym.info).baseTypeSeq
+        alignedWithPrefixAndArgs(sym.info).baseTypeSeq
       else
         // Optimization: no abstract types, we can compute the BTS of this TypeRef as an element-wise map
         //               of the BTS of the referenced symbol.
-        sym.info.baseTypeSeq map transform
+        sym.info.baseTypeSeq map alignedWithPrefixAndArgs
 
     override def baseTypeSeq: BaseTypeSeq = {
       val cache = baseTypeSeqCache
@@ -2368,7 +2368,7 @@ trait Types
     if (period != currentPeriod) {
       tpe.parentsPeriod = currentPeriod
       if (!isValidForBaseClasses(period)) {
-        tpe.parentsCache = tpe.thisInfo.parents map tpe.transform
+        tpe.parentsCache = tpe.thisInfo.parents map tpe.alignedWithPrefixAndArgs
       } else if (tpe.parentsCache == null) { // seems this can happen if things are corrupted enough, see #2641
         tpe.parentsCache = List(AnyTpe)
       }
