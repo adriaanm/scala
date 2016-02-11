@@ -1934,28 +1934,7 @@ trait Types
       if (isHigherKinded) etaExpand else super.normalizeImpl
   }
 
-  trait NonClassTypeRef extends TypeRef {
-    require(sym.isNonClassType, sym)
-
-    /* Syncnote: These are pure caches for performance; no problem to evaluate these
-     * several times. Hence, no need to protected with synchronized in a multi-threaded
-     * usage scenario.
-     */
-    private var relativeInfoCache: Type = _
-    private var relativeInfoPeriod: Period = NoPeriod
-    private[Types] def invalidateNonClassTypeRefCaches(): Unit = {
-      relativeInfoCache = NoType
-      relativeInfoPeriod = NoPeriod
-    }
-
-    protected final override def relativeInfo: Type = /*trace(s"relativeInfo(${safeToString}})")*/{
-      if (relativeInfoPeriod != currentPeriod) {
-        relativeInfoCache = super.relativeInfo
-        relativeInfoPeriod = currentPeriod
-      }
-      relativeInfoCache
-    }
-  }
+  trait NonClassTypeRef extends TypeRef //{ require(sym.isNonClassType, sym) }
 
   trait AliasTypeRef extends NonClassTypeRef {
     require(sym.isAliasType, sym)
@@ -2092,7 +2071,22 @@ trait Types
     private[reflect] var parentsPeriod                 = NoPeriod
     private[reflect] var baseTypeSeqCache: BaseTypeSeq = _
     private[reflect] var baseTypeSeqPeriod             = NoPeriod
-    private var normalized: Type                       = _
+    private[this] var normalized: Type                       = _
+
+    /* Syncnote: These are pure caches for performance; no problem to evaluate these
+     * several times. Hence, no need to protected with synchronized in a multi-threaded
+     * usage scenario.
+     *
+     * These are only use for non-class type refs, but it's faster to keep them in the class
+     * than defining them in a trait and have everything mixed in
+     */
+    private[this] var relativeInfoCache: Type = _
+    private[this] var relativeInfoPeriod: Period = NoPeriod
+    private[Types] def invalidateNonClassTypeRefCaches(): Unit = {
+      relativeInfoCache = NoType
+      relativeInfoPeriod = NoPeriod
+    }
+
 
     //OPT specialize hashCode
     override final def computeHashCode = {
@@ -2106,12 +2100,6 @@ trait Types
       else
         finalizeHash(h, 2)
     }
-
-    // first relativize the symbol's info (a polytype for parametric type alias/abstract type,
-    // or another typeref for monomorphic type alias, or type bounds for monomorphic abstract type)
-    // relativize == aligning with prefix == as seen from a certain prefix (and replacing this reference to point to `sym.owner`)
-    // then apply args (or types refencing our type params for unapplied type constructors)
-    protected def relativeInfo: Type = appliedType(sym.info.asSeenFrom(pre, sym.owner), argsOrDummies)
 
     // Propagate actual type args to `tp` (as seen from our prefix), by replacing formal type parameters with actual ones.
     // If tp is an unapplied type constructor, the "actual" type arguments are types
@@ -2163,13 +2151,25 @@ trait Types
         }
       }
 
-    private def argsOrDummies = if (args.isEmpty) dummyArgs else args
+    protected def argsOrDummies = if (args.isEmpty) dummyArgs else args
 
     final override def baseType(clazz: Symbol): Type =
       if (clazz eq sym) this
       else if (clazz eq AnyClass) AnyTpe // TODO: does this really happen often enough?
       else if (sym.isClass) relativize(sym.info.baseType(clazz))
       else baseTypeOfNonClassTypeRef(clazz)
+
+    // first relativize the symbol's info (a polytype for parametric type alias/abstract type,
+    // or another typeref for monomorphic type alias, or type bounds for monomorphic abstract type)
+    // relativize == aligning with prefix == as seen from a certain prefix (and replacing this reference to point to `sym.owner`)
+    // then apply args (or types refencing our type params for unapplied type constructors)
+    private def relativeInfo: Type = /*trace(s"relativeInfo(${safeToString}})")*/{
+      if (relativeInfoPeriod != currentPeriod) {
+        relativeInfoCache = appliedType(sym.info.asSeenFrom(pre, sym.owner), argsOrDummies)
+        relativeInfoPeriod = currentPeriod
+      }
+      relativeInfoCache
+    }
 
     private def baseTypeOfNonClassTypeRef(clazz: Symbol) = try {
       basetypeRecursions += 1
