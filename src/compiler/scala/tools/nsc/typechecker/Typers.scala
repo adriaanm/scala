@@ -128,6 +128,15 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
     def canTranslateEmptyListToNil    = true
     def missingSelectErrorTree(tree: Tree, qual: Tree, name: Name): Tree = tree
 
+    // TODO: initialization order ok? can we force these in typer?
+    val phasedAnyTpe     = if (!phase.erasedTypes) AnyTpe      else ObjectTpe
+    val phasedUnitTpe    = if (!phase.erasedTypes) UnitTpe     else BoxedUnitTpe
+    val phasedNothingTpe = if (!phase.erasedTypes) NothingTpe  else RuntimeNothingClass.tpe
+    def phasedAppliedType(sym: Symbol, args: List[Type]) = {
+      val tp = appliedType(sym, args)
+      if (phase.erasedTypes) erasure.specialScalaErasure(tp) else tp
+    }
+
     def typedDocDef(docDef: DocDef, mode: Mode, pt: Type): Tree =
       typed(docDef.definition, mode, pt)
 
@@ -1177,10 +1186,10 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
      */
     def instantiateExpectingUnit(tree: Tree, mode: Mode): Tree = {
       val savedUndetparams = context.undetparams
-      silent(_.instantiate(tree, mode, UnitTpe)) orElse { _ =>
+      silent(_.instantiate(tree, mode, phasedUnitTpe)) orElse { _ =>
         context.undetparams = savedUndetparams
         val valueDiscard = atPos(tree.pos)(Block(List(instantiate(tree, mode, WildcardType)), Literal(Constant(()))))
-        typed(valueDiscard, mode, UnitTpe)
+        typed(valueDiscard, mode, phasedUnitTpe)
       }
     }
 
@@ -2281,7 +2290,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
         case ldef @ LabelDef(_, _, _) =>
           if (ldef.symbol == NoSymbol)
             ldef.symbol = namer.enterInScope(
-              context.owner.newLabel(ldef.name, ldef.pos) setInfo MethodType(List(), UnitTpe))
+              context.owner.newLabel(ldef.name, ldef.pos) setInfo MethodType(List(), phasedUnitTpe))
         case _ =>
       }
     }
@@ -2659,7 +2668,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
         val methodSym = anonClass.newMethod(nme.apply, tree.pos, FINAL | OVERRIDE)
         val paramSym = mkParam(methodSym)
 
-        methodSym setInfo MethodType(List(paramSym), AnyTpe)
+        methodSym setInfo MethodType(List(paramSym), phasedAnyTpe)
 
         val methodBodyTyper = newTyper(context.makeNewScope(context.tree, methodSym))
         if (!paramSynthetic) methodBodyTyper.context.scope enter paramSym
@@ -2983,7 +2992,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
             val formals = vparamSyms map (_.tpe)
             val body1 = typed(fun.body, respt)
             val restpe = packedType(body1, fun.symbol).deconst.resultType
-            val funtpe  = appliedType(FunctionSymbol, formals :+ restpe: _*)
+            val funtpe  = phasedAppliedType(FunctionSymbol, formals :+ restpe)
 
             treeCopy.Function(fun, vparams, body1) setType funtpe
         }
@@ -3215,7 +3224,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
           // less expensive than including them in inferMethodAlternative (see below).
           def shapeType(arg: Tree): Type = arg match {
             case Function(vparams, body) =>
-              functionType(vparams map (_ => AnyTpe), shapeType(body))
+              functionType(vparams map (_ => AnyTpe), shapeType(body)) // TODO: should this be erased when retyping during erasure?
             case AssignOrNamedArg(Ident(name), rhs) =>
               NamedType(name, shapeType(rhs))
             case _ =>
@@ -4238,7 +4247,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
 //        (phase.erasedTypes && varsym.isValue && !varsym.isMethod)) {
         if (varsym.isVariable || varsym.isValue && phase.erasedTypes) {
           val rhs1 = typedByValueExpr(rhs, lhs1.tpe)
-          treeCopy.Assign(tree, lhs1, checkDead(rhs1)) setType UnitTpe
+          treeCopy.Assign(tree, lhs1, checkDead(rhs1)) setType phasedUnitTpe
         }
         else if(dyna.isDynamicallyUpdatable(lhs1)) {
           val rhs1 = typedByValueExpr(rhs)
@@ -4254,7 +4263,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
         val cond1 = checkDead(typedByValueExpr(tree.cond, BooleanTpe))
         // One-legged ifs don't need a lot of analysis
         if (tree.elsep.isEmpty)
-          return treeCopy.If(tree, cond1, typed(tree.thenp, UnitTpe), tree.elsep) setType UnitTpe
+          return treeCopy.If(tree, cond1, typed(tree.thenp, phasedUnitTpe), tree.elsep) setType phasedUnitTpe
 
         val thenp1 = typed(tree.thenp, pt)
         val elsep1 = typed(tree.elsep, pt)
@@ -5068,7 +5077,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
         val Try(block, catches, fin) = tree
         val block1   = typed(block, pt)
         val catches1 = typedCases(catches, ThrowableTpe, pt)
-        val fin1     = if (fin.isEmpty) fin else typed(fin, UnitTpe)
+        val fin1     = if (fin.isEmpty) fin else typed(fin, phasedUnitTpe)
 
         def finish(ownType: Type) = treeCopy.Try(tree, block1, catches1, fin1) setType ownType
 
@@ -5088,7 +5097,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
 
       def typedThrow(tree: Throw) = {
         val expr1 = typedByValueExpr(tree.expr, ThrowableTpe)
-        treeCopy.Throw(tree, expr1) setType NothingTpe
+        treeCopy.Throw(tree, expr1) setType phasedNothingTpe
       }
 
       def typedTyped(tree: Typed) = {
@@ -5221,7 +5230,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
       def typedLiteral(tree: Literal) = {
         if (settings.warnMissingInterpolator) warnMissingInterpolator(tree)
 
-        tree setType (if (tree.value.tag == UnitTag) UnitTpe else ConstantType(tree.value))
+        tree setType (if (tree.value.tag == UnitTag) phasedUnitTpe else ConstantType(tree.value))
       }
 
       def typedSingletonTypeTree(tree: SingletonTypeTree) = {
@@ -5278,7 +5287,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
           // and we try again (@see tryTypedApply). In that case we can assign
           // whatever type to tree; we just have to survive until a real error message is issued.
           devWarning(tree.pos, s"Assigning Any type to TypeTree because tree.original is null: tree is $tree/${System.identityHashCode(tree)}, sym=${tree.symbol}, tpe=${tree.tpe}")
-          tree setType AnyTpe
+          tree setType phasedAnyTpe
         }
       }
       def typedFunction(fun: Function) = {
