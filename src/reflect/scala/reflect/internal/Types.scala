@@ -2116,7 +2116,7 @@ trait Types
     // corresponding type parameters (unbound type variables)
     final def alignedWithPrefixAndArgs(tp: Type): Type =
       if (tp.isTrivial) tp // important to skip e.g., NoType (since instantiateTypeParams would turn it into ErrorType, which behaves differently during subtyping)
-      else if (args.isEmpty && (!isHigherKinded || (!phase.erasedTypes && isRawIfWithoutArgs(sym)))) tp.asSeenFrom(pre, sym.owner)
+      else if (args.isEmpty && (phase.erasedTypes || !isHigherKinded || isRawIfWithoutArgs(sym))) tp.asSeenFrom(pre, sym.owner)
       else {
         val formals = sym.typeParams
         // The type params and type args should always match in lengtg,
