@@ -6,6 +6,8 @@ package tpe
 import scala.collection.{ mutable }
 import util.{ Statistics, TriState }
 import scala.annotation.tailrec
+import scala.reflect.internal.util.Statistics
+import Statistics.incCounter
 
 trait TypeComparers {
   self: SymbolTable =>
@@ -239,6 +241,8 @@ trait TypeComparers {
 
   def isSubType(tp1: Type, tp2: Type, depth: Depth = Depth.AnyDepth): Boolean = try {
     subsametypeRecursions += 1
+
+    incCounter(TypeComparerStats.isSubtypeCount)
 
     //OPT cutdown on Function0 allocation
     //was:
@@ -584,5 +588,9 @@ trait TypeComparers {
       case x :: xs => if (isPrimitiveValueClass(x)) x else loop(xs)
     }
     loop(tp.baseClasses)
+  }
+
+  object TypeComparerStats {
+    val isSubtypeCount = Statistics.newCounter("isSubtypes:")
   }
 }

@@ -7,6 +7,8 @@ import scala.collection.{ mutable, immutable }
 import Flags._
 import scala.annotation.tailrec
 import Variance._
+import scala.reflect.internal.util.Statistics
+import Statistics.incCounter
 
 private[internal] trait TypeMaps {
   self: SymbolTable =>
@@ -455,6 +457,8 @@ private[internal] trait TypeMaps {
   /** A map to compute the asSeenFrom method.
     */
   class AsSeenFromMap(seenFromPrefix0: Type, seenFromClass: Symbol) extends TypeMap with KeepOnlyTypeConstraints {
+    incCounter(TypeMapStats.asSeenFromCount)
+
     private val seenFromPrefix: Type = if (seenFromPrefix0.typeSymbolDirect.hasPackageFlag && !seenFromClass.hasPackageFlag)
       seenFromPrefix0.packageObject.typeOfThis
     else seenFromPrefix0
@@ -686,6 +690,7 @@ private[internal] trait TypeMaps {
 
   /** A base class to compute all substitutions */
   abstract class SubstMap[T](from: List[Symbol], to: List[T]) extends TypeMap {
+    incCounter(TypeMapStats.substCount)
     // OPT this check was 2-3% of some profiles, demoted to -Xdev
     if (isDeveloper) assert(sameLength(from, to), "Unsound substitution from "+ from +" to "+ to)
 
@@ -1199,4 +1204,8 @@ private[internal] trait TypeMaps {
     }
   }
 
+  object TypeMapStats {
+    val asSeenFromCount = Statistics.newCounter("asSeenFroms:")
+    val substCount      = Statistics.newCounter("substitutions:")
+  }
 }
