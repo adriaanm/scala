@@ -2001,27 +2001,27 @@ trait Symbols extends api.Symbols { self: SymbolTable =>
     /** The primary constructor of a class. */
     def primaryConstructor: Symbol = NoSymbol
 
-    /** The self symbol (a TermSymbol) of a class with explicit self type, or else the
-     *  symbol itself (a TypeSymbol).
-     *
-     *  WARNING: you're probably better off using typeOfThis, as it's more uniform across classes with and without self variables.
-     *
-     *  Example by Paul:
-     *   scala> trait Foo1 { }
-     *   scala> trait Foo2 { self => }
-     *   scala> intp("Foo1").thisSym
-     *   res0: $r.intp.global.Symbol = trait Foo1
-     *
-     *   scala> intp("Foo2").thisSym
-     *   res1: $r.intp.global.Symbol = value self
-     *
-     *  Martin says: The reason `thisSym' is `this' is so that thisType can be this.thisSym.tpe.
-     *  It's a trick to shave some cycles off.
-     *
-     *  Morale: DO:    if (clazz.typeOfThis.typeConstructor ne clazz.typeConstructor) ...
-     *          DON'T: if (clazz.thisSym ne clazz) ...
-     *
-     */
+    /** The self symbol (a TermSymbol) of a class with an explicit self variable (whether its type is specified or not),
+      * or else the symbol itself (a TypeSymbol).
+      *
+      *  WARNING: you're probably better off using typeOfThis, as it's more uniform across classes with and without self variables.
+      *
+      *  Example by Paul:
+      *   scala> trait Foo1 { }
+      *   scala> trait Foo2 { self => }
+      *   scala> intp("Foo1").thisSym
+      *   res0: $r.intp.global.Symbol = trait Foo1
+      *
+      *   scala> intp("Foo2").thisSym
+      *   res1: $r.intp.global.Symbol = value self
+      *
+      *  Martin says: The reason `thisSym' is `this' is so that thisType can be this.thisSym.tpe.
+      *  It's a trick to shave some cycles off.
+      *
+      *  Morale: DO:    if (clazz.typeOfThis.typeConstructor ne clazz.typeConstructor) ...
+      *          DON'T: if (clazz.thisSym ne clazz) ...
+      *
+      */
     def thisSym: Symbol = this
 
     def hasSelfType = thisSym.tpeHK != this.tpeHK

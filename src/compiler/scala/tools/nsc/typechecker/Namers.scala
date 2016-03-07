@@ -880,27 +880,21 @@ trait Namers extends MethodSynthesis {
     }
 
     // owner is the class with the self type
-    def enterSelf(self: ValDef) {
+    def enterSelf(self: ValDef): Unit = if (self ne noSelfType) {
       val ValDef(_, name, tpt, _) = self
-      if (self eq noSelfType)
-        return
-
-      val hasName = name != nme.WILDCARD
-      val hasType = !tpt.isEmpty
-      if (!hasType)
+      if (tpt.isEmpty)
         tpt defineType NoType
 
-      val sym = (
-        if (hasType || hasName) {
-          owner.typeOfThis = if (hasType) selfTypeCompleter(tpt) else owner.tpe_*
-          val selfSym = owner.thisSym setPos self.pos
-          if (hasName) selfSym setName name else selfSym
-        }
-        else {
-          val symName = if (name != nme.WILDCARD) name else nme.this_
-          owner.newThisSym(symName, owner.pos) setInfo owner.tpe
-        }
-      )
+      // typeOfThis's setter initializes owner.thisSym
+      owner.typeOfThis =
+        if (tpt.isEmpty) owner.tpe_*
+        else selfTypeCompleter(tpt)
+
+      val sym = owner.thisSym
+
+      if (name != nme.WILDCARD) sym setName name
+      sym setPos self.pos // TODO: do we need to use owner.pos in certain cases? (no name && no type???)
+
       self.symbol = context.scope enter sym
     }
 
