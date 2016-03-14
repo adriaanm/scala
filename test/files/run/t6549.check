@@ -12,13 +12,10 @@ scala> m("").xxx
 res1: Any = "
 
 scala> m("").xxx = 0
-m("").xxx: Any = 0
 
 scala> m("").xxx = "\""
-m("").xxx: Any = "
 
 scala> m('s).xxx = 's
-m(scala.Symbol("s")).xxx: Any = 's
 
 scala> val `"` = 0
 ": Int = 0

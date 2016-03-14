@@ -40,7 +40,6 @@ defined class Ruminant
 res3: Int = 216
 
 scala> Bovine.x = List(Ruminant(5), Cow, new Moo)
-Bovine.x: List[Any] = List(Ruminant(5), Cow, Moooooo)
 
 scala> Bovine.x
 res4: List[Any] = List(Ruminant(5), Cow, Moooooo)
