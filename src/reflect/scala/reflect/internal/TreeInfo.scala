@@ -872,6 +872,18 @@ abstract class TreeInfo {
     isUnitInScala(body, nme.Predef) || isLeadingPredefImport(body)
   }
 
+  // Does `tree` explicitly import `definitions.Interpreter_iw`?
+  // This method is called when not all symbols are completed (nor can they safely be without triggering spurious cycles),
+  // so we look for a specific import tree shape.
+  // This is for internal use only, so we can be picky (don't consider renaming/wildcards/other weirdness).
+  def magicImportBumpsNesting(tree: Tree): Boolean =
+    tree match {
+      case Import(expr, ImportSelector(name, _, rename, _) :: Nil) if name == rename => // explicit import
+        name == definitions.Interpreter_iw.name && expr.symbol == definitions.Interpreter_iw.owner.sourceModule
+      case _ => false
+    }
+
+
   def isAbsTypeDef(tree: Tree) = tree match {
     case TypeDef(_, _, _, TypeBoundsTree(_, _)) => true
     case TypeDef(_, _, _, rhs) => rhs.tpe.isInstanceOf[TypeBounds]
