@@ -7,7 +7,6 @@ package scala
 package tools.nsc
 package interpreter
 
-import PartialFunction.cond
 import scala.language.implicitConversions
 import scala.beans.BeanProperty
 import scala.collection.mutable
@@ -313,12 +312,12 @@ class IMain(initialSettings: Settings, protected val out: JPrintWriter) extends 
   def originalPath(name: String): String = originalPath(TermName(name))
   def originalPath(name: Name): String   = translateOriginalPath(typerOp path name)
   def originalPath(sym: Symbol): String  = translateOriginalPath(typerOp path sym)
+
   /** For class based repl mode we use an .INSTANCE accessor. */
-  val readInstanceName = if(isClassBased) ".INSTANCE" else ""
-  def translateOriginalPath(p: String): String = {
-    val readName = java.util.regex.Matcher.quoteReplacement(sessionNames.read)
-    p.replaceFirst(readName, readName + readInstanceName)
-  }
+  val readInstanceName = if (isClassBased) ".INSTANCE" else ""
+  def translateOriginalPath(p: String): String =
+    if (isClassBased) p.replace(sessionNames.read, sessionNames.read + readInstanceName) else p
+
   def flatPath(sym: Symbol): String      = flatOp shift sym.javaClassName
 
   def translatePath(path: String) = {
@@ -328,7 +327,7 @@ class IMain(initialSettings: Settings, protected val out: JPrintWriter) extends 
 
   /** If path represents a class resource in the default package,
    *  see if the corresponding symbol has a class file that is a REPL artifact
-   *  residing at a different resource path. Translate X.class to $line3/$read$$iw$$iw$X.class.
+   *  residing at a different resource path. Translate X.class to $line3/$read$X.class.
    */
   def translateSimpleResource(path: String): Option[String] = {
     if (!(path contains '/') && (path endsWith ".class")) {
@@ -700,12 +699,9 @@ class IMain(initialSettings: Settings, protected val out: JPrintWriter) extends 
 
       val unwrapped = unwrap(t)
 
-      // Example input: $line3.$read$$iw$$iw$
-      val classNameRegex = (naming.lineRegex + ".*").r
-      def isWrapperInit(x: StackTraceElement) = cond(x.getClassName) {
-        case classNameRegex() if x.getMethodName == nme.CONSTRUCTOR.decoded => true
-      }
-      val stackTrace = unwrapped stackTracePrefixString (!isWrapperInit(_))
+      def notWrapperInit(x: StackTraceElement) = !naming.isLineWrapperClassName(x.getClassName) || x.getMethodName != nme.CONSTRUCTOR.decoded
+
+      val stackTrace = unwrapped.stackTracePrefixString(notWrapperInit _)
 
       withLastExceptionLock[String]({
         directBind[Throwable]("lastException", unwrapped)(StdReplTags.tagOfThrowable, classTag[Throwable])
@@ -839,7 +835,7 @@ class IMain(initialSettings: Settings, protected val out: JPrintWriter) extends 
       * append to objectName to access anything bound by request.
       */
     lazy val ComputedImports(headerPreamble, importsPreamble, importsTrailer, accessPath) =
-      exitingTyper(importsCode(referencedNames.toSet, ObjectSourceCode, definesClass, generousImports))
+      exitingTyper(importsCode(referencedNames.toSet, definesClass, generousImports))
 
     /** the line of code to compute */
     def toCompute = line
@@ -852,7 +848,7 @@ class IMain(initialSettings: Settings, protected val out: JPrintWriter) extends 
 
     /** generate the source code for the object that computes this request */
     abstract class Wrapper extends IMain.CodeAssembler[MemberHandler] {
-      def path = originalPath("$intp")
+      //def path = originalPath("$intp")
       def envLines = {
         if (!isReplPower) Nil // power mode only for now
         else {
@@ -873,37 +869,23 @@ class IMain(initialSettings: Settings, protected val out: JPrintWriter) extends 
       /** A format string with %s for $read, specifying the wrapper definition. */
       def preambleHeader: String
 
-      /** Like preambleHeader for an import wrapper. */
-      def prewrap: String = preambleHeader + "\n"
-
-      /** Like postamble for an import wrapper. */
-      def postwrap: String
+      def postamble = importsTrailer + "\n}"
     }
 
     class ObjectBasedWrapper extends Wrapper {
       def preambleHeader = "object %s {"
-
-      def postamble = importsTrailer + "\n}"
-
-      def postwrap = "}\n"
     }
 
     class ClassBasedWrapper extends Wrapper {
       def preambleHeader = "sealed class %s extends _root_.java.io.Serializable { "
 
       /** Adds an object that instantiates the outer wrapping class. */
-      def postamble  = s"""
-                          |$importsTrailer
-                          |}
+      override def postamble  = s"""
+                          |${super.postamble}
                           |object ${lineRep.readName} {
                           |   val INSTANCE = new ${lineRep.readName}();
                           |}
                           |""".stripMargin
-
-      import nme.{ INTERPRETER_IMPORT_WRAPPER => iw }
-
-      /** Adds a val that instantiates the wrapping class. */
-      def postwrap = s"}\nval $iw = new $iw\n"
     }
 
     private[interpreter] lazy val ObjectSourceCode: Wrapper =
@@ -979,7 +961,10 @@ class IMain(initialSettings: Settings, protected val out: JPrintWriter) extends 
     /** Types of variables defined by this request. */
     lazy val compilerTypeOf = typeMap[Type](x => x) withDefaultValue NoType
     /** String representations of same. */
-    lazy val typeOf         = typeMap[String](tp => exitingTyper(tp.toString))
+    lazy val typeOf         = typeMap[String](tp => exitingTyper {
+      val s = tp.toString
+      if (isClassBased) s.stripPrefix("INSTANCE.") else s
+    })
 
     lazy val definedSymbols = (
       termNames.map(x => x -> applyToResultMember(x, x => x)) ++
@@ -1178,11 +1163,13 @@ class IMain(initialSettings: Settings, protected val out: JPrintWriter) extends 
     )
   }
 
+  /** Secret bookcase entrance for repl debuggers: end the line
+   *  with "// show" and see what's going on.
+   */
+  val showCodeBackDoor = raw".*//\s*show\s*".r
+
   def showCodeIfDebugging(code: String) {
-    /** Secret bookcase entrance for repl debuggers: end the line
-     *  with "// show" and see what's going on.
-     */
-    def isShow = code.lines exists (_.trim endsWith "// show")
+    def isShow = code.lines exists { case showCodeBackDoor() => true case _ => false }
     if (isReplDebug || isShow) {
       beSilentDuring(parse(code)) match {
         case parse.Success(ts) =>
@@ -1212,6 +1199,7 @@ object IMain {
   //   $line3.$read$$iw$$iw$Bippy@4a6a00ca
   private def removeLineWrapper(s: String) = s.replaceAll("""\$line\d+[./]\$(read|eval|print)[$.]""", "")
   private def removeIWPackages(s: String)  = s.replaceAll("""\$(iw|read|eval|print)[$.]""", "")
+  @deprecated("Use intp.naming.unmangle.", "2.12.0-M5")
   def stripString(s: String)               = removeIWPackages(removeLineWrapper(s))
 
   trait CodeAssembler[T] {
