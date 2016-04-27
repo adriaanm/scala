@@ -1,3 +1,5 @@
+// WIP test case -- need to check that the MouseHandler constructor does not receive any arguments
+// the capture in def mouseClicked should be restricted to that method
 class Lift {
   def foo = {
     // this will be captured by the MouseHandler trait,
@@ -7,6 +9,8 @@ class Lift {
     def bar = Clicked
     
     trait MouseHandler {
+      // the method should be considered capturing Clicked, not the trait
+      // so, it'll receive an extra argument
       def mouseClicked = Clicked + bar
     }
     
@@ -17,6 +21,7 @@ class Lift {
   }
 }
 
+// TODO: this crashes the compiler
 object O extends Lift with App {
   println(foo)
 }
