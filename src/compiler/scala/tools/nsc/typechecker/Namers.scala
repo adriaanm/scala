@@ -1384,9 +1384,14 @@ trait Namers extends MethodSynthesis {
                 // The symbol's info is currently being determined (up the call stack, you'll find a TypeCompleter's complete method),
                 // so the info will be set to whatever type we return here by the complete method.
                 val overridden = safeNextOverriddenSymbol(valSym)
+                println(s"valDefSig for $valSym from $overridden")
 
                 if (overridden == NoSymbol || overridden.isOverloaded) WildcardType
-                else valOwner.thisType.memberType(overridden).resultType
+                else {
+                  val superValTp = valOwner.thisType.memberType(overridden).resultType
+                  println(s"valDefSig inferred $superValTp for $valSym")
+                  superValTp
+                }
               }
 
             // derives the val's result type from type checking its rhs under the expected type `pt`

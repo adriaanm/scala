@@ -138,7 +138,7 @@ trait MethodSynthesis {
           // NOTE: we cannot look at symbol info, since we're in the process of deriving them
           // (luckily, they only matter for lazy vals, which we've ruled out in this else branch,
           // and `doNotDeriveField` will skip them if `!mods.isLazy`)
-          if (Field.noFieldFor(tree)) getterSym setPos tree.pos
+          if (Field.noFieldFor(tree)) getterSym setPos tree.pos // TODO: why do setPos? `createAndEnterSymbol` already gave `getterSym` the position `tree.pos.focus`
           else enterStrictVal(tree)
         }
 
@@ -486,7 +486,9 @@ trait MethodSynthesis {
       // as the symbol info is in the process of being created then.
       // TODO: harmonize tree & symbol creation
       // the middle  `&& !owner.isTrait` is needed after `isLazy` because non-unit-typed lazy vals in traits still get a field -- see neg/t5455.scala
-      def noFieldFor(vd: ValDef) = vd.mods.isDeferred || (vd.mods.isLazy && !owner.isTrait && isUnitType(vd.symbol.info)) || (owner.isTrait && !traitFieldFor(vd))
+      def noFieldFor(vd: ValDef) = (vd.mods.isDeferred
+        || (vd.mods.isLazy && !owner.isTrait && isUnitType(vd.symbol.info))
+        || (owner.isTrait && !traitFieldFor(vd)))
 
       // TODO: never emit any fields in traits -- only use getter for lazy/presuper ones as well
       private def traitFieldFor(vd: ValDef): Boolean = vd.mods.hasFlag(PRESUPER | LAZY)
