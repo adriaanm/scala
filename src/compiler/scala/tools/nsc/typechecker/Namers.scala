@@ -773,28 +773,31 @@ trait Namers extends MethodSynthesis {
       // this accomplishes anything, but performance is a non-consideration
       // on these flag checks so it can't hurt.
       def needsCycleCheck = sym.isNonClassType && !sym.isParameter && !sym.isExistential
-      logAndValidate(sym) {
-        val tp = typeSig(tree)
 
-        findCyclicalLowerBound(tp) andAlso { sym =>
-          if (needsCycleCheck) {
-            // neg/t1224:  trait C[T] ; trait A { type T >: C[T] <: C[C[T]] }
-            // To avoid an infinite loop on the above, we cannot break all cycles
-            log(s"Reinitializing info of $sym to catch any genuine cycles")
-            sym reset sym.info
-            sym.initialize
-          }
-        }
-        sym setInfo {
-          if (sym.isJavaDefined) RestrictJavaArraysMap(tp)
-          else tp
-        }
+      // logDefinition(sym) {
+      val tp = typeSig(tree)
+
+      findCyclicalLowerBound(tp) andAlso { sym =>
         if (needsCycleCheck) {
-          log(s"Needs cycle check: ${sym.debugLocationString}")
-          if (!typer.checkNonCyclic(tree.pos, tp))
-            sym setInfo ErrorType
+          // neg/t1224:  trait C[T] ; trait A { type T >: C[T] <: C[C[T]] }
+          // To avoid an infinite loop on the above, we cannot break all cycles
+          log(s"Reinitializing info of $sym to catch any genuine cycles")
+          sym reset sym.info
+          sym.initialize
         }
       }
+      sym setInfo {
+        if (sym.isJavaDefined) RestrictJavaArraysMap(tp)
+        else tp
+      }
+      if (needsCycleCheck) {
+        log(s"Needs cycle check: ${sym.debugLocationString}")
+        if (!typer.checkNonCyclic(tree.pos, tp))
+          sym setInfo ErrorType
+      }
+      //}
+
+      validate(sym)
     }
 
     def moduleClassTypeCompleter(tree: ModuleDef) = {
@@ -807,13 +810,14 @@ trait Namers extends MethodSynthesis {
 
     /* Explicit isSetter required for bean setters (beanSetterSym.isSetter is false) */
     def accessorTypeCompleter(tree: ValDef, isSetter: Boolean) = mkTypeCompleter(tree) { sym =>
-      logAndValidate(sym) {
-        sym setInfo {
-          val tp = if (isSetter) MethodType(List(sym.newSyntheticValueParam(typeSig(tree))), UnitTpe)
-                   else NullaryMethodType(typeSig(tree))
-          pluginsTypeSigAccessor(tp, typer, tree, sym)
-        }
+      // logDefinition(sym) {
+      sym setInfo {
+        val tp = if (isSetter) MethodType(List(sym.newSyntheticValueParam(typeSig(tree))), UnitTpe)
+                 else NullaryMethodType(typeSig(tree))
+        pluginsTypeSigAccessor(tp, typer, tree, sym)
       }
+      // }
+      validate(sym)
     }
 
     def selfTypeCompleter(tree: Tree) = mkTypeCompleter(tree) { sym =>
@@ -1590,10 +1594,6 @@ trait Namers extends MethodSynthesis {
       sym => "[define] >> " + sym.flagString + " " + sym.fullLocationString,
       sym => "[define] << " + sym
     )
-    private def logAndValidate(sym: Symbol)(body: => Unit) {
-      logDefinition(sym)(body)
-      validate(sym)
-    }
 
     /** Convert Java generic array type T[] to (T with Object)[]
      *  (this is necessary because such arrays have a representation which is incompatible
