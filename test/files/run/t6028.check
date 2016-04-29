@@ -1,6 +1,6 @@
 [[syntax trees at end of                lambdalift]] // newSource1.scala
 package <empty> {
-  class T extends Object {
+  <sub_synth> class T extends Object {
     <paramaccessor> val classParam: Int = _;
     def <init>(classParam: Int): T = {
       T.super.<init>();
@@ -37,14 +37,14 @@ package <empty> {
       <synthetic> <paramaccessor> private[this] val methodParam$1: Int = _;
       <synthetic> <paramaccessor> private[this] val methodLocal$1: Int = _
     };
-    abstract trait MethodLocalTrait$1 extends Object {
+    abstract <sub_synth> trait MethodLocalTrait$1 extends Object {
       def /*MethodLocalTrait$1*/$init$(barParam$1: Int): Unit = {
         ()
       };
       scala.Predef.print(scala.Int.box(barParam$1));
       <synthetic> <stable> <artifact> def $outer(): T
     };
-    object MethodLocalObject$2 extends Object with T#MethodLocalTrait$1 {
+    <sub_synth> object MethodLocalObject$2 extends Object with T#MethodLocalTrait$1 {
       def <init>($outer: T, barParam$1: Int): T#MethodLocalObject$2.type = {
         MethodLocalObject$2.super.<init>();
         MethodLocalObject$2.super./*MethodLocalTrait$1*/$init$(barParam$1);
