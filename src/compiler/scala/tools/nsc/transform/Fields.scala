@@ -209,7 +209,7 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
 
             if (accessor hasFlag STABLE) // TODO: check isGetter?
               newSetters += newTraitSetter(accessor, clazz)
-          } else if (fieldMemoization.pureConstant) setTraitAccessorFlags(accessor) // TODO: remove when we no longer care about producing identical bytecode
+          }
         }}
 
         if (newSetters nonEmpty) {

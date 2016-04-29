@@ -298,7 +298,11 @@ abstract class Mixin extends InfoTransform with ast.TreeDSL {
             devWarning(s"Overridden concrete accessor: ${mixinMember.fullLocationString}")
           else {
             // mixin field accessors
-            val mixedInAccessor = cloneAndAddMixinMember(mixinClass, mixinMember)
+            val mixedInAccessor =
+              if (mixinMember.isLazy || !mixinMember.tpe.resultType.isInstanceOf[ConstantType])
+                cloneAndAddMixinMember(mixinClass, mixinMember)
+              else NoSymbol
+
             if (mixinMember.isLazy) {
               initializer(mixedInAccessor) = (
                 mixinClass.info.decl(mixinMember.name)
@@ -308,7 +312,7 @@ abstract class Mixin extends InfoTransform with ast.TreeDSL {
             if (!mixinMember.isSetter)
               mixinMember.tpe match {
                 case MethodType(Nil, ConstantType(_)) =>
-                  // mixinMember is a constant; only getter is needed
+                  // mixinMember is a constant; getter is implemented in trait, no field needed
                   ;
                 case MethodType(Nil, TypeRef(_, UnitClass, _)) =>
                   // mixinMember is a value of type unit. No field needed
