@@ -130,7 +130,7 @@ class ScalaInlineInfoTest extends ClearAfterClass {
     assert(infoC == expectC, mapDiff(expectC.methodInfos, infoC.methodInfos) + infoC)
   }
 
-//  @Test -- TODO: ignore abstract methods underlying the trait val...
+  @Test
   def inlineInfoSam(): Unit = {
     val code =
       """trait C { // expected to be seen as sam: g(I)I
