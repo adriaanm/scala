@@ -764,7 +764,7 @@ abstract class Mixin extends InfoTransform with ast.TreeDSL {
           if (!clazz.isTrait && sym.isLazy && !isEmpty) {
             assert(fieldOffset contains sym, sym)
             deriveDefDef(stat) {
-              case t if isUnitGetter(t.symbol) => mkLazyDef(clazz, sym, List(t), UNIT, fieldOffset(sym))
+              case t if isUnitGetter(sym) => mkLazyDef(clazz, sym, List(t), UNIT, fieldOffset(sym))
 
               case Block(stats, res) =>
                 mkLazyDef(clazz, sym, stats, Select(This(clazz), res.symbol), fieldOffset(sym))
