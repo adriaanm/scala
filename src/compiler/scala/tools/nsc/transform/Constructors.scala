@@ -544,11 +544,14 @@ abstract class Constructors extends Statics with Transform with ast.TreeDSL {
         else transform(tree.changeOwner(oldOwner -> newOwner))
     }
 
-    // Create an assignment to class field `to` with rhs `from`
-    def mkAssign(to: Symbol, from: Tree): Tree =
-      localTyper.typedPos(to.pos) {
-        Assign(Select(This(clazz), to), from)
+    // Assign `rhs` to class field / trait setter `assignSym`
+    def mkAssign(assignSym: Symbol, rhs: Tree): Tree =
+      localTyper.typedPos(assignSym.pos) {
+        val qual = Select(This(clazz), assignSym)
+        if (assignSym.isSetter) Apply(qual, List(rhs))
+        else Assign(qual, rhs)
       }
+
 
     // Create code to copy parameter to parameter accessor field.
     // If parameter is $outer, check that it is not null so that we NPE
@@ -654,18 +657,22 @@ abstract class Constructors extends Statics with Transform with ast.TreeDSL {
               else {
                 val emitField = memoizeValue(statSym)
 
-                val assignSym = if (!emitField) NoSymbol else statSym
-                moveEffectToCtor(vd.mods, vd.rhs, assignSym)
-
-                if (emitField) defBuf += deriveValDef(stat)(_ => EmptyTree)
+                if (emitField) {
+                  moveEffectToCtor(vd.mods, vd.rhs, statSym)
+                  defBuf += deriveValDef(stat)(_ => EmptyTree)
+                }
               }
 
             case dd: DefDef =>
-              def traitMemoizedFieldAccessor = clazz.isTrait && statSym.isAccessor && !statSym.isLazy && memoizeValue(statSym.accessed)
+              // either move the RHS to ctor (for getter of stored field) or just drop it (for corresponding setter)
+              def shouldMoveRHS =
+                clazz.isTrait && statSym.isAccessor && !statSym.isLazy && (statSym.isSetter || memoizeValue(statSym))
 
-              if ((dd.rhs eq EmptyTree) || !traitMemoizedFieldAccessor) { defBuf += dd }
-              else defBuf += deriveDefDef(stat)(_ => EmptyTree)
-
+              if ((dd.rhs eq EmptyTree) || !shouldMoveRHS) { defBuf += dd }
+              else {
+                if (statSym.isGetter) moveEffectToCtor(dd.mods, dd.rhs, statSym.setterIn(clazz))
+                defBuf += deriveDefDef(stat)(_ => EmptyTree)
+              }
 
             // all other statements go into the constructor
             case _ =>
