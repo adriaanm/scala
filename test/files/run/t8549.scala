@@ -79,7 +79,7 @@ object Test extends App {
     }
   }
 
-  // Generated on 20160515-00:17:51 with Scala version 2.12.0-SNAPSHOT)
+  // Generated on 20160528-12:34:39 with Scala version 2.12.0-20160528-120454-4b1dd798f7)
   overwrite.foreach(updateComment)
 
   check(Some(1))("rO0ABXNyAApzY2FsYS5Tb21lESLyaV6hi3QCAAFMAAF4dAASTGphdmEvbGFuZy9PYmplY3Q7eHIADHNjYWxhLk9wdGlvbv5pN/3bDmZ0AgAAeHBzcgARamF2YS5sYW5nLkludGVnZXIS4qCk94GHOAIAAUkABXZhbHVleHIAEGphdmEubGFuZy5OdW1iZXKGrJUdC5TgiwIAAHhwAAAAAQ==")
