@@ -2778,18 +2778,21 @@ trait Symbols extends api.Symbols { self: SymbolTable =>
     )
     ***/
     override def isValueParameter   = this hasFlag PARAM
-
     override def isSetterParameter  = isValueParameter && owner.isSetter
-    override def isAccessor         = this hasFlag ACCESSOR
-    override def isGetter           = isAccessor && !isSetter
+
     override def isDefaultGetter    = name containsName nme.DEFAULT_GETTER_STRING
-    override def isSetter           = isAccessor && nme.isSetterName(name)  // todo: make independent of name, as this can be forged.
+
+    override def isAccessor         = this hasFlag ACCESSOR
+    override def isGetter           = isAccessor && !nme.isSetterName(name)   // TODO: make independent of name, as this can be forged.
+    override def isSetter           = isAccessor && nme.isSetterName(name)    // TODO: make independent of name, as this can be forged.
+
     override def isLocalDummy       = nme.isLocalDummyName(name)
+
     override def isClassConstructor = name == nme.CONSTRUCTOR
     override def isMixinConstructor = name == nme.MIXIN_CONSTRUCTOR
-    override def isConstructor      = nme.isConstructorName(name)
+    override def isConstructor      = isClassConstructor || isMixinConstructor
 
-    override def isPackageObject = isModule && (name == nme.PACKAGE)
+    override def isPackageObject    = isModule && (name == nme.PACKAGE)
 
     // The name in comments is what it is being disambiguated from.
     // TODO - rescue CAPTURED from BYNAMEPARAM so we can see all the names.
