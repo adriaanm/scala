@@ -1,0 +1,1 @@
+(incOptions in ThisBuild) := (incOptions in ThisBuild).value.withNameHashing(false).withAntStyle(true)
