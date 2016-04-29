@@ -661,7 +661,7 @@ abstract class Constructors extends Statics with Transform with ast.TreeDSL {
               }
 
             case dd: DefDef =>
-              def traitMemoizedFieldAccessor = clazz.isTrait && statSym.isAccessor && memoizeValue(statSym.accessed)
+              def traitMemoizedFieldAccessor = clazz.isTrait && statSym.isAccessor && !statSym.isLazy && memoizeValue(statSym.accessed)
 
               if ((dd.rhs eq EmptyTree) || !traitMemoizedFieldAccessor) { defBuf += dd }
               else defBuf += deriveDefDef(stat)(_ => EmptyTree)
