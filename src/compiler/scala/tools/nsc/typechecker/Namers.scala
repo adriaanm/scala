@@ -1373,8 +1373,7 @@ trait Namers extends MethodSynthesis {
             val valOwner = owner.owner
             val pt =
               // there's no overriding outside of classes
-              if (!valOwner.isClass || settings.isScala211) WildcardType
-              else {
+              if (valOwner.isClass && settings.isScala212) {
                 // normalize to getter so that we correctly consider a val overriding a def
                 // (a val's name ends in a " ", so can't compare to def)
                 val valSym =
@@ -1384,15 +1383,16 @@ trait Namers extends MethodSynthesis {
                 // The symbol's info is currently being determined (up the call stack, you'll find a TypeCompleter's complete method),
                 // so the info will be set to whatever type we return here by the complete method.
                 val overridden = safeNextOverriddenSymbol(valSym)
-                println(s"valDefSig for $valSym from $overridden")
+//                println(s"valDefSig for $valSym from $overridden")
 
                 if (overridden == NoSymbol || overridden.isOverloaded) WildcardType
                 else {
                   val superValTp = valOwner.thisType.memberType(overridden).resultType
-                  println(s"valDefSig inferred $superValTp for $valSym")
+//                  println(s"valDefSig inferred $superValTp for $valSym")
+                  valSym.unlock() // we know the type now, so be cool about cycles
                   superValTp
                 }
-              }
+              } else WildcardType
 
             // derives the val's result type from type checking its rhs under the expected type `pt`
             // vdef.tpt is mutated, and `vdef.tpt.tpe` is `assignTypeToTree`'s result
