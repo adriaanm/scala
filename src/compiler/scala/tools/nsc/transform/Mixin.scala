@@ -474,11 +474,7 @@ abstract class Mixin extends InfoTransform with ast.TreeDSL {
 
           tree
 
-        case _ =>
-          if (currentOwner.isTrait && sym.isSetter && !enteringPickler(sym.isDeferred)) {
-            sym.addAnnotation(TraitSetterAnnotationClass)
-          }
-          tree
+        case _ => tree
       }
     }
 
