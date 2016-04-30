@@ -458,18 +458,10 @@ class Global(var currentSettings: Settings, var reporter: Reporter)
     val runsRightAfter = None
   } with ExtensionMethods
 
-  // phaseName = "fields"
-  object fields extends {
-    val global: Global.this.type = Global.this
-    // somewhere between typers, before erasure (so we get bridges for getters) and pickler (separate compilation of trait with fields and subclass)
-    val runsAfter = List("extmethods")
-    val runsRightAfter = None
-  } with Fields
-
   // phaseName = "pickler"
   object pickler extends {
     val global: Global.this.type = Global.this
-    val runsAfter = List("fields")
+    val runsAfter = List("extmethods")
     val runsRightAfter = None
   } with Pickler
 
@@ -486,6 +478,18 @@ class Global(var currentSettings: Settings, var reporter: Reporter)
     val runsAfter = List("refchecks")
     val runsRightAfter = None
   } with UnCurry
+
+  // phaseName = "fields"
+  object fields extends {
+    val global: Global.this.type = Global.this
+    // after refchecks, so it doesn't have to make weird exceptions for synthetic accessors
+    // after uncurry as it produces more work for the fields phase as well as being confused by it:
+    //   - sam expansion synthesizes classes, which may need trait fields mixed in
+    //   - the fields phase adds synthetic abstract methods to traits that should not disqualify them from being a SAM type
+    // before erasure: correct signatures & bridges for accessors
+    val runsAfter = List("uncurry")
+    val runsRightAfter = None
+  } with Fields
 
   // phaseName = "tailcalls"
   object tailCalls extends {
@@ -1048,7 +1052,6 @@ class Global(var currentSettings: Settings, var reporter: Reporter)
   @inline final def exitingFlatten[T](op: => T): T        = exitingPhase(currentRun.flattenPhase)(op)
   @inline final def exitingMixin[T](op: => T): T          = exitingPhase(currentRun.mixinPhase)(op)
   @inline final def exitingDelambdafy[T](op: => T): T     = exitingPhase(currentRun.delambdafyPhase)(op)
-  @inline final def exitingFields[T](op: => T): T         = exitingPhase(currentRun.fieldsPhase)(op)
   @inline final def exitingPickler[T](op: => T): T        = exitingPhase(currentRun.picklerPhase)(op)
   @inline final def exitingRefchecks[T](op: => T): T      = exitingPhase(currentRun.refchecksPhase)(op)
   @inline final def exitingSpecialize[T](op: => T): T     = exitingPhase(currentRun.specializePhase)(op)
@@ -1060,7 +1063,6 @@ class Global(var currentSettings: Settings, var reporter: Reporter)
   @inline final def enteringMixin[T](op: => T): T         = enteringPhase(currentRun.mixinPhase)(op)
   @inline final def enteringDelambdafy[T](op: => T): T    = enteringPhase(currentRun.delambdafyPhase)(op)
   @inline final def enteringJVM[T](op: => T): T           = enteringPhase(currentRun.jvmPhase)(op)
-  @inline final def enteringFields[T](op: => T): T        = enteringPhase(currentRun.fieldsPhase)(op)
   @inline final def enteringPickler[T](op: => T): T       = enteringPhase(currentRun.picklerPhase)(op)
   @inline final def enteringSpecialize[T](op: => T): T    = enteringPhase(currentRun.specializePhase)(op)
   @inline final def enteringTyper[T](op: => T): T         = enteringPhase(currentRun.typerPhase)(op)
@@ -1332,10 +1334,10 @@ class Global(var currentSettings: Settings, var reporter: Reporter)
     val typerPhase                   = phaseNamed("typer")
     // val inlineclassesPhase           = phaseNamed("inlineclasses")
     // val superaccessorsPhase          = phaseNamed("superaccessors")
-    val fieldsPhase                  = phaseNamed("fields")
     val picklerPhase                 = phaseNamed("pickler")
     val refchecksPhase               = phaseNamed("refchecks")
     val uncurryPhase                 = phaseNamed("uncurry")
+    // val fieldsPhase                  = phaseNamed("fields")
     // val tailcallsPhase               = phaseNamed("tailcalls")
     val specializePhase              = phaseNamed("specialize")
     val explicitouterPhase           = phaseNamed("explicitouter")

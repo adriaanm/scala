@@ -265,7 +265,7 @@ abstract class TreeGen extends scala.reflect.internal.TreeGen with TreeDSL {
   // Construct a method to implement `fun`'s single abstract method (`apply`, when `fun.tpe` is a built-in function type)
   def mkMethodFromFunction(localTyper: analyzer.Typer)(owner: Symbol, fun: Function) = {
     // TODO: treat FunctionN like any other SAM -- drop `&& !isFunctionType(fun.tpe)`
-    val sam = if (!isFunctionType(fun.tpe)) enteringFields(samOf(fun.tpe)) else NoSymbol
+    val sam = if (!isFunctionType(fun.tpe)) samOf(fun.tpe) else NoSymbol
     if (!sam.exists) mkMethodForFunctionBody(localTyper)(owner, fun, nme.apply)()
     else {
       val samMethType = fun.tpe memberInfo sam
@@ -282,7 +282,7 @@ abstract class TreeGen extends scala.reflect.internal.TreeGen with TreeDSL {
   private def functionResultType(tp: Type): Type = {
     val dealiased = tp.dealiasWiden
     if (isFunctionTypeDirect(dealiased)) dealiased.typeArgs.last
-    else enteringFields(samOf(tp)) match { // called during uncurry, so rewind back to before we introduced additional abstract methods for trait vals
+    else samOf(tp) match {
       case samSym if samSym.exists => tp.memberInfo(samSym).resultType.deconst
       case _ => NoType
     }

@@ -244,7 +244,7 @@ abstract class BCodeHelpers extends BCodeIdiomatic with BytecodeWriters {
         // Similarly, the fields phases adds abstract trait setters, which should not be considered
         // abstract for SAMs (they do disqualify the SAM from LMF treatment,
         // but an anonymous subclasss can be spun up by scalac after making just the single abstract method concrete)
-        val samSym = enteringFields(definitions.samOf(classSym.tpe))
+        val samSym = enteringPickler(definitions.samOf(classSym.tpe))
         if (samSym == NoSymbol) None
         else Some(samSym.javaSimpleName.toString + methodSymToDescriptor(samSym))
       }
