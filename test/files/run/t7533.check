@@ -18,7 +18,6 @@ method wAbs => abstract
 method w => concrete
 type UAbs => abstract
 type U => concrete
-variable z => abstract
 =======class AllConcrete=======
 class AllConcrete => concrete
 constructor AllConcrete => concrete
