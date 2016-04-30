@@ -434,7 +434,7 @@ abstract class RefChecks extends InfoTransform with scala.reflect.internal.trans
             overrideError("cannot be used here - class definitions cannot be overridden")
           } else if (!other.isDeferred && member.isClass) {
             overrideError("cannot be used here - classes can only override abstract types")
-          } else if (other.isEffectivelyFinal && !other.hasFlag(SYNTHESIZE_IMPL_IN_SUBCLASS)) { // (1.2)
+          } else if (other.isEffectivelyFinal) { // (1.2)
             overrideError("cannot override final member")
           } else if (!other.isDeferredOrJavaDefault && !other.hasFlag(JAVA_DEFAULTMETHOD) && !member.isAnyOverride && !member.isSynthetic) { // (*)
             // (*) Synthetic exclusion for (at least) default getters, fixes SI-5178. We cannot assign the OVERRIDE flag to
