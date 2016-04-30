@@ -1487,21 +1487,7 @@ abstract class RefChecks extends InfoTransform with scala.reflect.internal.trans
       tree match {
         case m: MemberDef =>
           val sym = m.symbol
-          val allAnnots = sym.annotations
-
-          // drop field-targeting annotations from getters
-          // (in traits, getters must also hold annotations that target the underlying field,
-          //  because the latter won't be created until the trait is mixed into a class)
-          // TODO do bean getters need special treatment to suppress field-targeting annotations in traits?
-          val annots =
-            if (sym.isGetter && sym.owner.isTrait) {
-              val annots = allAnnots filter AnnotationInfo.mkFilter(GetterTargetClass, defaultRetention = false)
-//              if (annots != allAnnots) println(s"filtering for $sym: $allAnnots to $annots")
-              sym setAnnotations annots
-              annots
-            } else allAnnots
-
-          applyChecks(annots)
+          applyChecks(sym.annotations)
 
           def messageWarning(name: String)(warn: String) =
             reporter.warning(tree.pos, f"Invalid $name message for ${sym}%s${sym.locationString}%s:%n$warn")
