@@ -239,7 +239,7 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
           val existingGetter = oldDecls.lookup(accessor.name.getterName)
 //          println(s"$existingGetter from $accessor to ${accessor.name.getterName}")
           val tp = fieldTypeOfAccessorIn(accessor, site)
-          (existingGetter ne NoSymbol) && (tp matches (site memberInfo existingGetter)) // !existingGetter.isDeferred && -- see (3)
+          (existingGetter ne NoSymbol) && (tp matches (site memberInfo existingGetter).resultType) // !existingGetter.isDeferred && -- see (3)
         }
 
         // mixin field accessors --

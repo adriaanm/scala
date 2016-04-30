@@ -7,7 +7,6 @@ trait N {
   val n: self.type = self
 }
 
-// uncomment extends clause for another bug
 abstract class M {
   val self: N
   val n: self.type
