@@ -303,18 +303,30 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
         val newDecls =
           if (mixedInAccessorAndFields.isEmpty) oldDecls.filterNot(omittableField)
           else {  // must not alter `decls` directly
-            // compute subst from accessors to corresponding clonedAccessors in types in newDecls
-            val (_origs, _mixedins) = (accessorsMaybeNeedingImpl, mixedInAccessorAndFields).zipped.collect {
-              case (traitAccessor, mixedin :: _) => (traitAccessor, mixedin)
-            }.unzip
 
-            val (origs, mixedins) = (_origs.toList, _mixedins.toList)
+            // This was needed for technical reasons when the fields phase ran before picklers, but now we run later and it's ok.
+            // Since this is a very expensive operation, it's better to drop it.
+            //
+            // The example in test/files/pos/trait_fields_dependent_rebind.scala illustrates what this substitution aims to align,
+            // but really there's no need to rewire the abstract getter in the trait to its synthetic implementation in a subclass,
+            // as they return the same value and have the same type.
+            // <obsolete>
+//            // compute subst from accessors to corresponding clonedAccessors in types in newDecls
+//            val (_origs, _mixedins) = (accessorsMaybeNeedingImpl, mixedInAccessorAndFields).zipped.collect {
+//              case (traitAccessor, mixedin :: _) => (traitAccessor, mixedin)
+//            }.unzip
+//
+//            val (origs, mixedins) = (_origs.toList, _mixedins.toList)
+//            val subster = (_: Type).substSym(origs, mixedins)
+//            val enter = { sym: Symbol => newDecls enter sym.setInfo(subster(sym.info)) }
+            // </obsolete>
 
             val newDecls = newScope
-            val enterAndSubst = { sym: Symbol => newDecls enter sym.substInfo(origs, mixedins) }
+            val enter    = newDecls enter (_: Symbol)
+            val enterAll = (_: List[Symbol]) foreach enter
 
-            oldDecls foreach { d => if (!omittableField(d)) enterAndSubst(d) }
-            mixedInAccessorAndFields foreach { _ foreach enterAndSubst }
+            oldDecls foreach { d => if (!omittableField(d)) enter(d) }
+            mixedInAccessorAndFields foreach enterAll
 
             newDecls
           }
