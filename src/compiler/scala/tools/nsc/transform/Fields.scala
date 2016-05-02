@@ -179,6 +179,8 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
       val fieldTp     = fieldTypeForGetterIn(getter, clazz.thisType)
       // println(s"newTraitSetter in $clazz for $getter = $setterName : $fieldTp")
 
+      getter.asTerm.referenced = setter
+
       setter setInfo MethodType(List(setter.newSyntheticValueParam(fieldTp)), UnitTpe)
       setter
     }

@@ -674,7 +674,7 @@ abstract class Constructors extends Statics with Transform with TypingTransforme
 
               if ((dd.rhs eq EmptyTree) || !shouldMoveRHS) { defBuf += dd }
               else {
-                if (statSym.isGetter) moveEffectToCtor(dd.mods, dd.rhs, statSym.setterIn(clazz))
+                if (statSym.isGetter) moveEffectToCtor(dd.mods, dd.rhs, statSym.asTerm.referenced orElse statSym.setterIn(clazz))
                 defBuf += deriveDefDef(stat)(_ => EmptyTree)
               }
 
