@@ -479,6 +479,13 @@ class Global(var currentSettings: Settings, var reporter: Reporter)
     val runsRightAfter = None
   } with UnCurry
 
+  // phaseName = "tailcalls"
+  object tailCalls extends {
+    val global: Global.this.type = Global.this
+    val runsAfter = List("uncurry")
+    val runsRightAfter = None
+  } with TailCalls
+
   // phaseName = "fields"
   object fields extends {
     val global: Global.this.type = Global.this
@@ -491,17 +498,10 @@ class Global(var currentSettings: Settings, var reporter: Reporter)
     val runsRightAfter = None
   } with Fields
 
-  // phaseName = "tailcalls"
-  object tailCalls extends {
-    val global: Global.this.type = Global.this
-    val runsAfter = List("uncurry")
-    val runsRightAfter = None
-  } with TailCalls
-
   // phaseName = "explicitouter"
   object explicitOuter extends {
     val global: Global.this.type = Global.this
-    val runsAfter = List("tailcalls")
+    val runsAfter = List("fields")
     val runsRightAfter = None
   } with ExplicitOuter
 
