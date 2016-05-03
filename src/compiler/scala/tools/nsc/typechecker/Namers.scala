@@ -1371,10 +1371,10 @@ trait Namers extends MethodSynthesis {
             ErrorType
           } else {
             val valOwner = owner.owner
+            val isAccessor = vdef.symbol hasFlag ACCESSOR
             val pt =
               // there's no overriding outside of classes
-              if (valOwner.isClass && (vdef.symbol hasFlag STABLE) && settings.isScala212 ) {
-                val isAccessor = vdef.symbol hasFlag ACCESSOR
+              if (valOwner.isClass && settings.isScala212 ) {
                 // normalize to getter so that we correctly consider a val overriding a def
                 // (a val's name ends in a " ", so can't compare to def)
                 val getter = if (isAccessor) vdef.symbol else vdef.symbol.getterIn(valOwner)
@@ -1387,6 +1387,7 @@ trait Namers extends MethodSynthesis {
                 else {
                   val superValTp = valOwner.thisType.memberType(overridden).resultType
                   val tmpInfo = if (isAccessor) NullaryMethodType(superValTp) else superValTp
+//                  println(s"valDefSig inferred $tmpInfo for ${vdef.symbol} from $overridden")
                   vdef.symbol setInfo tmpInfo // deal with cycles like methodSig's inferResTp case
                   superValTp
                 }
@@ -1394,9 +1395,22 @@ trait Namers extends MethodSynthesis {
 
             // derives the val's result type from type checking its rhs under the expected type `pt`
             // vdef.tpt is mutated, and `vdef.tpt.tpe` is `assignTypeToTree`'s result
-            assignTypeToTree(vdef, typer, pt)
+            val tptFromRhsUnderPt = assignTypeToTree(vdef, typer, pt)
+
+            // need to re-align with assignTypeToTree, as the type we're returning from valDefSig (tptFromRhsUnderPt)
+            // may actually go to the accessor, not the valdef (and if assignTypeToTree returns a subtype of `pt`,
+            // we would be out of synch between field and its accessors), and thus the type completer won't
+            // fix the symbol's info for us -- we set it to tmpInfo above, which may need to be improved to tptFromRhsUnderPt
+            if (pt ne WildcardType) {
+              val fixedInfo = if (isAccessor) NullaryMethodType(tptFromRhsUnderPt) else tptFromRhsUnderPt
+              vdef.symbol setInfo fixedInfo
+            }
+
+            tptFromRhsUnderPt
           }
         } else typer.typedType(tpt).tpe
+
+//      println(s"val: $result / ${vdef.tpt.tpe} / ")
 
       pluginsTypeSig(result, typer, vdef, if (tpt.isEmpty) WildcardType else result)
     }
