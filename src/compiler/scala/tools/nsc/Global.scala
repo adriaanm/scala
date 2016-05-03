@@ -486,6 +486,13 @@ class Global(var currentSettings: Settings, var reporter: Reporter)
     val runsRightAfter = None
   } with TailCalls
 
+  // phaseName = "specialize"
+  object specializeTypes extends {
+    val global: Global.this.type = Global.this
+    val runsAfter = List("")
+    val runsRightAfter = Some("tailcalls")
+  } with SpecializeTypes
+
   // phaseName = "fields"
   object fields extends {
     val global: Global.this.type = Global.this
@@ -494,7 +501,7 @@ class Global(var currentSettings: Settings, var reporter: Reporter)
     //   - sam expansion synthesizes classes, which may need trait fields mixed in
     //   - the fields phase adds synthetic abstract methods to traits that should not disqualify them from being a SAM type
     // before erasure: correct signatures & bridges for accessors
-    val runsAfter = List("uncurry")
+    val runsAfter = List("specialize")
     val runsRightAfter = None
   } with Fields
 
@@ -505,12 +512,6 @@ class Global(var currentSettings: Settings, var reporter: Reporter)
     val runsRightAfter = None
   } with ExplicitOuter
 
-  // phaseName = "specialize"
-  object specializeTypes extends {
-    val global: Global.this.type = Global.this
-    val runsAfter = List("")
-    val runsRightAfter = Some("tailcalls")
-  } with SpecializeTypes
 
   // phaseName = "erasure"
   override object erasure extends {
