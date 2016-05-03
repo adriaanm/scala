@@ -179,6 +179,9 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
       val fieldTp     = fieldTypeForGetterIn(getter, clazz.thisType)
       // println(s"newTraitSetter in $clazz for $getter = $setterName : $fieldTp")
 
+      // TODO: not true in repl... because of multiple compiler runs? !!!
+      // assert(getter.asTerm.referenced eq NoSymbol)
+
       getter.asTerm.referenced = setter
 
       setter setInfo MethodType(List(setter.newSyntheticValueParam(fieldTp)), UnitTpe)
@@ -424,11 +427,29 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
           if (rhs ne EmptyTree) {
             val fieldMemoization = fieldMemoizationIn(statSym, clazz)
 
-            // if we decide to have non-stored fields with initialization effects, the stat's RHS should be replaced by unit
-            // if (!fieldMemoization.stored) deriveUnitDef(stat) else stat
-
             if (fieldMemoization.pureConstant) statInlinedConstantRhs :: Nil
-            else super.transform(stat) :: Nil
+            else if (clazz.isTrait && statSym.isGetter) {
+              // TODO: do this for valdefs in classes, so that constructors need not know about fields, constant types,...
+              // we'll have to somehow distinguish presuper/statis/regular fields after the assign has gone into the
+              // template, divorced from the original valdef...
+
+              // a concrete stable val received a trait setter in `newTraitSetter` --> `referenced` field points to it
+              // otherwise, it's a var
+              val setter =
+                if (statSym.asTerm.referenced.exists) statSym.asTerm.referenced
+                else statSym.setterIn(clazz)
+
+              assert(setter.exists, s"no setter for $stat with symbol $statSym in trait $clazz")
+
+              val init =
+                localTyper.typedPos(statSym.pos) {
+                  Apply(Select(This(clazz), setter), List(rhsAtOwner(stat, exprOwner)))
+                }
+
+              val getterDeferred = deriveDefDef(stat)(_ => EmptyTree)
+
+              init :: getterDeferred :: Nil
+            } else super.transform(stat) :: Nil
           } else {
             stat :: Nil
           }
@@ -437,10 +458,10 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
           if (rhs ne EmptyTree) {
             val fieldMemoization = fieldMemoizationIn(statSym, clazz)
 
-            // drop the val for (a) constant (pure & not-stored) and (b) not-stored (but still effectful) fields
+            // drop the val for constant (pure & not-stored)
             if (fieldMemoization.pureConstant) Nil // (a)
-            else super.transform(stat) :: Nil // if (fieldMemoization.stored)
-//            else rhsAtOwner(transformStat, exprOwner) :: Nil // (b) -- not used currently
+            // TODO: see above, move RHS into init statement in template body similar to traits
+            else super.transform(stat) :: Nil
           } else {
             stat :: Nil
           }

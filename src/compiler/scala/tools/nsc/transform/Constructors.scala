@@ -552,7 +552,7 @@ abstract class Constructors extends Statics with Transform with TypingTransforme
     def mkAssign(assignSym: Symbol, rhs: Tree): Tree =
       localTyper.typedPos(assignSym.pos) {
         val qual = Select(This(clazz), assignSym)
-        if (assignSym.isSetter) Apply(qual, List(rhs))
+        if (assignSym.isSetter) Apply(qual, List(rhs)) // TODO: don't need this case anymore I think
         else Assign(qual, rhs)
       }
 
@@ -658,25 +658,13 @@ abstract class Constructors extends Statics with Transform with TypingTransforme
             //   - the constructor, after the super call (regular val).
             case vd: ValDef =>
               if (vd.rhs eq EmptyTree) { defBuf += vd }
-              else {
-                val emitField = memoizeValue(statSym)
-
-                if (emitField) {
-                  moveEffectToCtor(vd.mods, vd.rhs, statSym)
-                  defBuf += deriveValDef(stat)(_ => EmptyTree)
-                }
+              else if (memoizeValue(statSym)) {
+                moveEffectToCtor(vd.mods, vd.rhs, statSym)
+                defBuf += deriveValDef(stat)(_ => EmptyTree)
               }
 
-            case dd: DefDef =>
-              // either move the RHS to ctor (for getter of stored field) or just drop it (for corresponding setter)
-              def shouldMoveRHS =
-                clazz.isTrait && statSym.isAccessor && !statSym.isLazy && (statSym.isSetter || memoizeValue(statSym))
-
-              if ((dd.rhs eq EmptyTree) || !shouldMoveRHS) { defBuf += dd }
-              else {
-                if (statSym.isGetter) moveEffectToCtor(dd.mods, dd.rhs, statSym.asTerm.referenced orElse statSym.setterIn(clazz))
-                defBuf += deriveDefDef(stat)(_ => EmptyTree)
-              }
+            // trait getter RHSs are treated immediately during fields
+            case dd: DefDef => defBuf += dd
 
             // all other statements go into the constructor
             case _ =>
