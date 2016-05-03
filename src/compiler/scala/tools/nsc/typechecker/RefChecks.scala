@@ -375,7 +375,7 @@ abstract class RefChecks extends InfoTransform with scala.reflect.internal.trans
           if (noErrorType) {
             emitOverrideError(
               if (member.isModule && other.isModule) objectOverrideErrorMsg
-              else overrideErrorMsg("has incompatible type")
+              else overrideErrorMsg(s"has incompatible type $lowType")
             )
           }
         }
