@@ -1373,7 +1373,7 @@ trait Namers extends MethodSynthesis {
             val valOwner = owner.owner
             val pt =
               // there's no overriding outside of classes
-              if (valOwner.isClass && settings.isScala212) {
+              if (valOwner.isClass && (vdef.symbol hasFlag STABLE) && settings.isScala212 ) {
                 val isAccessor = vdef.symbol hasFlag ACCESSOR
                 // normalize to getter so that we correctly consider a val overriding a def
                 // (a val's name ends in a " ", so can't compare to def)
