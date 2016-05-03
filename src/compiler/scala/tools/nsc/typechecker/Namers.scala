@@ -1374,22 +1374,20 @@ trait Namers extends MethodSynthesis {
             val pt =
               // there's no overriding outside of classes
               if (valOwner.isClass && settings.isScala212) {
+                val isAccessor = vdef.symbol hasFlag ACCESSOR
                 // normalize to getter so that we correctly consider a val overriding a def
                 // (a val's name ends in a " ", so can't compare to def)
-                val valSym =
-                  if (vdef.symbol hasFlag ACCESSOR) vdef.symbol
-                  else vdef.symbol.getterIn(valOwner)
+                val getter = if (isAccessor) vdef.symbol else vdef.symbol.getterIn(valOwner)
 
                 // The symbol's info is currently being determined (up the call stack, you'll find a TypeCompleter's complete method),
                 // so the info will be set to whatever type we return here by the complete method.
-                val overridden = safeNextOverriddenSymbol(valSym)
-//                println(s"valDefSig for $valSym from $overridden")
+                val overridden = safeNextOverriddenSymbol(getter)
 
                 if (overridden == NoSymbol || overridden.isOverloaded) WildcardType
                 else {
                   val superValTp = valOwner.thisType.memberType(overridden).resultType
-//                  println(s"valDefSig inferred $superValTp for $valSym")
-                  valSym.unlock() // we know the type now, so be cool about cycles
+                  val tmpInfo = if (isAccessor) NullaryMethodType(superValTp) else superValTp
+                  vdef.symbol setInfo tmpInfo // deal with cycles like methodSig's inferResTp case
                   superValTp
                 }
               } else WildcardType
