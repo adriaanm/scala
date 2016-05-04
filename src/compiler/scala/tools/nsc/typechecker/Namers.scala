@@ -810,16 +810,17 @@ trait Namers extends MethodSynthesis {
 
     /* Explicit isSetter required for bean setters (beanSetterSym.isSetter is false) */
     def accessorTypeCompleter(tree: ValDef, isSetter: Boolean) = mkTypeCompleter(tree) { sym =>
-      // logDefinition(sym) {
-      sym setInfo {
-        val tp = if (isSetter) MethodType(List(sym.newSyntheticValueParam(typeSig(tree))), UnitTpe)
-                 else NullaryMethodType(typeSig(tree))
-        pluginsTypeSigAccessor(tp, typer, tree, sym)
-      }
-      // }
+      // typeSig calls valDefSig (because tree: ValDef)
+      val sig = accessorSigFromFieldTp(sym, isSetter, typeSig(tree))
+
+      sym setInfo pluginsTypeSigAccessor(sig, typer, tree, sym)
+
       validate(sym)
     }
 
+    private def accessorSigFromFieldTp(sym: global.Symbol, isSetter: Boolean, tp: global.Type): global.Type with Product with Serializable = {
+      if (isSetter) MethodType(List(sym.newSyntheticValueParam(tp)), UnitTpe) else NullaryMethodType(tp)
+    }
     def selfTypeCompleter(tree: Tree) = mkTypeCompleter(tree) { sym =>
       val selftpe = typer.typedType(tree).tpe
       sym setInfo {
