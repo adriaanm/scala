@@ -121,6 +121,7 @@ trait MethodSynthesis {
     }
 
     // TODO: see if we can link symbol creation & tree derivation by sharing the Field/Getter/Setter factories
+    // maybe we can at least reuse some variant of standardAccessors?
     def enterGetterSetter(tree: ValDef): Unit = {
       tree.symbol =
         if (tree.mods.isLazy) {
