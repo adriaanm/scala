@@ -282,14 +282,15 @@ trait MethodSynthesis {
       final def enclClass = basisSym.enclClass
 
 
-      /* Explicit isSetter required for bean setters (beanSetterSym.isSetter is false) */
-      final def completer(sym: Symbol) = namerOf(sym).accessorTypeCompleter(tree, isSetter)
+      // There's no reliable way to detect all kinds of setters from flags or name!!!
+      // A BeanSetter's name does not end in `_=` -- it does begin with "set", but so could the getter
+      // for a regular Scala field... TODO: can we add a flag to distinguish getter/setter accessors?
+      final def completer(sym: Symbol) = namerOf(sym).accessorTypeCompleter(tree, this.isInstanceOf[DerivedSetter])
       final def fieldSelection         = Select(This(enclClass), basisSym)
 
       def derivedSym: Symbol = tree.symbol
       def derivedTree: Tree  = EmptyTree
 
-      def isSetter   = false
       def isDeferred = mods.isDeferred
       def validate() { }
       def createAndEnterSymbol(): MethodSymbol = {
@@ -345,7 +346,6 @@ trait MethodSynthesis {
       def needsSetter = mods.isMutable
     }
     sealed trait DerivedSetter extends DerivedFromValDef {
-      override def isSetter = true
       protected def setterParam = derivedSym.paramss match {
         case (p :: Nil) :: _  => p
         case _                => NoSymbol
