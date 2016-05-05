@@ -500,6 +500,9 @@ trait MethodSynthesis {
       def flagsMask  = FieldFlags
       def flagsExtra = PrivateLocal
 
+      // TODO: override def createAndEnterSymbol (currently never called on Field)
+      // and do `enterStrictVal(tree)`, so that enterGetterSetter and addDerivedTrees can share some logic...
+
       // handle lazy val first for now (we emit a Field even though we probably shouldn't...)
       override def derivedTree =
         if (mods.isLazy) copyValDef(tree)(mods = mods | flagsExtra, name = this.name, rhs = EmptyTree).setPos(tree.pos.focus)
