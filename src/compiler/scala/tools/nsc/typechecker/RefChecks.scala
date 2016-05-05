@@ -450,7 +450,7 @@ abstract class RefChecks extends InfoTransform with scala.reflect.internal.trans
           } else if (other.isAbstractOverride && other.isIncompleteIn(clazz) && !member.isAbstractOverride) {
             overrideError("needs `abstract override' modifiers")
           }
-          else if (member.isAnyOverride && !(member hasFlag MIXEDIN_ACCESSOR) && (other hasFlag ACCESSOR) && !(other hasFlag STABLE)) {
+          else if (member.isAnyOverride && (other hasFlag ACCESSOR) && !(other hasFlag STABLE)) {
             // The check above used to look at `field` == `other.accessed`, ensuring field.isVariable && !field.isLazy,
             // which I think is identical to the more direct `!(other hasFlag STABLE)` (given that `other` is a method).
             // Also, we're moving away from (looking at) underlying fields (vals in traits no longer have them, to begin with)

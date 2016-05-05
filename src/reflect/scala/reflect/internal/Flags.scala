@@ -173,7 +173,6 @@ class Flags extends ModifierFlags {
 
   // flags used strictly internally in the Fields phase (info/tree transform):
   final val NEEDS_TREES   = 1L << 59           // this symbol needs a tree. (distinct from SYNTHESIZE_IMPL_IN_SUBCLASS)
-  final val MIXEDIN_ACCESSOR = 1L << 60 // Like MIXEDIN, but used in Fields -- TODO: reuse MIXEDIN flag
 
   // ------- shift definitions -------------------------------------------------------
   //
