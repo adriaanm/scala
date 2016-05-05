@@ -811,6 +811,7 @@ trait Namers extends MethodSynthesis {
     /* Explicit isSetter required for bean setters (beanSetterSym.isSetter is false) */
     def accessorTypeCompleter(tree: ValDef, isSetter: Boolean) = mkTypeCompleter(tree) { sym =>
       // typeSig calls valDefSig (because tree: ValDef)
+      // sym is an accessor, while tree is the field (which may have the same symbol as the getter, or maybe it's the field)
       val sig = accessorSigFromFieldTp(sym, isSetter, typeSig(tree))
 
       sym setInfo pluginsTypeSigAccessor(sig, typer, tree, sym)
@@ -1371,28 +1372,32 @@ trait Namers extends MethodSynthesis {
             MissingParameterOrValTypeError(tpt)
             ErrorType
           } else {
-            val valOwner = owner.owner
-            val isAccessor = vdef.symbol hasFlag ACCESSOR
-            val pt =
-              // there's no overriding outside of classes
-              if (valOwner.isClass && settings.isScala212 ) {
+            // enterGetterSetter assigns the getter's symbol to a ValDef when there's no underlying field
+            // (a deferred val or most vals defined in a trait -- see Field.noFieldFor)
+            val isGetter = vdef.symbol hasFlag ACCESSOR
+
+            val pt = {
+              val valOwner = owner.owner
+              // there's no overriding outside of classes, and we didn't use to do this in 2.11, so provide opt-out
+              if (valOwner.isClass && settings.isScala212) {
                 // normalize to getter so that we correctly consider a val overriding a def
                 // (a val's name ends in a " ", so can't compare to def)
-                val getter = if (isAccessor) vdef.symbol else vdef.symbol.getterIn(valOwner)
+                val overridingSym = if (isGetter) vdef.symbol else vdef.symbol.getterIn(valOwner)
 
-                // The symbol's info is currently being determined (up the call stack, you'll find a TypeCompleter's complete method),
-                // so the info will be set to whatever type we return here by the complete method.
-                val overridden = safeNextOverriddenSymbol(getter)
+                // We're called from an accessorTypeCompleter, which is completing the info for the accessor's symbol,
+                // which may or may not be `vdef.symbol` (see isGetter above)
+                val overridden = safeNextOverriddenSymbol(overridingSym)
 
                 if (overridden == NoSymbol || overridden.isOverloaded) WildcardType
-                else {
-                  val superValTp = valOwner.thisType.memberType(overridden).resultType
-                  val tmpInfo = if (isAccessor) NullaryMethodType(superValTp) else superValTp
-//                  println(s"valDefSig inferred $tmpInfo for ${vdef.symbol} from $overridden")
-                  vdef.symbol setInfo tmpInfo // deal with cycles like methodSig's inferResTp case
-                  superValTp
-                }
+                else valOwner.thisType.memberType(overridden).resultType
               } else WildcardType
+            }
+
+            def patchSymInfo(tp: Type): Unit =
+              if (pt ne WildcardType) // no patching up to do if we didn't infer a prototype
+                vdef.symbol setInfo (if (isGetter) NullaryMethodType(tp) else tp)
+
+            patchSymInfo(pt)
 
             // derives the val's result type from type checking its rhs under the expected type `pt`
             // vdef.tpt is mutated, and `vdef.tpt.tpe` is `assignTypeToTree`'s result
@@ -1402,10 +1407,7 @@ trait Namers extends MethodSynthesis {
             // may actually go to the accessor, not the valdef (and if assignTypeToTree returns a subtype of `pt`,
             // we would be out of synch between field and its accessors), and thus the type completer won't
             // fix the symbol's info for us -- we set it to tmpInfo above, which may need to be improved to tptFromRhsUnderPt
-            if (pt ne WildcardType) {
-              val fixedInfo = if (isAccessor) NullaryMethodType(tptFromRhsUnderPt) else tptFromRhsUnderPt
-              vdef.symbol setInfo fixedInfo
-            }
+            if (!isGetter) patchSymInfo(tptFromRhsUnderPt)
 
             tptFromRhsUnderPt
           }
