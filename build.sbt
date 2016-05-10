@@ -112,6 +112,8 @@ globalVersionSettings
 baseVersion in Global := "2.12.0"
 baseVersionSuffix in Global := "SNAPSHOT"
 
+embedJLine in Global := true
+
 lazy val commonSettings = clearSourceAndResourceDirectories ++ publishSettings ++ Seq[Setting[_]](
   organization := "org.scala-lang",
   scalaVersion := bootstrapScalaVersion,
@@ -206,7 +208,9 @@ lazy val commonSettings = clearSourceAndResourceDirectories ++ publishSettings +
 
   // Don't log process output (e.g. of forked `compiler/runMain ...Main`), just pass it
   // directly to stdout
-  outputStrategy in run := Some(StdoutOutput)
+  outputStrategy in run := Some(StdoutOutput),
+  Quiet.silenceScalaBinaryVersionWarning,
+  Quiet.silenceIvyUpdateInfoLogging
 )
 
 /** Extra post-processing for the published POM files. These are needed to create POMs that
@@ -442,30 +446,33 @@ lazy val replJlineEmbedded = Project("repl-jline-embedded", file(".") / "target"
     // This is different from the ant build where all parts are combined into quick/repl, but
     // it is cleaner because it avoids circular dependencies.
     compile in Compile <<= (compile in Compile).dependsOn(Def.task {
-      import java.util.jar._
-      import collection.JavaConverters._
-      val inputs: Iterator[JarJar.Entry] = {
-        val repljlineClasses = (products in Compile in replJline).value.flatMap(base => Path.allSubpaths(base).map(x => (base, x._1)))
-        val jlineJAR = (dependencyClasspath in Compile).value.find(_.get(moduleID.key) == Some(jlineDep)).get.data
-        val jarFile = new JarFile(jlineJAR)
-        val jarEntries = jarFile.entries.asScala.filterNot(_.isDirectory).map(entry => JarJar.JarEntryInput(jarFile, entry))
-        def compiledClasses = repljlineClasses.iterator.map { case (base, file) => JarJar.FileInput(base, file) }
-        (jarEntries ++ compiledClasses).filter(x =>
-          x.name.endsWith(".class") || x.name.endsWith(".properties") || x.name.startsWith("META-INF/native") || x.name.startsWith("META-INF/maven")
+      if (embedJLine.value) {
+        import java.util.jar._
+        import collection.JavaConverters._
+        val inputs: Iterator[JarJar.Entry] = {
+          val repljlineClasses = (products in Compile in replJline).value.flatMap(base => Path.allSubpaths(base).map(x => (base, x._1)))
+          val jlineJAR = (dependencyClasspath in Compile).value.find(_.get(moduleID.key) == Some(jlineDep)).get.data
+          val jarFile = new JarFile(jlineJAR)
+          val jarEntries = jarFile.entries.asScala.filterNot(_.isDirectory).map(entry => JarJar.JarEntryInput(jarFile, entry))
+          def compiledClasses = repljlineClasses.iterator.map { case (base, file) => JarJar.FileInput(base, file) }
+          (jarEntries ++ compiledClasses).filter(x =>
+            x.name.endsWith(".class") || x.name.endsWith(".properties") || x.name.startsWith("META-INF/native") || x.name.startsWith("META-INF/maven")
+          )
+        }
+        import JarJar.JarJarConfig._
+        val config: Seq[JarJar.JarJarConfig] = Seq(
+          Rule("org.fusesource.**", "scala.tools.fusesource_embedded.@1"),
+          Rule("jline.**", "scala.tools.jline_embedded.@1"),
+          Rule("scala.tools.nsc.interpreter.jline.**", "scala.tools.nsc.interpreter.jline_embedded.@1"),
+          Keep("scala.tools.**")
         )
+        val outdir = (classDirectory in Compile).value
+        JarJar(inputs, outdir, config)
       }
-      import JarJar.JarJarConfig._
-      val config: Seq[JarJar.JarJarConfig] = Seq(
-        Rule("org.fusesource.**", "scala.tools.fusesource_embedded.@1"),
-        Rule("jline.**", "scala.tools.jline_embedded.@1"),
-        Rule("scala.tools.nsc.interpreter.jline.**", "scala.tools.nsc.interpreter.jline_embedded.@1"),
-        Keep("scala.tools.**")
-      )
-      val outdir = (classDirectory in Compile).value
-      JarJar(inputs, outdir, config)
     }),
     publishArtifact := false,
     connectInput in run := true
+
   )
   .dependsOn(replJline)
 
@@ -662,6 +669,7 @@ lazy val root = (project in file("."))
   )
   .aggregate(library, reflect, compiler, interactive, repl, replJline, replJlineEmbedded,
     scaladoc, scalap, partestExtras, junit, libraryAll, scalaDist).settings(
+    Quiet.silenceIvyUpdateInfoLogging,
     sources in Compile := Seq.empty,
     onLoadMessage := """|*** Welcome to the sbt build definition for Scala! ***
       |This build definition has an EXPERIMENTAL status. If you are not
@@ -727,6 +735,9 @@ lazy val buildDirectory = settingKey[File]("The directory where all build produc
 lazy val mkBin = taskKey[Seq[File]]("Generate shell script (bash or Windows batch).")
 lazy val mkQuick = taskKey[Unit]("Generate a full build, including scripts, in build/quick")
 lazy val mkPack = taskKey[Unit]("Generate a full build, including scripts, in build/pack")
+
+// Add `embedJLine in Global := false` to `local.sbt` to silence noise until https://github.com/scala/scala-dev/issues/146 is fixed.
+lazy val embedJLine = settingKey[Boolean]("Embed a JarJar-shaded copy of JLine and code in interacing repl-jline")
 
 // Defining these settings is somewhat redundant as we also redefine settings that depend on them.
 // However, IntelliJ's project import works better when these are set correctly.
