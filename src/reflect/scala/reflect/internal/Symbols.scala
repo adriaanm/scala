@@ -324,17 +324,12 @@ trait Symbols extends api.Symbols { self: SymbolTable =>
     final def newImport(pos: Position): TermSymbol =
       newTermSymbol(nme.IMPORT, pos)
 
-    def newModuleVarSymbol(accessor: Symbol): TermSymbol = {
-      val newName  = nme.moduleVarName(accessor.name.toTermName)
-      val newFlags = MODULEVAR | ( if (this.isClass) PrivateLocal | SYNTHETIC else 0 )
-      val newInfo  = thisType.memberType(accessor).finalResultType
-      val mval     = newVariable(newName, accessor.pos.focus, newFlags.toLong) addAnnotation VolatileAttr
+    def newModuleVarSymbol(accessor: Symbol): TermSymbol =
+      newVariable(
+        nme.moduleVarName(accessor.name.toTermName),
+        accessor.pos.focus,
+        (MODULEVAR | (if (isClass) PrivateLocal | SYNTHETIC else 0)).toLong) addAnnotation VolatileAttr
 
-      if (this.isClass)
-        mval setInfoAndEnter newInfo
-      else
-        mval setInfo newInfo
-    }
 
     final def newModuleSymbol(name: TermName, pos: Position = NoPosition, newFlags: Long = 0L): ModuleSymbol =
       newTermSymbol(name, pos, newFlags).asInstanceOf[ModuleSymbol]
@@ -2771,7 +2766,7 @@ trait Symbols extends api.Symbols { self: SymbolTable =>
     override def isCapturedVariable = hasAllFlags(MUTABLE | CAPTURED) && !hasFlag(METHOD)
 
     override def companionSymbol: Symbol = companionClass
-    override def moduleClass = if (isModule) referenced else NoSymbol
+    override def moduleClass = if (isModuleNotMethod) referenced else NoSymbol
 
     override def isBridge           = this hasFlag BRIDGE
     override def isEarlyInitialized = this hasFlag PRESUPER

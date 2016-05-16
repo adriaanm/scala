@@ -261,7 +261,7 @@ class BTypesFromSymbols[G <: Global](val global: G) extends BTypes {
   private def memberClassesForInnerClassTable(classSymbol: Symbol): List[Symbol] = classSymbol.info.decls.collect({
     case sym if sym.isClass && !considerAsTopLevelImplementationArtifact(sym) =>
       sym
-    case sym if sym.isModule && !considerAsTopLevelImplementationArtifact(sym) =>
+    case sym if sym.isModuleNotMethod && !considerAsTopLevelImplementationArtifact(sym) =>
       val r = exitingPickler(sym.moduleClass)
       assert(r != NoSymbol, sym.fullLocationString)
       r
