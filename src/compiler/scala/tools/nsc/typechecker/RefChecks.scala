@@ -14,7 +14,7 @@ import scala.tools.nsc.settings.ScalaVersion
 import scala.tools.nsc.settings.NoScalaVersion
 
 import symtab.Flags._
-import transform.InfoTransform
+import transform.Transform
 
 
 /** <p>
@@ -43,7 +43,7 @@ import transform.InfoTransform
  *
  *  @todo    Check whether we always check type parameter bounds.
  */
-abstract class RefChecks extends InfoTransform with scala.reflect.internal.transform.RefChecks {
+abstract class RefChecks extends Transform with scala.reflect.internal.transform.RefChecks {
 
   val global: Global               // need to repeat here because otherwise last mixin defines global as
                                    // SymbolTable. If we had DOT this would not be an issue
@@ -54,31 +54,9 @@ abstract class RefChecks extends InfoTransform with scala.reflect.internal.trans
 
   /** the following two members override abstract members in Transform */
   val phaseName: String = "refchecks"
-  override def phaseNewFlags: Long = lateMETHOD
 
   def newTransformer(unit: CompilationUnit): RefCheckTransformer =
     new RefCheckTransformer(unit)
-  override def changesBaseClasses = false
-
-  override def transformInfo(sym: Symbol, tp: Type): Type = {
-    // !!! This is a sketchy way to do things.
-    // It would be better to replace the module symbol with a method symbol
-    // rather than creating this module/method hybrid which must be special
-    // cased all over the place. Look for the call sites which use(d) some
-    // variation of "isMethod && !isModule", which to an observer looks like
-    // a nonsensical condition. (It is now "isModuleNotMethod".)
-    if (sym.isModule && !sym.isStatic) {
-      sym setFlag lateMETHOD | STABLE
-      // Note that this as far as we can see it works equally well
-      // to set the METHOD flag here and dump lateMETHOD, but it does
-      // mean that under separate compilation the typer will see
-      // modules as methods (albeit stable ones with singleton types.)
-      // So for now lateMETHOD lives while we try to convince ourselves
-      // we can live without it or deliver that info some other way.
-      log(s"Stabilizing module method for ${sym.fullLocationString}")
-    }
-    super.transformInfo(sym, tp)
-  }
 
   val toJavaRepeatedParam  = new SubstSymMap(RepeatedParamClass -> JavaRepeatedParamClass)
   val toScalaRepeatedParam = new SubstSymMap(JavaRepeatedParamClass -> RepeatedParamClass)
@@ -1180,69 +1158,7 @@ abstract class RefChecks extends InfoTransform with scala.reflect.internal.trans
       finally popLevel()
     }
 
-    /** Eliminate ModuleDefs. In all cases the ModuleDef (carrying a module symbol) is
-     *  replaced with a ClassDef (carrying the corresponding module class symbol) with additional
-     *  trees created as follows:
-     *
-     *  1) A statically reachable object (either top-level or nested only in objects) receives
-     *     no additional trees.
-     *  2) An inner object which matches an existing member (e.g. implements an interface)
-     *     receives an accessor DefDef to implement the interface.
-     *  3) An inner object otherwise receives a private ValDef which declares a module var
-     *     (the field which holds the module class - it has a name like Foo$module) and an
-     *     accessor for that field. The instance is created lazily, on first access.
-     */
-    private def eliminateModuleDefs(moduleDef: Tree): List[Tree] = exitingRefchecks {
-      val ModuleDef(_, _, impl) = moduleDef
-      val module        = moduleDef.symbol
-      val site          = module.owner
-      val moduleName    = module.name.toTermName
-      // The typer doesn't take kindly to seeing this ClassDef; we have to
-      // set NoType so it will be ignored.
-      val cdef          = ClassDef(module.moduleClass, impl) setType NoType
 
-      def matchingInnerObject() = {
-        val newFlags = (module.flags | STABLE) & ~MODULE
-        val newInfo  = NullaryMethodType(module.moduleClass.tpe)
-        val accessor = site.newMethod(moduleName, module.pos, newFlags) setInfoAndEnter newInfo
-
-        DefDef(accessor, Select(This(site), module)) :: Nil
-      }
-      val newTrees = cdef :: (
-        if (module.isStatic)
-          // trait T { def f: Object }; object O extends T { object f }. Need to generate method f in O.
-          if (module.isOverridingSymbol) matchingInnerObject() else Nil
-        else
-          newInnerObject(site, module)
-      )
-      transformTrees(newTrees map localTyper.typedPos(moduleDef.pos))
-    }
-    def newInnerObject(site: Symbol, module: Symbol): List[Tree] = {
-      if (site.isTrait)
-        DefDef(module, EmptyTree) :: Nil
-      else {
-        val moduleVar = site newModuleVarSymbol module
-        // used for the mixin case: need a new symbol owned by the subclass for the accessor, rather than repurposing the module symbol
-        def mkAccessorSymbol =
-          site.newMethod(module.name.toTermName, site.pos, STABLE | MODULE | MIXEDIN)
-            .setInfo(moduleVar.tpe)
-            .andAlso(self => if (module.isPrivate) self.expandName(module.owner))
-
-        val accessor = if (module.owner == site) module else mkAccessorSymbol
-        val accessorDef = DefDef(accessor, gen.mkAssignAndReturn(moduleVar, gen.newModule(module, moduleVar.tpe)).changeOwner(moduleVar -> accessor))
-
-        ValDef(moduleVar) :: accessorDef :: Nil
-      }
-    }
-
-    def mixinModuleDefs(clazz: Symbol): List[Tree] = {
-      val res = for {
-        mixinClass <- clazz.mixinClasses.iterator
-        module     <- mixinClass.info.decls.iterator.filter(_.isModule)
-        newMember  <- newInnerObject(clazz, module)
-      } yield transform(localTyper.typedPos(clazz.pos)(newMember))
-      res.toList
-    }
 
     def transformStat(tree: Tree, index: Int): List[Tree] = tree match {
       case t if treeInfo.isSelfConstrCall(t) =>
@@ -1253,7 +1169,6 @@ abstract class RefChecks extends InfoTransform with scala.reflect.internal.trans
           debuglog("refsym = " + currentLevel.refsym)
           reporter.error(currentLevel.refpos, "forward reference not allowed from self constructor invocation")
         }
-      case ModuleDef(_, _, _) => eliminateModuleDefs(tree)
       case ValDef(_, _, _, _) =>
         val tree1 = transform(tree) // important to do before forward reference check
         if (tree1.symbol.isLazy) tree1 :: Nil
@@ -1693,13 +1608,12 @@ abstract class RefChecks extends InfoTransform with scala.reflect.internal.trans
             checkOverloadedRestrictions(currentOwner, currentOwner)
             // SI-7870 default getters for constructors live in the companion module
             checkOverloadedRestrictions(currentOwner, currentOwner.companionModule)
-            val bridges = addVarargBridges(currentOwner)
-            val moduleDesugared = if (currentOwner.isTrait) Nil else mixinModuleDefs(currentOwner)
+            val bridges = addVarargBridges(currentOwner) // TODO: do this during uncurry?
             checkAllOverrides(currentOwner)
             checkAnyValSubclass(currentOwner)
             if (currentOwner.isDerivedValueClass)
               currentOwner.primaryConstructor makeNotPrivate NoSymbol // SI-6601, must be done *after* pickler!
-            if (bridges.nonEmpty || moduleDesugared.nonEmpty) deriveTemplate(tree)(_ ::: bridges ::: moduleDesugared) else tree
+            if (bridges.nonEmpty) deriveTemplate(tree)(_ ::: bridges) else tree
 
           case dc@TypeTreeWithDeferredRefCheck() => abort("adapt should have turned dc: TypeTreeWithDeferredRefCheck into tpt: TypeTree, with tpt.original == dc")
           case tpt@TypeTree() =>

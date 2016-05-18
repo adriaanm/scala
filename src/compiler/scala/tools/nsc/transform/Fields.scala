@@ -14,19 +14,23 @@ import symtab.Flags._
   *
   * For traits:
   *
-  *   - Namers translates a definition `val x = rhs` into a getter `def x = rhs` -- no underlying field is created.
-  *   - This phase synthesizes accessors and fields for any vals mixed into a non-trait class.
-  *   - Constructors will move the rhs to an assignment in the template body.
-  *     and those statements then move to the template into the constructor,
-  *     which means it will initialize the fields defined in this template (and execute the corresponding side effects).
-  *     We need to maintain the connection between getter and rhs until after specialization so that it can duplicate vals.
+  * - Namers translates a definition `val x = rhs` into a getter `def x = rhs` -- no underlying field is created.
+  * - This phase synthesizes accessors and fields for any vals mixed into a non-trait class.
+  * - Constructors will move the rhs to an assignment in the template body.
+  * and those statements then move to the template into the constructor,
+  * which means it will initialize the fields defined in this template (and execute the corresponding side effects).
+  * We need to maintain the connection between getter and rhs until after specialization so that it can duplicate vals.
   *
+  * Runs after uncurry to deal with classes that implement SAM traits with ValDefs.
   * Runs before erasure (to get bridges), and thus before lambdalift/flatten, so that nested functions/definitions must be considered.
+  * As lambdalift may emit additional ValDefs in traits, mixins still needs to deal with ValDefs (this logic should move to lambdalift).
+  *
+  * Also desugars modules.... TODO: describe
   *
   * TODO:
-  *   - remove backwards compatibility hacks to complete migration to Java 8-encoding of traits
-  *   - minimize introduction of new flag bits?
-  *   - ...
+  * - remove backwards compatibility hacks to complete migration to Java 8-encoding of traits
+  * - minimize introduction of new flag bits?
+  * - ...
   *
   * In the future, would like to get closer to dotty, which lifts a val's RHS (a similar thing is done for template-level statements)
   * to a method `$_initialize_$1$x` instead of a block, which is used in the constructor to initialize the val.
@@ -37,8 +41,8 @@ import symtab.Flags._
   * if we encode the name (and place in initialisation order) of the field
   * in the name of its initializing method, to allow separate compilation.
   * (The name mangling must include ordering, and thus complicate incremental compilation:
-  *  ideally, we'd avoid renumbering unchanged methods, but that would result in
-  *  different bytecode between clean recompiles and incremental ones).
+  * ideally, we'd avoid renumbering unchanged methods, but that would result in
+  * different bytecode between clean recompiles and incremental ones).
   *
   * In the even longer term (Scala 3?), I agree with @DarkDimius that it would make sense
   * to hide the difference between strict and lazy vals. All vals are lazy,
@@ -80,7 +84,7 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
   final val TRAIT_SETTER_FLAGS = NEEDS_TREES | DEFERRED | ProtectedLocal
 
   private def accessorImplementedInSubclass(accessor: Symbol) =
-    (accessor hasFlag SYNTHESIZE_IMPL_IN_SUBCLASS) && (accessor hasFlag (ACCESSOR))
+    (accessor hasFlag SYNTHESIZE_IMPL_IN_SUBCLASS) && (accessor hasFlag (ACCESSOR | MODULE))
 
   private def concreteOrSynthImpl(sym: Symbol): Boolean = !(sym hasFlag DEFERRED) || (sym hasFlag SYNTHESIZE_IMPL_IN_SUBCLASS)
 
@@ -169,6 +173,25 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
       sym setAnnotations (sym.annotations filter AnnotationInfo.mkFilter(GetterTargetClass, defaultRetention = false))
     }
 
+
+  // can't use the referenced field since it already tracks the module's moduleClass
+  private[this] val moduleVarOf = perRunCaches.newMap[Symbol, Symbol]
+
+  private def newModuleVarSymbol(site: Symbol, module: Symbol, tp: Type, extraFlags: Long): TermSymbol = {
+//    println(s"new module var in $site for $module of type $tp")
+    val moduleVar = site.newVariable(nme.moduleVarName(module.name.toTermName), module.pos.focus, MODULEVAR | extraFlags) setInfo tp addAnnotation VolatileAttr
+    moduleVarOf(module) = moduleVar
+
+    moduleVar
+  }
+
+  private def moduleInit(module: Symbol) = {
+//    println(s"moduleInit for $module in ${module.ownerChain} --> ${moduleVarOf.get(module)}")
+    val moduleVar = moduleVarOf(module)
+    gen.mkAssignAndReturn(moduleVar, gen.newModule(module, moduleVar.info))
+  }
+
+
   private object synthFieldsAndAccessors extends TypeMap {
     private def newTraitSetter(getter: Symbol, clazz: Symbol) = {
       // Add setter for an immutable, memoizing getter
@@ -184,6 +207,27 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
       setter setInfo MethodType(List(setter.newSyntheticValueParam(fieldTp)), UnitTpe)
       setter
     }
+
+    def newModuleAccessor(module: Symbol, site: Symbol, moduleVar: Symbol) = {
+      val accessor = site.newMethod(module.name.toTermName, site.pos, STABLE | MODULE | NEEDS_TREES)
+
+      moduleVarOf(accessor) = moduleVar
+
+      // we're in the same prefix as module, so no need for site.thisType.memberType(module)
+      accessor setInfo MethodType(Nil, moduleVar.info)
+
+      if (module.isPrivate) accessor.expandName(module.owner)
+
+      accessor
+    }
+
+
+    // needed for the following scenario (T could be trait or class)
+    // trait T { def f: Object }; object O extends T { object f }. Need to generate method f in O.
+    // moduleAccessorBody will drop the MODULE flag
+    def newMatchingModuleAccessor(clazz: Symbol, member: Symbol): MethodSymbol =
+      clazz.newMethod(member.name.toTermName, member.pos, member.flags | NEEDS_TREES | STABLE) setInfo MethodType(Nil, member.moduleClass.tpe)
+
 
     def apply(tp0: Type): Type = mapOver(tp0) match {
       // TODO: make less destructive (name changes, decl additions, flag setting --
@@ -221,6 +265,9 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
               if (member hasFlag STABLE) // TODO: check isGetter?
                 newDecls += newTraitSetter(member, clazz)
             }
+          } else if (member hasFlag MODULE) {
+            member setFlag NEEDS_TREES
+            synthesizeImplInSubclasses(member)
           }
         }
 
@@ -241,7 +288,7 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
         val membersNeedingSynthesis = clazz.mixinClasses.flatMap { mixin =>
           // afterOwnPhase, so traits receive trait setters for vals
           afterOwnPhase {mixin.info}.decls.toList.filter(accessorImplementedInSubclass)
-        }
+        } ++ clazz.info.decls.filter(_.isModule) // need to expand modules in addition to synthesizing impls for mixed in fields
 
 //        println(s"mixing in for $clazz: $membersNeedingSynthesis from ${clazz.mixinClasses}")
 
@@ -269,9 +316,25 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
             clonedAccessor setInfo ((clazz.thisType memberType member) cloneInfo clonedAccessor) // accessor.info.cloneInfo(clonedAccessor).asSeenFrom(clazz.thisType, accessor.owner)
           }
 
+          // either mixing in for trait or expanding module def in class/object (skip module accessor, which has flags METHOD | MODULE)
+          if (member hasFlag MODULE) {
+            if (member.isStatic) { // expanding module def (top-level or nested in static module)
+              // no need for a module accessor, unless we're implementing/overriding a member in a superclass
+              if (member.isOverridingSymbol) List(newMatchingModuleAccessor(clazz, member)) else Nil
+            } else {
+              val moduleVar = newModuleVarSymbol(clazz, member, site.memberType(member).resultType, PrivateLocal | SYNTHETIC | NEEDS_TREES)
+
+              // it's a new member, so create a new symbol
+              if (member hasFlag SYNTHESIZE_IMPL_IN_SUBCLASS) List(moduleVar, newModuleAccessor(member, clazz, moduleVar))
+              else { // must reuse symbol
+                member setFlag NEEDS_TREES
+                List(moduleVar)
+              }
+            }
+          }
           // when considering whether to mix in the trait setter, forget about conflicts -- they will be reported for the getter
           // a trait setter for an overridden val will receive a unit body in the tree transform
-          if (nme.isTraitSetterName(member.name)) {
+          else if (nme.isTraitSetterName(member.name)) {
             val getter = member.getterIn(member.owner)
             val clone = cloneAccessor()
 
@@ -385,8 +448,21 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
           else fieldAccess(setter) map (fieldSel => Assign(fieldSel, Ident(setter.firstParam)))
         }
 
+        def moduleAccessorBody(module: Symbol): Some[Tree] = Some(
+          // added during synthFieldsAndAccessors using newModuleAccessor
+          // a module defined in a trait by definition can't be static (it's a member of the trait and thus gets a new instance for every outer instance)
+          if (clazz.isTrait) EmptyTree
+          // accessor created by newMatchingModuleAccessor for a static module that does need an accessor (because there's a matching member in a super class)
+          else if (module.isStatic) {
+            module.resetFlag(MODULE) // need to keep it until now so that we know to call moduleAccessorBody and not getterBody below
+            gen.mkAttributedRef(clazz.thisType, module)
+          }
+          // symbol created by newModuleAccessor for a (non-trait) class
+          else moduleInit(module)
+        )
 
         clazz.info.decls.toList.filter(checkAndClearNeedsTrees) flatMap {
+          case module if module hasAllFlags (MODULE | METHOD) => moduleAccessorBody(module) map mkAccessor(module)
           case setter if setter.isSetter                      => setterBody(setter) map mkAccessor(setter)
           case getter if getter.isAccessor                    => getterBody(getter) map mkAccessor(getter)
           case field  if !(field hasFlag METHOD)              => Some(mkField(field)) // vals/vars and module vars (cannot have flags PACKAGE | JAVA since those never receive NEEDS_TREES)
@@ -456,6 +532,16 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
             stat :: Nil
           }
 
+        case ModuleDef(_, _, impl) =>
+          // must transform the ClassDef as a whole so the currentOwner is set properly
+          // ??? The typer doesn't take kindly to seeing this ClassDef; we have to set NoType so it will be ignored.
+          val cd = super.transform(ClassDef(stat.symbol.moduleClass, impl) setType NoType)
+          if (clazz.isClass) List(cd)
+          else { // local module -- symbols cannot be generated by info transformer, so do it all here
+            val module = stat.symbol
+            val moduleVar = newModuleVarSymbol(currentOwner, module, module.info.resultType, 0)
+            cd :: mkField(moduleVar) :: mkAccessor(module)(moduleInit(module)) :: Nil
+          }
 
         case tree => List(
           if (exprOwner != currentOwner && tree.isTerm) atOwner(exprOwner)(super.transform(tree))
