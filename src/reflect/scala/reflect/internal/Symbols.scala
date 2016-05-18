@@ -324,12 +324,6 @@ trait Symbols extends api.Symbols { self: SymbolTable =>
     final def newImport(pos: Position): TermSymbol =
       newTermSymbol(nme.IMPORT, pos)
 
-    def newModuleVarSymbol(accessor: Symbol): TermSymbol =
-      newVariable(
-        nme.moduleVarName(accessor.name.toTermName),
-        accessor.pos.focus,
-        (MODULEVAR | (if (isClass) PrivateLocal | SYNTHETIC else 0)).toLong) addAnnotation VolatileAttr
-
 
     final def newModuleSymbol(name: TermName, pos: Position = NoPosition, newFlags: Long = 0L): ModuleSymbol =
       newTermSymbol(name, pos, newFlags).asInstanceOf[ModuleSymbol]
