@@ -2766,7 +2766,7 @@ trait Symbols extends api.Symbols { self: SymbolTable =>
     override def isCapturedVariable = hasAllFlags(MUTABLE | CAPTURED) && !hasFlag(METHOD)
 
     override def companionSymbol: Symbol = companionClass
-    override def moduleClass = if (isModuleNotMethod) referenced else NoSymbol
+    override def moduleClass = if (isModule) referenced else NoSymbol
 
     override def isBridge           = this hasFlag BRIDGE
     override def isEarlyInitialized = this hasFlag PRESUPER
