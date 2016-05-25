@@ -77,9 +77,11 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
 
   // used for internal communication between info and tree transform of this phase -- not pickled, not in initialflags
   // TODO: reuse MIXEDIN for NEEDS_TREES
-  override def phaseNewFlags: Long = NEEDS_TREES | OVERRIDDEN_TRAIT_SETTER
+  override def phaseNewFlags: Long = NEEDS_TREES | OVERRIDDEN_ACCESSOR
 
-  private final val OVERRIDDEN_TRAIT_SETTER = TRANS_FLAG
+  // informs the tree traversal of the shape of the tree to emit
+  // (it's either an overridden trait setter or a module accessor that has a matching member in a superclass)
+  private final val OVERRIDDEN_ACCESSOR = TRANS_FLAG
 
   final val TRAIT_SETTER_FLAGS = NEEDS_TREES | DEFERRED | ProtectedLocal
 
@@ -93,7 +95,7 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
 
   private def setClonedTraitSetterFlags(clazz: Symbol, correspondingGetter: Symbol, cloneInSubclass: Symbol): Unit = {
     val overridden = isOverriddenAccessor(correspondingGetter, clazz)
-    if (overridden) cloneInSubclass setFlag OVERRIDDEN_TRAIT_SETTER
+    if (overridden) cloneInSubclass setFlag OVERRIDDEN_ACCESSOR
     else if (correspondingGetter.isEffectivelyFinal) cloneInSubclass setFlag FINAL
   }
 
@@ -109,7 +111,7 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
       )
 
 
-  def checkAndClearOverridden(setter: Symbol) = checkAndClear(OVERRIDDEN_TRAIT_SETTER)(setter)
+  def checkAndClearOverridden(setter: Symbol) = checkAndClear(OVERRIDDEN_ACCESSOR)(setter)
   def checkAndClearNeedsTrees(setter: Symbol) = checkAndClear(NEEDS_TREES)(setter)
   def checkAndClear(flag: Long)(sym: Symbol) =
     sym.hasFlag(flag) match {
@@ -208,7 +210,7 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
       setter
     }
 
-    def newModuleAccessor(module: Symbol, site: Symbol, moduleVar: Symbol) = {
+    private def newModuleAccessor(module: Symbol, site: Symbol, moduleVar: Symbol) = {
       val accessor = site.newMethod(module.name.toTermName, site.pos, STABLE | MODULE | NEEDS_TREES)
 
       moduleVarOf(accessor) = moduleVar
@@ -226,7 +228,7 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
     // trait T { def f: Object }; object O extends T { object f }. Need to generate method f in O.
     // moduleAccessorBody will drop the MODULE flag
     def newMatchingModuleAccessor(clazz: Symbol, member: Symbol): MethodSymbol =
-      clazz.newMethod(member.name.toTermName, member.pos, member.flags | NEEDS_TREES | STABLE) setInfo MethodType(Nil, member.moduleClass.tpe)
+      clazz.newMethod(member.name.toTermName, member.pos, member.flags | STABLE | NEEDS_TREES | OVERRIDDEN_ACCESSOR) setInfo MethodType(Nil, member.moduleClass.tpe)
 
 
     def apply(tp0: Type): Type = mapOver(tp0) match {
@@ -318,15 +320,18 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
 
           // either mixing in for trait or expanding module def in class/object (skip module accessor, which has flags METHOD | MODULE)
           if (member hasFlag MODULE) {
-            if (member.isStatic) { // expanding module def (top-level or nested in static module)
-              // no need for a module accessor, unless we're implementing/overriding a member in a superclass
-              if (member.isOverridingSymbol) List(newMatchingModuleAccessor(clazz, member)) else Nil
+            // expanding module def (top-level or nested in static module) -- NOT A MIXED IN ONE, those always need a var and an init statement
+            if (member.isStatic && !accessorImplementedInSubclass(member)) {
+              // No need for a module accessor, unless we're implementing/overriding a member in a superclass.
+              // Never a need for a module var if the module is static.
+              if (member.isOverridingSymbol) List(newMatchingModuleAccessor(clazz, member))
+              else Nil
             } else {
               val moduleVar = newModuleVarSymbol(clazz, member, site.memberType(member).resultType, PrivateLocal | SYNTHETIC | NEEDS_TREES)
-
-              // it's a new member, so create a new symbol
-              if (member hasFlag SYNTHESIZE_IMPL_IN_SUBCLASS) List(moduleVar, newModuleAccessor(member, clazz, moduleVar))
-              else { // must reuse symbol
+              // it's a new mixed-in member, so create a new symbol
+              if (accessorImplementedInSubclass(member)) List(moduleVar, newModuleAccessor(member, clazz, moduleVar))
+              else {
+                // must reuse symbol instead of creating an accessor
                 member setFlag NEEDS_TREES
                 List(moduleVar)
               }
@@ -453,7 +458,7 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
           // a module defined in a trait by definition can't be static (it's a member of the trait and thus gets a new instance for every outer instance)
           if (clazz.isTrait) EmptyTree
           // accessor created by newMatchingModuleAccessor for a static module that does need an accessor (because there's a matching member in a super class)
-          else if (module.isStatic) {
+          else if (checkAndClearOverridden(module)) {
             module.resetFlag(MODULE) // need to keep it until now so that we know to call moduleAccessorBody and not getterBody below
             gen.mkAttributedRef(clazz.thisType, module)
           }
