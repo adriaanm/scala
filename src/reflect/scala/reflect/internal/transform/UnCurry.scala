@@ -84,7 +84,7 @@ trait UnCurry {
    */
   def transformInfo(sym: Symbol, tp: Type): Type =
     if (sym.isType) uncurryType(tp)
-    else if ((sym hasFlag MODULE) && !sym.isStatic) {
+    else if ((sym hasFlag MODULE) && !sym.isStatic) { // see Fields::nonStaticModuleToMethod
       sym setFlag METHOD | STABLE
       MethodType(Nil, uncurry(tp))
     }

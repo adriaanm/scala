@@ -268,6 +268,8 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
                 newDecls += newTraitSetter(member, clazz)
             }
           } else if (member hasFlag MODULE) {
+            nonStaticModuleToMethod(member)
+
             member setFlag NEEDS_TREES
             synthesizeImplInSubclasses(member)
           }
@@ -331,6 +333,7 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
               // it's a new mixed-in member, so create a new symbol
               if (accessorImplementedInSubclass(member)) List(moduleVar, newModuleAccessor(member, clazz, moduleVar))
               else {
+                nonStaticModuleToMethod(member)
                 // must reuse symbol instead of creating an accessor
                 member setFlag NEEDS_TREES
                 List(moduleVar)
@@ -414,6 +417,11 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
   }
 
 
+  // done by uncurry's info transformer
+  // instead of forcing every member's info to run said transformer, duplicate the flag update logic...
+  def nonStaticModuleToMethod(module: Symbol): Unit = {
+    if (!module.isStatic) module setFlag METHOD | STABLE
+  }
 
   class FieldsTransformer(unit: CompilationUnit) extends TypingTransformer(unit) {
     def mkTypedUnit(pos: Position) = localTyper.typedPos(pos)(CODE.UNIT)
