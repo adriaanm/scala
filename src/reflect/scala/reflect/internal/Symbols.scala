@@ -746,10 +746,9 @@ trait Symbols extends api.Symbols { self: SymbolTable =>
     final def hasGetter = isTerm && nme.isLocalName(name)
 
     /**
-     * Nested modules which have no static owner when ModuleDefs are eliminated (refchecks) are
-     * given the lateMETHOD flag, which makes them appear as methods after refchecks.
+     * Nested modules which have no static owner are given the METHOD flag during uncurry.
      *
-     * Note: the lateMETHOD flag is added lazily in the info transformer of the RefChecks phase.
+     * Note: the METHOD flag is added lazily in the info transformer of the Uncurry phase.
      * This means that forcing the `sym.info` may change the value of `sym.isMethod`. Forcing the
      * info is in the responsibility of the caller. Doing it eagerly here was tried (0ccdb151f) but
      * has proven to lead to bugs (SI-8907).

@@ -88,8 +88,6 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
   private def accessorImplementedInSubclass(accessor: Symbol) =
     (accessor hasFlag SYNTHESIZE_IMPL_IN_SUBCLASS) && (accessor hasFlag (ACCESSOR | MODULE))
 
-  private def concreteOrSynthImpl(sym: Symbol): Boolean = !(sym hasFlag DEFERRED) || (sym hasFlag SYNTHESIZE_IMPL_IN_SUBCLASS)
-
   private def synthesizeImplInSubclasses(accessor: Symbol): Unit =
     accessor setFlag SYNTHESIZE_IMPL_IN_SUBCLASS
 
@@ -123,21 +121,16 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
 
   private def isOverriddenAccessor(member: Symbol, site: Symbol): Boolean = {
     val pre = site.thisType
+    @inline def matchingAccessor(clazz: Symbol) = member.matchingSymbol(clazz, pre) filter (sym => (sym hasFlag ACCESSOR) && mixer.notDeferred(sym))
+
     @tailrec def loop(bcs: List[Symbol]): Boolean = {
       //      println(s"checking ${bcs.head} for member overriding $member (of ${member.owner})")
-      bcs.nonEmpty && bcs.head != member.owner && (matchingAccessor(pre, member, bcs.head) != NoSymbol || loop(bcs.tail))
+      bcs.nonEmpty && bcs.head != member.owner && (matchingAccessor(bcs.head) != NoSymbol || loop(bcs.tail))
     }
 
     member.exists && loop(site.info.baseClasses)
   }
 
-
-  def matchingAccessor(pre: Type, member: Symbol, clazz: Symbol) = {
-    val res = member.matchingSymbol(clazz, pre) filter (sym => (sym hasFlag ACCESSOR) && concreteOrSynthImpl(sym))
-    //    if (res != NoSymbol) println(s"matching accessor for $member in $clazz = $res (under $pre)")
-    //    else println(s"no matching accessor for $member in $clazz (under $pre) among ${clazz.info.decls}")
-    res
-  }
 
 
   class FieldMemoization(accessorOrField: Symbol, site: Symbol) {

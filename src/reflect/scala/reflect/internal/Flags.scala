@@ -225,12 +225,12 @@ class Flags extends ModifierFlags {
   // lateMODULE set in Mixin#transformInfo.
   // notOVERRIDE set in Mixin#preTransform.
 
-  final val lateDEFERRED  = (DEFERRED: Long) << LateShift
+  final val lateDEFERRED  = (DEFERRED: Long) << LateShift // not used
   final val lateFINAL     = (FINAL: Long) << LateShift
   final val lateMETHOD    = (METHOD: Long) << LateShift
-  final val lateMODULE    = (MODULE: Long) << LateShift
+  final val lateMODULE    = (MODULE: Long) << LateShift // not used
 
-  final val notOVERRIDE   = (OVERRIDE: Long) << AntiShift
+  final val notOVERRIDE   = (OVERRIDE: Long) << AntiShift // not used
   final val notPRIVATE    = (PRIVATE: Long) << AntiShift
   final val notPROTECTED  = (PROTECTED: Long) << AntiShift
 
