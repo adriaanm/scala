@@ -180,7 +180,7 @@ abstract class Mixin extends InfoTransform with ast.TreeDSL {
        * TODO: I guess newGetter and newSetter are needed for fields added after the fields phase (lambdalift) -- can we fix that?
        */
       def newGetter(field: Symbol): Symbol = {
-        //println(s"creating new getter for $field : ${field.info} at ${field.locationString} // mutable: ${field hasFlag MUTABLE}")
+        assert(field.hasAllFlags(SYNTHETIC | PARAMACCESSOR | PrivateLocal))
         val newFlags = field.flags & ~PrivateLocal | ACCESSOR | ( if (field.isMutable) 0 else STABLE ) | SYNTHESIZE_IMPL_IN_SUBCLASS // TODO: do we need SYNTHESIZE_IMPL_IN_SUBCLASS to indicate that `notDeferred(setter)` should hold
         // TODO preserve pre-erasure info?
         clazz.newMethod(field.getterName, field.pos, newFlags) setInfo MethodType(Nil, field.info)
@@ -189,7 +189,7 @@ abstract class Mixin extends InfoTransform with ast.TreeDSL {
       /* Create a new setter. Setters are never private or local. They are
        * always accessors and deferred. */
       def newSetter(field: Symbol): Symbol = {
-        //println(s"creating new setter for $field ${field.locationString} // mutable: ${field hasFlag MUTABLE}")
+        assert(field.hasAllFlags(SYNTHETIC | PARAMACCESSOR | PrivateLocal))
         val setterName = field.setterName
         val newFlags   = field.flags & ~PrivateLocal | ACCESSOR | SYNTHESIZE_IMPL_IN_SUBCLASS // TODO: do we need SYNTHESIZE_IMPL_IN_SUBCLASS to indicate that `notDeferred(setter)` should hold
         val setter     = clazz.newMethod(setterName, field.pos, newFlags)
