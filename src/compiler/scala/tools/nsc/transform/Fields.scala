@@ -60,13 +60,8 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
 
   protected def newTransformer(unit: CompilationUnit): Transformer = new FieldsTransformer(unit)
   override def transformInfo(sym: Symbol, tp: Type): Type =
-    if (sym.isJavaDefined || sym.isClass && (sym hasFlag SYNTHESIZE_IMPL_IN_SUBCLASS)) tp
-    else {
-      // only synthesize members once! TODO: don't overload this flag...
-      if (sym.isClass) sym setFlag SYNTHESIZE_IMPL_IN_SUBCLASS
-      synthFieldsAndAccessors(tp)
-    }
-
+    if (sym.isJavaDefined || sym.isPackageClass || !sym.isClass) tp
+    else synthFieldsAndAccessors(tp)
 
   // we leave lazy vars/accessors and early-init vals alone for now
   private def excludedAccessorOrFieldByFlags(statSym: Symbol): Boolean = statSym hasFlag LAZY | PRESUPER
