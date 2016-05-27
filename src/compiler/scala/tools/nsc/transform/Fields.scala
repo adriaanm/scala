@@ -180,7 +180,7 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
       setter
     }
 
-    def apply(tp0: Type): Type = mapOver(tp0) match {
+    def apply(tp0: Type): Type = tp0 match {
       // TODO: make less destructive (name changes, decl additions, flag setting --
       // none of this is actually undone when travelling back in time using atPhase)
       case tp@ClassInfoType(parents, decls, clazz) if clazz.isTrait =>
@@ -336,7 +336,7 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
         if (newDecls eq oldDecls) tp
         else ClassInfoType(parents, newDecls, clazz)
 
-      case tp => tp
+      case tp => mapOver(tp)
     }
   }
 
