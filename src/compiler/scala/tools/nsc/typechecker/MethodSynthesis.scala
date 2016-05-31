@@ -120,28 +120,30 @@ trait MethodSynthesis {
       ImplicitClassWrapper(tree).createAndEnterSymbol()
     }
 
+    // must return getter first!
+    def standardAccessors(vd: ValDef): List[DerivedFromValDef] = {
+      val getter =
+        if (vd.mods.isLazy) LazyValGetter(vd)
+        else Getter(vd)
+
+      getter :: (if (getter.needsSetter) List(Setter(vd)) else Nil)
+    }
+
     // TODO: see if we can link symbol creation & tree derivation by sharing the Field/Getter/Setter factories
     // maybe we can at least reuse some variant of standardAccessors?
     def enterGetterSetter(tree: ValDef): Unit = {
+      val accessorSyms = standardAccessors(tree).map(_.createAndEnterSymbol())
+      val getterSym = accessorSyms.head
+
+      // If the getter's abstract, the tree gets the getter's symbol,
+      // otherwise, create a field (we have to assume the getter requires storage for now).
+      // NOTE: we cannot look at symbol info, since we're in the process of deriving them
+      // (luckily, they only matter for lazy vals, which we've ruled out in this else branch,
+      // and `doNotDeriveField` will skip them if `!mods.isLazy`)
       tree.symbol =
-        if (tree.mods.isLazy) {
-          val lazyValGetter = LazyValGetter(tree).createAndEnterSymbol()
-          enterLazyVal(tree, lazyValGetter)
-        } else {
-          val getter = Getter(tree)
-          val getterSym = getter.createAndEnterSymbol()
-
-          // Create the setter if necessary.
-          if (getter.needsSetter) Setter(tree).createAndEnterSymbol()
-
-          // If the getter's abstract, the tree gets the getter's symbol,
-          // otherwise, create a field (we have to assume the getter requires storage for now).
-          // NOTE: we cannot look at symbol info, since we're in the process of deriving them
-          // (luckily, they only matter for lazy vals, which we've ruled out in this else branch,
-          // and `doNotDeriveField` will skip them if `!mods.isLazy`)
-          if (Field.noFieldFor(tree)) getterSym setPos tree.pos // TODO: why do setPos? `createAndEnterSymbol` already gave `getterSym` the position `tree.pos.focus`
-          else enterStrictVal(tree)
-        }
+        if (Field.noFieldFor(tree)) getterSym setPos tree.pos // TODO: why do setPos? `createAndEnterSymbol` already gave `getterSym` the position `tree.pos.focus`
+        else if (tree.mods.isLazy) enterLazyVal(tree, getterSym)
+        else enterStrictVal(tree)
 
       enterBeans(tree)
     }
@@ -168,11 +170,15 @@ trait MethodSynthesis {
       case vd @ ValDef(mods, name, tpt, rhs) if deriveAccessors(vd) && !vd.symbol.isModuleVar =>
         // If we don't save the annotations, they seem to wander off.
         val annotations = stat.symbol.initialize.annotations
-        val trees = (
-          (field(vd) ::: standardAccessors(vd) ::: beanAccessors(vd))
-                map (acc => atPos(vd.pos.focus)(acc derive annotations))
-          filterNot (_ eq EmptyTree)
-        )
+        val fieldsAndAccessors = field(vd) ::: standardAccessors(vd) ::: beanAccessors(vd)
+        val trees = fieldsAndAccessors flatMap { deriver =>
+          deriver.propagateAnnotations(annotations)
+          deriver.derivedTree match {
+            case EmptyTree => None
+            case tree => Some(atPos(vd.pos.focus)(tree))
+          }
+        }
+
         // Verify each annotation landed safely somewhere, else warn.
         // Filtering when isParamAccessor is a necessary simplification
         // because there's a bunch of unwritten annotation code involving
@@ -209,13 +215,6 @@ trait MethodSynthesis {
         stat :: Nil
       }
 
-    def standardAccessors(vd: ValDef): List[DerivedFromValDef] =
-      if (vd.mods.isLazy) List(LazyValGetter(vd))
-      else {
-        val getter = Getter(vd)
-        if (getter.needsSetter) List(getter, Setter(vd))
-        else List(getter)
-      }
 
     def beanAccessors(vd: ValDef): List[DerivedFromValDef] = {
       val setter = if (vd.mods.isMutable) List(BeanSetter(vd)) else Nil
@@ -299,14 +298,8 @@ trait MethodSynthesis {
         enterInScope(sym)
         sym setInfo completer(sym)
       }
-      private def logDerived(result: Tree): Tree = {
-        debuglog("[+derived] " + ojoin(mods.flagString, basisSym.accurateKindString, basisSym.getterName.decode)
-          + " (" + derivedSym + ")\n        " + result)
 
-        result
-      }
-
-      final def derive(initial: List[AnnotationInfo]): Tree = {
+      final def propagateAnnotations(initial: List[AnnotationInfo]): Unit = {
         validate()
 
         // see scala.annotation.meta's package class for more info
@@ -338,7 +331,6 @@ trait MethodSynthesis {
         if (derivedSym.isSetter && owner.isTrait && !isDeferred)
           derivedSym addAnnotation TraitSetterAnnotationClass
 
-        logDerived(derivedTree)
       }
     }
 
@@ -443,12 +435,13 @@ trait MethodSynthesis {
 
       // todo: in future this should be enabled but now other phases still depend on the flag for various reasons
       //override def flagsMask = (super.flagsMask & ~LAZY)
-      override def derivedSym = basisSym.lazyAccessor
+      override def needsSetter = false
+      override def derivedSym = if (basisSym.owner.isTrait) basisSym else basisSym.lazyAccessor
       override def derivedTree: DefDef = {
         val ValDef(_, _, tpt0, rhs0) = tree
         val rhs1 = context.unit.transformed.getOrElse(rhs0, rhs0)
         val body =
-          if (tree.symbol.owner.isTrait || Field.noFieldFor(tree)) rhs1 // TODO move tree.symbol.owner.isTrait into noFieldFor
+          if (tree.symbol.owner.isTrait || isUnitType(tree.symbol.info)) rhs1 // can't move this into noFieldFor (see note there)
           else gen.mkAssignAndReturn(basisSym, rhs1)
 
         derivedSym setPos tree.pos // cannot set it at createAndEnterSymbol because basisSym can possibly still have NoPosition
@@ -471,28 +464,13 @@ trait MethodSynthesis {
     }
 
     object Field {
-      // No field for these vals (either never emitted or eliminated later on):
-      //   - abstract vals have no value we could store (until they become concrete, potentially)
-      //   - lazy vals of type Unit
-      //   - concrete vals in traits don't yield a field here either (their getter's RHS has the initial value)
-      //     AddInterfaces will move the assignment to the constructor, abstracting over the field using the field setter,
-      //     and Fields will add a field to the class that mixes in the trait, implementing the accessors in terms of it
-      //   - [Emitted, later removed during Constructors] a concrete val with a statically known value (ConstantType)
-      //     performs its side effect according to lazy/strict semantics, but doesn't need to store its value
-      //     each access will "evaluate" the RHS (a literal) again
       // We would like to avoid emitting unnecessary fields, but the required knowledge isn't available until after typer.
       // The only way to avoid emitting & suppressing, is to not emit at all until we are sure to need the field, as dotty does.
-      // NOTE: do not look at `vd.symbol` when called from `enterGetterSetter` (luckily, that call-site implies `!mods.isLazy`),
+      //
+      // NOTE: do not look at `vd.symbol` when called from `enterGetterSetter`
       // similarly, the `def field` call-site breaks when you add `|| vd.symbol.owner.isTrait` (detected in test suite)
       // as the symbol info is in the process of being created then.
-      // TODO: harmonize tree & symbol creation
-      // the middle  `&& !owner.isTrait` is needed after `isLazy` because non-unit-typed lazy vals in traits still get a field -- see neg/t5455.scala
-      def noFieldFor(vd: ValDef) = (vd.mods.isDeferred
-        || (vd.mods.isLazy && !owner.isTrait && isUnitType(vd.symbol.info))
-        || (owner.isTrait && !traitFieldFor(vd)))
-
-      // TODO: never emit any fields in traits -- only use getter for lazy/presuper ones as well
-      private def traitFieldFor(vd: ValDef): Boolean = vd.mods.hasFlag(PRESUPER | LAZY)
+      def noFieldFor(vd: ValDef) = vd.mods.isDeferred || owner.isTrait
     }
 
     case class Field(tree: ValDef) extends DerivedFromValDef {
@@ -517,7 +495,9 @@ trait MethodSynthesis {
       override def derivedTree = EmptyTree
     }
     def validateParam(tree: ValDef) {
-      Param(tree).derive(tree.symbol.annotations)
+      val param = Param(tree)
+      param.propagateAnnotations(tree.symbol.annotations)
+      param.derivedTree
     }
 
     sealed abstract class BeanAccessor(bean: String) extends DerivedFromValDef {
