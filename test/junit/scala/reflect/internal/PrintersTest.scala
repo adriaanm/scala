@@ -1008,7 +1008,7 @@ class ValAndDefPrintTest {
 
   @Test def testDefWithLazyVal2 = assertPrintedCode(sm"""
     |def a = {
-    |  lazy val test: Unit = {
+    |  lazy val test: scala.Unit = {
     |    scala.Predef.println();
     |    scala.Predef.println()
     |  };
