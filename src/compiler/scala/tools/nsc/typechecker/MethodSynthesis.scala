@@ -470,7 +470,9 @@ trait MethodSynthesis {
       // NOTE: do not look at `vd.symbol` when called from `enterGetterSetter`
       // similarly, the `def field` call-site breaks when you add `|| vd.symbol.owner.isTrait` (detected in test suite)
       // as the symbol info is in the process of being created then.
-      def noFieldFor(vd: ValDef) = vd.mods.isDeferred || owner.isTrait
+      // TODO: early init vals in traits don't really work, so why bother?
+      // (see Typer's warning "Implementation restriction: early definitions in traits are not initialized before the super class is initialized.")
+      def noFieldFor(vd: ValDef) = (vd.mods.isDeferred || owner.isTrait) && !vd.mods.hasFlag(PRESUPER)
     }
 
     case class Field(tree: ValDef) extends DerivedFromValDef {

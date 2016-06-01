@@ -1964,6 +1964,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
 
       if (clazz.isTrait) {
         for (decl <- clazz.info.decls if decl.isTerm && decl.isEarlyInitialized) {
+          // TODO: so, they're basically useless, right?? --> deprecate even before we get trait params??
           context.warning(decl.pos, "Implementation restriction: early definitions in traits are not initialized before the super class is initialized.")
         }
       }
