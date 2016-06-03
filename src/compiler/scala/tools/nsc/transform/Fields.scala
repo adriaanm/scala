@@ -354,8 +354,6 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
             val getter = member.getterIn(member.owner)
             val clone = cloneAccessor()
 
-            clone filterAnnotations (ai => !ai.matches(TraitSetterAnnotationClass)) // only supposed to be set in trait
-
             setClonedTraitSetterFlags(clazz, getter, clone)
             // println(s"mixed in trait setter ${clone.defString}")
 
