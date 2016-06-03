@@ -335,9 +335,6 @@ trait MethodSynthesis {
         // should be propagated to this kind of accessor.
         derivedSym setAnnotations (initial filter annotFilter)
 
-        if (derivedSym.isSetter && owner.isTrait && !isDeferred)
-          derivedSym addAnnotation TraitSetterAnnotationClass
-
         logDerived(derivedTree)
       }
     }
