@@ -23,17 +23,24 @@ abstract class Mixin extends InfoTransform with ast.TreeDSL {
     *
     * They may be protected, now that traits are compiled 1:1 to interfaces.
     *
-    * TODO: interfaces can also have private members, so there's also less need to make trait members non-private
-    * can we leave more methods private?
-    * (they still may need to be implemented in subclasses, though we could make those protected...).
+    * TODO: can we always keep them at least protected (note that the backend doesn't distinguish public and protected
+    *       right now when emitting members)
     */
   def publicizeTraitMethod(sym: Symbol): Unit = {
-    if ((sym hasFlag PRIVATE) &&
-          (  (sym hasFlag SUPERACCESSOR)  // super accessors by definition must be implemented in a subclass, so can't have the private (TODO: why are they ever private in a trait to begin with!?!?)
-          || (sym hasFlag ACCESSOR | MODULE))) // an accessor / module *may* need to be implemented in a subclass, and thus cannot be private
+    if ((sym hasFlag PRIVATE) && (
+        // super accessors by definition must be implemented in a subclass, so can't be private
+        // TODO: why are they ever private in a trait to begin with!?!? (could just name mangle them to begin with)
+        // TODO: can we add the SYNTHESIZE_IMPL_IN_SUBCLASS flag to super accessors symbols?
+        (sym hasFlag SUPERACCESSOR)
+        // an accessor / module *may* need to be implemented in a subclass, and thus cannot be private
+        // TODO: document how we get here (lambdalift? fields has already made accessors not-private)
+        || (sym hasFlag ACCESSOR | MODULE) && (sym hasFlag SYNTHESIZE_IMPL_IN_SUBCLASS)))
       sym.makeNotPrivate(sym.owner)
 
-    if (sym hasFlag PROTECTED) sym setFlag notPROTECTED
+    // no need to make trait methods not-protected
+    // (we used to have to move them to another class when interfaces could not have concrete methods)
+    // see note in `synthFieldsAndAccessors` in Fields.scala
+    // no doing: if (sym hasFlag PROTECTED) sym setFlag notPROTECTED
   }
 
   /** This map contains a binding (class -> info) if
