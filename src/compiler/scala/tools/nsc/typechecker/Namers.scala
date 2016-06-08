@@ -1377,50 +1377,50 @@ trait Namers extends MethodSynthesis {
             MissingParameterOrValTypeError(tpt)
             ErrorType
           } else {
-            // enterGetterSetter assigns the getter's symbol to a ValDef when there's no underlying field
-            // (a deferred val or most vals defined in a trait -- see Field.noFieldFor)
-            val isGetter = vdef.symbol hasFlag ACCESSOR
+            assignTypeToTree(vdef, typer, WildcardType)
 
-            val pt = {
-              val valOwner = owner.owner
-              // there's no overriding outside of classes, and we didn't use to do this in 2.11, so provide opt-out
-
-              if (!isScala212 || !valOwner.isClass) WildcardType
-              else {
-                // normalize to getter so that we correctly consider a val overriding a def
-                // (a val's name ends in a " ", so can't compare to def)
-                val overridingSym = if (isGetter) vdef.symbol else vdef.symbol.getterIn(valOwner)
-
-                // We're called from an accessorTypeCompleter, which is completing the info for the accessor's symbol,
-                // which may or may not be `vdef.symbol` (see isGetter above)
-                val overridden = safeNextOverriddenSymbol(overridingSym)
-
-                if (overridden == NoSymbol || overridden.isOverloaded) WildcardType
-                else valOwner.thisType.memberType(overridden).resultType
-              }
-            }
-
-            def patchSymInfo(tp: Type): Unit =
-              if (pt ne WildcardType) // no patching up to do if we didn't infer a prototype
-                vdef.symbol setInfo (if (isGetter) NullaryMethodType(tp) else tp)
-
-            patchSymInfo(pt)
-
-            // derives the val's result type from type checking its rhs under the expected type `pt`
-            // vdef.tpt is mutated, and `vdef.tpt.tpe` is `assignTypeToTree`'s result
-            val tptFromRhsUnderPt = assignTypeToTree(vdef, typer, pt)
-
-            // need to re-align with assignTypeToTree, as the type we're returning from valDefSig (tptFromRhsUnderPt)
-            // may actually go to the accessor, not the valdef (and if assignTypeToTree returns a subtype of `pt`,
-            // we would be out of synch between field and its accessors), and thus the type completer won't
-            // fix the symbol's info for us -- we set it to tmpInfo above, which may need to be improved to tptFromRhsUnderPt
-            if (!isGetter) patchSymInfo(tptFromRhsUnderPt)
-
-            tptFromRhsUnderPt
+//            // enterGetterSetter assigns the getter's symbol to a ValDef when there's no underlying field
+//            // (a deferred val or most vals defined in a trait -- see Field.noFieldFor)
+//            val isGetter = vdef.symbol hasFlag ACCESSOR
+//
+//            val pt = {
+//              val valOwner = owner.owner
+//              // there's no overriding outside of classes, and we didn't use to do this in 2.11, so provide opt-out
+//
+//              if (!isScala212 || !valOwner.isClass) WildcardType
+//              else {
+//                // normalize to getter so that we correctly consider a val overriding a def
+//                // (a val's name ends in a " ", so can't compare to def)
+//                val overridingSym = if (isGetter) vdef.symbol else vdef.symbol.getterIn(valOwner)
+//
+//                // We're called from an accessorTypeCompleter, which is completing the info for the accessor's symbol,
+//                // which may or may not be `vdef.symbol` (see isGetter above)
+//                val overridden = safeNextOverriddenSymbol(overridingSym)
+//
+//                if (overridden == NoSymbol || overridden.isOverloaded) WildcardType
+//                else valOwner.thisType.memberType(overridden).resultType
+//              }
+//            }
+//
+//            def patchSymInfo(tp: Type): Unit =
+//              if (pt ne WildcardType) // no patching up to do if we didn't infer a prototype
+//                vdef.symbol setInfo (if (isGetter) NullaryMethodType(tp) else tp)
+//
+//            patchSymInfo(pt)
+//
+//            // derives the val's result type from type checking its rhs under the expected type `pt`
+//            // vdef.tpt is mutated, and `vdef.tpt.tpe` is `assignTypeToTree`'s result
+//            val tptFromRhsUnderPt = assignTypeToTree(vdef, typer, pt)
+//
+//            // need to re-align with assignTypeToTree, as the type we're returning from valDefSig (tptFromRhsUnderPt)
+//            // may actually go to the accessor, not the valdef (and if assignTypeToTree returns a subtype of `pt`,
+//            // we would be out of synch between field and its accessors), and thus the type completer won't
+//            // fix the symbol's info for us -- we set it to tmpInfo above, which may need to be improved to tptFromRhsUnderPt
+//            if (!isGetter) patchSymInfo(tptFromRhsUnderPt)
+//
+//            tptFromRhsUnderPt
           }
         } else typer.typedType(tpt).tpe
-
-//      println(s"val: $result / ${vdef.tpt.tpe} / ")
 
       pluginsTypeSig(result, typer, vdef, if (tpt.isEmpty) WildcardType else result)
     }
