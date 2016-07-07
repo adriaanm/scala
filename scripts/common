@@ -8,13 +8,13 @@ set -e
 # compilations. We should perhaps have a multi-dependency version
 # of do_i_have below
 
-LOGGINGDIR="$WORKSPACE/logs"
+LOGGINGDIR="$baseDir/logs"
 mkdir -p $LOGGINGDIR
 
 unset SBT_HOME
-SBT_HOME="$WORKSPACE/.sbt"
+SBT_HOME="$baseDir/.sbt"
 mkdir -p $SBT_HOME
-IVY_CACHE="$WORKSPACE/.ivy2"
+IVY_CACHE="$baseDir/.ivy2"
 mkdir -p $IVY_CACHE
 rm -rf $IVY_CACHE/cache/org.scala-lang
 

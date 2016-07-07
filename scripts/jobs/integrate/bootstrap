@@ -329,7 +329,7 @@ scalaVerToBinary() {
 }
 
 determineScalaVersion() {
-  cd $WORKSPACE
+  cd $baseDir
   parseScalaProperties "versions.properties"
   echo "repo_ref=2.12.x" >> $baseDir/jenkins.properties # for the -dist downstream jobs that build the actual archives
 
@@ -476,7 +476,7 @@ constructUpdatedModuleVersions() {
 bootstrap() {
   echo "### Bootstrapping"
 
-  cd $WORKSPACE
+  cd $baseDir
 
   #### (Optional) STARR.
   if [ ! -z "$STARR_REF" ]; then
@@ -487,7 +487,7 @@ bootstrap() {
       STARR_VER=$SCALA_VER_BASE$STARR_VER_SUFFIX
       rm -rf "$STARR_DIR"
       (
-        git clone --reference $WORKSPACE/.git $WORKSPACE/.git $STARR_DIR
+        git clone --reference $baseDir/.git $baseDir/.git $STARR_DIR
         cd $STARR_DIR
         git co $STARR_REF
         ant -Dmaven.version.number=$STARR_VER\
