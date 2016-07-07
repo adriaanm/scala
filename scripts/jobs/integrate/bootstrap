@@ -84,16 +84,16 @@
 
 moduleVersioning=${moduleVersioning-"versions.properties"}
 
-publishPrivateTask=${publishPrivateTask-"publish"}
-publishSonatypeTaskCore=${publishSonatypeTaskCore-"publish-signed"}
-publishSonatypeTaskModules=${publishSonatypeTaskModules-"publish-signed"}
+publishPrivateTask=${publishPrivateTask-"publish-local"}
+publishSonatypeTaskCore=${publishSonatypeTaskCore-"publish-local"}
+publishSonatypeTaskModules=${publishSonatypeTaskModules-"publish-local"}
 publishStarrPrivateTask=${publishStarrPrivateTask-$publishPrivateTask} # set to "init" to speed up testing of the script (if you already built STARR before)
 publishLockerPrivateTask=${publishLockerPrivateTask-$publishPrivateTask} # set to "init" to speed up testing of the script (if you already built locker before)
 
 forceRebuild=${forceRebuild-no}
 
-antBuildTask="${antBuildTask-nightly}" # TESTING leave empty to avoid the sanity check (don't set it to "init" because ant will croak)
-clean="clean" # TESTING leave empty to speed up testing
+antBuildTask="" # TESTING leave empty to avoid the sanity check (don't set it to "init" because ant will croak)
+clean="" # TESTING leave empty to speed up testing
 
 baseDir=${WORKSPACE-`pwd`}
 scriptsDir="$baseDir/scripts"
@@ -174,11 +174,11 @@ function st_stagingRepoClose() {
 # the old version (on jenkins, and I don't want to upgrade for risk of breaking other builds) honors -sbt-dir
 # the new version of sbt-extras ignores sbt-dir, so we pass it in as -Dsbt.global.base
 # need to set sbt-dir to one that has the gpg.sbt plugin config
-sbtArgs="-no-colors -ivy $baseDir/ivy2 -Dsbt.override.build.repos=true -Dsbt.repository.config=$sbtRepositoryConfig -Dsbt.global.base=$HOME/.sbt/0.13 -sbt-dir $HOME/.sbt/0.13"
+sbtArgs="-Dsbt.override.build.repos=true -Dsbt.repository.config=$sbtRepositoryConfig -Dsbt.global.base=$HOME/.sbt/0.13"
 
 sbtBuild() {
   echo "### sbtBuild: "$SBT_CMD $sbtArgs "${scalaVersionTasks[@]}" "${publishTasks[@]}" "$@"
-  $SBT_CMD $sbtArgs "${scalaVersionTasks[@]}" "${publishTasks[@]}" "$@" >> $baseDir/logs/builds 2>&1
+  $SBT_CMD $sbtArgs "${scalaVersionTasks[@]}" "${publishTasks[@]}" "$@" #>> $baseDir/logs/builds 2>&1
 }
 
 sbtResolve() {
@@ -189,7 +189,7 @@ sbtResolve() {
   echo "### sbtResolve: $SBT_CMD $sbtArgs " "${scalaVersionTasks[@]}" "\"$1\" % \"$2\" % \"$3\" cross CrossVersion.$cross"
   $SBT_CMD $sbtArgs "${scalaVersionTasks[@]}" \
     "set libraryDependencies := Seq(\"$1\" % \"$2\" % \"$3\" cross CrossVersion.$cross)" \
-      'show update' >> $baseDir/logs/resolution 2>&1
+      'show update' #>> $baseDir/logs/resolution 2>&1
 }
 
 # Oh boy... can't use scaladoc to document scala-xml/scala-parser-combinators
@@ -598,9 +598,8 @@ determineScalaVersion
 
 deriveModuleVersions
 
-removeExistingBuilds
 
-bootstrap
+buildModules
 
 if [ "$publishToSonatype" == "yes" ]
   then publishSonatype
