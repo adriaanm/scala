@@ -189,7 +189,7 @@ sbtResolve() {
   echo "### sbtResolve: $SBT_CMD $sbtArgs " "${scalaVersionTasks[@]}" "\"$1\" % \"$2\" % \"$3\" cross CrossVersion.$cross"
   $SBT_CMD $sbtArgs "${scalaVersionTasks[@]}" \
     "set libraryDependencies := Seq(\"$1\" % \"$2\" % \"$3\" cross CrossVersion.$cross)" \
-      'show update' #>> $baseDir/logs/resolution 2>&1
+      'show update' >> $baseDir/logs/resolution 2>&1
 }
 
 # Oh boy... can't use scaladoc to document scala-xml/scala-parser-combinators
@@ -270,7 +270,7 @@ buildScalacheck(){
   else
     update rickynils scalacheck $SCALACHECK_REF && gfxd
     doc="$(docTask $SCALACHECK_BUILT)"
-    sbtBuild 'set version := "'$SCALACHECK_VER'"' 'set VersionKeys.scalaParserCombinatorsVersion := "'$PARSERS_VER'"' $clean "$doc" publish # test times out NOTE: never published to sonatype
+    sbtBuild 'set version := "'$SCALACHECK_VER'"'  $clean jvm/doc jvm/publish-local # test times out NOTE: never published to sonatype
     SCALACHECK_BUILT="yes"
   fi
 }
@@ -282,7 +282,7 @@ buildModules() {
   buildXML
   buildParsers
   buildSwing
-  # buildScalacheck
+  buildScalacheck
   buildPartest
 }
 
