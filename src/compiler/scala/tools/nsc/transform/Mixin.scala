@@ -197,7 +197,8 @@ abstract class Mixin extends InfoTransform with ast.TreeDSL {
         if (member.isMethod) publicizeTraitMethod(member)
         else {
           assert(member.isTerm && !member.isDeferred, member)
-          assert(member hasFlag LAZY | PRESUPER, s"unexpected $member in $clazz ${member.debugFlagString}")
+          // disable assert to support compiling against code compiled by an older compiler (until we re-starr)
+          // assert(member hasFlag LAZY | PRESUPER, s"unexpected $member in $clazz ${member.debugFlagString}")
           // lazy vals still leave field symbols lying around in traits -- TODO: never emit them to begin with
           // ditto for early init vals
           clazz.info.decls.unlink(member)
