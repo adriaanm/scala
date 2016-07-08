@@ -104,6 +104,7 @@ class ScalaInlineInfoTest extends BytecodeTesting {
         ("x4()I",                                                     MethodInlineInfo(false,false,false)),
         ("x4$(LT;)I",                                                  MethodInlineInfo(true ,false,false)),
         ("x5()I",                                                     MethodInlineInfo(true, false,false)),
+        ("x5$(LT;)I",                                                  MethodInlineInfo(true ,false,false)),
         ("L$lzycompute$1(Lscala/runtime/VolatileObjectRef;)LT$L$2$;", MethodInlineInfo(true, false,false)),
         ("L$1(Lscala/runtime/VolatileObjectRef;)LT$L$2$;",            MethodInlineInfo(true, false,false)),
         ("nest$1()I",                                                 MethodInlineInfo(true, false,false)),
