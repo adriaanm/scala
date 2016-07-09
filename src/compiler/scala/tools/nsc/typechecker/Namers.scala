@@ -820,10 +820,69 @@ trait Namers extends MethodSynthesis {
       // sym is an accessor, while tree is the field (which may have the same symbol as the getter, or maybe it's the field)
       val sig = accessorSigFromFieldTp(sym, isSetter, typeSig(tree))
 
+      triageFieldAndAccessorAnnotations(tree, sym, isSetter)
+
       sym setInfo pluginsTypeSigAccessor(sig, typer, tree, sym)
 
       validate(sym)
     }
+
+
+    // see scala.annotation.meta's package class for more info
+    // Annotations on ValDefs can be targeted towards the following: field, getter, setter, beanGetter, beanSetter, param.
+    // The defaults are:
+    //   - (`val`-, `var`- or plain) constructor parameter annotations end up on the parameter, not on any other entity.
+    //   - val/var member annotations solely end up on the underlying field, except in traits (@since 2.12),
+    //     where there is no field, and the getter thus holds annotations targeting both getter & field.
+    //     As soon as there is a field/getter (in subclasses mixing in the trait), we triage the annotations.
+    //
+    // TODO: these defaults can be surprising for annotations not meant for accessors/fields -- should we revisit?
+    // (In order to have `@foo val X` result in the X getter being annotated with `@foo`, foo needs to be meta-annotated with @getter)
+    private def triageFieldAndAccessorAnnotations(vd: ValDef, accessor: Symbol, isSetter: Boolean) = {
+      import AnnotationInfo.{mkFilter => annotationFilter}
+      val fieldOrGetter = vd.symbol // or getter in trait...
+      val origFieldAnnots = fieldOrGetter.annotations
+
+      if (origFieldAnnots.nonEmpty) {
+        val isBean = origFieldAnnots exists (annot => (annot matches BeanPropertyAttr) || (annot matches BooleanBeanPropertyAttr))
+
+        val accessorAnnot: AnnotationInfo => Boolean =
+          if (!isSetter && owner.isTrait) ann =>
+            annotationFilter(FieldTargetClass, defaultRetention = true)(ann) ||
+              annotationFilter(if (isBean) BeanGetterTargetClass else GetterTargetClass, defaultRetention = true)(ann)
+          else annotationFilter(
+            if (isBean) (if (isSetter) BeanSetterTargetClass else BeanGetterTargetClass)
+            else (if (isSetter) SetterTargetClass else GetterTargetClass), defaultRetention = false)
+
+        {
+          val filtered = origFieldAnnots filter accessorAnnot
+//          println(s"triaging for ${accessor.debugFlagString} $accessor from $origFieldAnnots to $filtered")
+          // The annotations amongst those found on the original symbol which
+          // should be propagated to this kind of accessor.
+          accessor setAnnotations filtered
+        }
+
+        if (!fieldOrGetter.isMethod) {
+          val filtered = origFieldAnnots filter annotationFilter(FieldTargetClass, !vd.mods.isParamAccessor)
+//          println(s"triaging for ${fieldOrGetter.debugFlagString} $fieldOrGetter from $origFieldAnnots to $filtered")
+          fieldOrGetter setAnnotations filtered
+        }
+
+        // TODO: revive
+        // Verify each annotation landed safely somewhere, else warn.
+        // Filtering when isParamAccessor is a necessary simplification
+        // because there's a bunch of unwritten annotation code involving
+        // the propagation of annotations - constructor parameter annotations
+        // may need to make their way to parameters of the constructor as
+        // well as fields of the class, etc.
+        //      if (!mods.isParamAccessor) annotations foreach (ann =>
+        //        if (!trees.exists(_.symbol hasAnnotation ann.symbol))
+        //          issueAnnotationWarning(vd, ann, GetterTargetClass)
+        //        )
+        //      warnForDroppedValAnnotations(vd.symbol)
+      }
+    }
+
 
     private def accessorSigFromFieldTp(sym: global.Symbol, isSetter: Boolean, tp: global.Type): global.Type with Product with Serializable = {
       if (isSetter) MethodType(List(sym.newSyntheticValueParam(tp)), UnitTpe) else NullaryMethodType(tp)

@@ -151,43 +151,26 @@ trait MethodSynthesis {
     /** This is called for those ValDefs which addDerivedTrees ignores, but
      *  which might have a warnable annotation situation.
      */
-    private def warnForDroppedAnnotations(tree: Tree) {
-      val annotations   = tree.symbol.initialize.annotations
-      val targetClass   = defaultAnnotationTarget(tree)
+    private def warnForDroppedValAnnotations(sym: Symbol) {
+      val targetClass   = if (sym.isValueParameter || sym.isParamAccessor) ParamTargetClass else FieldTargetClass
+      val annotations   = sym.initialize.annotations
       val retained      = annotations filter annotationFilter(targetClass, defaultRetention = true)
 
-      annotations filterNot (retained contains _) foreach (ann => issueAnnotationWarning(tree, ann, targetClass))
+      annotations filterNot (retained contains _) foreach (ann => issueAnnotationWarning(sym, ann, targetClass))
     }
-    private def issueAnnotationWarning(tree: Tree, ann: AnnotationInfo, defaultTarget: Symbol) {
+    private def issueAnnotationWarning(sym: Symbol, ann: AnnotationInfo, defaultTarget: Symbol) {
       global.reporter.warning(ann.pos,
-        s"no valid targets for annotation on ${tree.symbol} - it is discarded unused. " +
+        s"no valid targets for annotation on $sym - it is discarded unused. " +
         s"You may specify targets with meta-annotations, e.g. @($ann @${defaultTarget.name})")
     }
 
     def addDerivedTrees(typer: Typer, stat: Tree): List[Tree] = stat match {
       case vd @ ValDef(mods, name, tpt, rhs) if deriveAccessors(vd) && !vd.symbol.isModuleVar =>
-        // If we don't save the annotations, they seem to wander off.
-        val annotations = stat.symbol.initialize.annotations
-        val trees = (
-          (field(vd) ::: standardAccessors(vd) ::: beanAccessors(vd))
-                map (acc => atPos(vd.pos.focus)(acc derive annotations))
-          filterNot (_ eq EmptyTree)
-        )
-        // Verify each annotation landed safely somewhere, else warn.
-        // Filtering when isParamAccessor is a necessary simplification
-        // because there's a bunch of unwritten annotation code involving
-        // the propagation of annotations - constructor parameter annotations
-        // may need to make their way to parameters of the constructor as
-        // well as fields of the class, etc.
-        if (!mods.isParamAccessor) annotations foreach (ann =>
-          if (!trees.exists(_.symbol hasAnnotation ann.symbol))
-            issueAnnotationWarning(vd, ann, GetterTargetClass)
-        )
+        stat.symbol.initialize // needed!
 
-        trees
-      case vd: ValDef =>
-        warnForDroppedAnnotations(vd)
-        vd :: Nil
+        ((field(vd) ::: standardAccessors(vd) ::: beanAccessors(vd))
+              map { acc => acc.validate() ; atPos(vd.pos.focus)(acc.derivedTree) }
+        filterNot (_ eq EmptyTree))
       case cd @ ClassDef(mods, _, _, _) if mods.isImplicit =>
         val annotations = stat.symbol.initialize.annotations
         // TODO: need to shuffle annotations between wrapper and class.
@@ -304,38 +287,6 @@ trait MethodSynthesis {
           + " (" + derivedSym + ")\n        " + result)
 
         result
-      }
-
-      final def derive(initial: List[AnnotationInfo]): Tree = {
-        validate()
-
-        // see scala.annotation.meta's package class for more info
-        // Annotations on ValDefs can be targeted towards the following: field, getter, setter, beanGetter, beanSetter, param.
-        // The defaults are:
-        //   - (`val`-, `var`- or plain) constructor parameter annotations end up on the parameter, not on any other entity.
-        //   - val/var member annotations solely end up on the underlying field, except in traits (@since 2.12),
-        //     where there is no field, and the getter thus holds annotations targetting both getter & field.
-        //     As soon as there is a field/getter (in subclasses mixing in the trait), we triage the annotations.
-        //
-        // TODO: these defaults can be surprising for annotations not meant for accessors/fields -- should we revisit?
-        // (In order to have `@foo val X` result in the X getter being annotated with `@foo`, foo needs to be meta-annotated with @getter)
-        val annotFilter: AnnotationInfo => Boolean = this match {
-          case _: Param                       => annotationFilter(ParamTargetClass,      defaultRetention = true)
-          // By default annotations go to the field, except if the field is generated for a class parameter (PARAMACCESSOR).
-          case _: Field                       => annotationFilter(FieldTargetClass,      defaultRetention = !mods.isParamAccessor)
-          case _: BaseGetter if owner.isTrait => annotationFilter(List(FieldTargetClass, GetterTargetClass), defaultRetention = true)
-          case _: BaseGetter                  => annotationFilter(GetterTargetClass,     defaultRetention = false)
-          case _: Setter                      => annotationFilter(SetterTargetClass,     defaultRetention = false)
-          case _: BeanSetter                  => annotationFilter(BeanSetterTargetClass, defaultRetention = false)
-          // TODO do bean getters need special treatment to collect field-targeting annotations in traits?
-          case _: AnyBeanGetter               => annotationFilter(BeanGetterTargetClass, defaultRetention = false)
-        }
-
-        // The annotations amongst those found on the original symbol which
-        // should be propagated to this kind of accessor.
-        derivedSym setAnnotations (initial filter annotFilter)
-
-        logDerived(derivedTree)
       }
     }
 
@@ -506,15 +457,6 @@ trait MethodSynthesis {
         else if (Field.noFieldFor(tree)) EmptyTree
         else copyValDef(tree)(mods = mods | flagsExtra, name = this.name)
 
-    }
-    case class Param(tree: ValDef) extends DerivedFromValDef {
-      def name       = tree.name
-      def flagsMask  = -1L
-      def flagsExtra = 0L
-      override def derivedTree = EmptyTree
-    }
-    def validateParam(tree: ValDef) {
-      Param(tree).derive(tree.symbol.annotations)
     }
 
     sealed abstract class BeanAccessor(bean: String) extends DerivedFromValDef {
