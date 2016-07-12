@@ -355,8 +355,6 @@ trait Namers extends MethodSynthesis {
           else owner.newValue(name.toTermName, pos, flags)
       }
     }
-    def createFieldSymbol(tree: ValDef): TermSymbol =
-      owner.newValue(tree.localName, tree.pos, tree.mods.flags & FieldFlags | PrivateLocal)
 
     def createImportSymbol(tree: Tree) =
       NoSymbol.newImport(tree.pos) setInfo completerOf(tree)
@@ -666,25 +664,6 @@ trait Namers extends MethodSynthesis {
       }
     }
 
-    def enterLazyVal(tree: ValDef, lazyAccessor: Symbol): TermSymbol = {
-      // If the owner is not a class, this is a lazy val from a method,
-      // with no associated field.  It has an accessor with $lzy appended to its name and
-      // its flags are set differently.  The implicit flag is reset because otherwise
-      // a local implicit "lazy val x" will create an ambiguity with itself
-      // via "x$lzy" as can be seen in test #3927.
-      val sym = (
-        if (owner.isClass) createFieldSymbol(tree)
-        else owner.newValue(tree.name append nme.LAZY_LOCAL, tree.pos, (tree.mods.flags | ARTIFACT) & ~IMPLICIT)
-      )
-      enterValSymbol(tree, sym setFlag MUTABLE setLazyAccessor lazyAccessor)
-    }
-    def enterStrictVal(tree: ValDef): TermSymbol = {
-      enterValSymbol(tree, createFieldSymbol(tree))
-    }
-    def enterValSymbol(tree: ValDef, sym: TermSymbol): TermSymbol = {
-      enterInScope(sym)
-      sym setInfo namerOf(sym).monoTypeCompleter(tree)
-    }
     def enterPackage(tree: PackageDef) {
       val sym = assignSymbol(tree)
       newNamer(context.make(tree, sym.moduleClass, sym.info.decls)) enterSyms tree.stats
@@ -814,11 +793,23 @@ trait Namers extends MethodSynthesis {
       }
     }
 
+    def valTypeCompleter(tree: Tree) = mkTypeCompleter(tree) { sym =>
+      sym setInfo typeSig(tree)
+
+      validate(sym)
+    }
+
     /* Explicit isSetter required for bean setters (beanSetterSym.isSetter is false) */
     def accessorTypeCompleter(tree: ValDef, isSetter: Boolean) = mkTypeCompleter(tree) { sym =>
       // typeSig calls valDefSig (because tree: ValDef)
       // sym is an accessor, while tree is the field (which may have the same symbol as the getter, or maybe it's the field)
-      val sig = accessorSigFromFieldTp(sym, isSetter, typeSig(tree))
+      // reuse work done in valTypeCompleter if we already computed the type signature of the val
+      // (assuming the field and accessor symbols are distinct -- i.e., we're not in a trait)
+      val valSig =
+        if ((sym ne tree.symbol) && tree.symbol.isInitialized) tree.symbol.info
+        else typeSig(tree)
+
+      val sig = accessorSigFromFieldTp(sym, isSetter, valSig)
 
       triageFieldAndAccessorAnnotations(tree, sym, isSetter)
 
