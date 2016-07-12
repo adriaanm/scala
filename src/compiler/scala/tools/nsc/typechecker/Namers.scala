@@ -300,7 +300,7 @@ trait Namers extends MethodSynthesis {
     def assignSymbol(tree: Tree): Symbol =
       logAssignSymbol(tree, tree match {
         case PackageDef(pid, _) => createPackageSymbol(tree.pos, pid)
-        case Import(_, _)       => createImportSymbol(tree)
+        case imp: Import        => createImportSymbol(imp)
         case mdef: MemberDef    => createMemberSymbol(mdef, mdef.name, -1L)
         case _                  => abort("Unexpected tree: " + tree)
       })
@@ -356,8 +356,8 @@ trait Namers extends MethodSynthesis {
       }
     }
 
-    def createImportSymbol(tree: Tree) =
-      NoSymbol.newImport(tree.pos) setInfo completerOf(tree)
+    def createImportSymbol(tree: Import) =
+      NoSymbol.newImport(tree.pos) setInfo (namerOf(tree.symbol) importTypeCompleter tree)
 
     /** All PackageClassInfoTypes come from here. */
     def createPackageSymbol(pos: Position, pid: RefTree): Symbol = {
@@ -630,7 +630,7 @@ trait Namers extends MethodSynthesis {
       }
     }
 
-    def completerOf(tree: Tree): TypeCompleter = {
+    def completerOf(tree: MemberDef): TypeCompleter = {
       val mono = namerOf(tree.symbol) monoTypeCompleter tree
       val tparams = treeInfo.typeParameters(tree)
       if (tparams.isEmpty) mono
@@ -750,7 +750,7 @@ trait Namers extends MethodSynthesis {
       NoSymbol
     }
 
-    def monoTypeCompleter(tree: Tree) = mkTypeCompleter(tree) { sym =>
+    def monoTypeCompleter(tree: MemberDef) = mkTypeCompleter(tree) { sym =>
       // this early test is there to avoid infinite baseTypes when
       // adding setters and getters --> bug798
       // It is a def in an attempt to provide some insulation against
@@ -760,7 +760,10 @@ trait Namers extends MethodSynthesis {
       def needsCycleCheck = sym.isNonClassType && !sym.isParameter && !sym.isExistential
 
       // logDefinition(sym) {
-      val tp = typeSig(tree)
+      // TODO: simplify? probably don't need to check that !sym.isInitialized
+      val annotations = annotSig(tree.mods.annotations)
+
+      val tp = typeSig(tree, annotations)
 
       findCyclicalLowerBound(tp) andAlso { sym =>
         if (needsCycleCheck) {
@@ -785,33 +788,47 @@ trait Namers extends MethodSynthesis {
       validate(sym)
     }
 
-    def moduleClassTypeCompleter(tree: ModuleDef) = {
-      mkTypeCompleter(tree) { sym =>
-        val moduleSymbol = tree.symbol
-        assert(moduleSymbol.moduleClass == sym, moduleSymbol.moduleClass)
-        moduleSymbol.info // sets moduleClass info as a side effect.
-      }
+    def moduleClassTypeCompleter(tree: ModuleDef) = mkTypeCompleter(tree) { sym =>
+      val moduleSymbol = tree.symbol
+      assert(moduleSymbol.moduleClass == sym, moduleSymbol.moduleClass)
+      moduleSymbol.info // sets moduleClass info as a side effect.
     }
 
-    def valTypeCompleter(tree: Tree) = mkTypeCompleter(tree) { sym =>
-      sym setInfo typeSig(tree)
+
+    def importTypeCompleter(imp: Import) = mkTypeCompleter(imp) { sym =>
+      sym setInfo importSig(imp)
+    }
+
+    import AnnotationInfo.{mkFilter => annotationFilter}
+
+    def valTypeCompleter(tree: ValDef) = mkTypeCompleter(tree) { sym =>
+      val annots =
+        if (tree.mods.annotations.isEmpty) Nil
+        else annotSig(tree.mods.annotations) filter annotationFilter(FieldTargetClass, !tree.mods.isParamAccessor)
+
+      sym setInfo typeSig(tree, annots)
 
       validate(sym)
     }
 
     /* Explicit isSetter required for bean setters (beanSetterSym.isSetter is false) */
     def accessorTypeCompleter(tree: ValDef, isSetter: Boolean) = mkTypeCompleter(tree) { sym =>
+      val accessorAnnots =
+        if (tree.mods.annotations.isEmpty) Nil
+        else filterAccessorAnnotations(annotSig(tree.mods.annotations), isSetter)
+
+      // println(s"triaging for ${sym.debugFlagString} $sym from $valAnnots to $annots")
+
       // typeSig calls valDefSig (because tree: ValDef)
       // sym is an accessor, while tree is the field (which may have the same symbol as the getter, or maybe it's the field)
+      val valSig = typeSig(tree, accessorAnnots)
+      // TODO: can we make this work? typeSig is called on same tree (valdef) to complete info for field and all its accessors
       // reuse work done in valTypeCompleter if we already computed the type signature of the val
       // (assuming the field and accessor symbols are distinct -- i.e., we're not in a trait)
-      val valSig = typeSig(tree)
-//        if ((sym ne tree.symbol) && tree.symbol.isInitialized) tree.symbol.info
-//        else typeSig(tree)
+      //  if ((sym ne tree.symbol) && tree.symbol.isInitialized) tree.symbol.info
+      //  else typeSig(tree)
 
       val sig = accessorSigFromFieldTp(sym, isSetter, valSig)
-
-      triageFieldAndAccessorAnnotations(tree, sym, isSetter)
 
       sym setInfo pluginsTypeSigAccessor(sig, typer, tree, sym)
 
@@ -829,49 +846,20 @@ trait Namers extends MethodSynthesis {
     //
     // TODO: these defaults can be surprising for annotations not meant for accessors/fields -- should we revisit?
     // (In order to have `@foo val X` result in the X getter being annotated with `@foo`, foo needs to be meta-annotated with @getter)
-    private def triageFieldAndAccessorAnnotations(vd: ValDef, accessor: Symbol, isSetter: Boolean) = {
-      import AnnotationInfo.{mkFilter => annotationFilter}
-      val fieldOrGetter = vd.symbol // or getter in trait...
-      val origFieldAnnots = fieldOrGetter.annotations
+    private def filterAccessorAnnotations(valAnnots: List[AnnotationInfo], isSetter: Boolean) = {
+      val isBean = valAnnots exists (annot => (annot matches BeanPropertyAttr) || (annot matches BooleanBeanPropertyAttr))
 
-      if (origFieldAnnots.nonEmpty) {
-        val isBean = origFieldAnnots exists (annot => (annot matches BeanPropertyAttr) || (annot matches BooleanBeanPropertyAttr))
+      val accessorAnnot: AnnotationInfo => Boolean =
+        if (!isSetter && owner.isTrait) ann =>
+          annotationFilter(FieldTargetClass, defaultRetention = true)(ann) ||
+            annotationFilter(if (isBean) BeanGetterTargetClass else GetterTargetClass, defaultRetention = true)(ann)
+        else annotationFilter(
+          if (isBean) (if (isSetter) BeanSetterTargetClass else BeanGetterTargetClass)
+          else (if (isSetter) SetterTargetClass else GetterTargetClass), defaultRetention = false)
 
-        val accessorAnnot: AnnotationInfo => Boolean =
-          if (!isSetter && owner.isTrait) ann =>
-            annotationFilter(FieldTargetClass, defaultRetention = true)(ann) ||
-              annotationFilter(if (isBean) BeanGetterTargetClass else GetterTargetClass, defaultRetention = true)(ann)
-          else annotationFilter(
-            if (isBean) (if (isSetter) BeanSetterTargetClass else BeanGetterTargetClass)
-            else (if (isSetter) SetterTargetClass else GetterTargetClass), defaultRetention = false)
-
-        {
-          val filtered = origFieldAnnots filter accessorAnnot
-//          println(s"triaging for ${accessor.debugFlagString} $accessor from $origFieldAnnots to $filtered")
-          // The annotations amongst those found on the original symbol which
-          // should be propagated to this kind of accessor.
-          accessor setAnnotations filtered
-        }
-
-//        if (!fieldOrGetter.isMethod) {
-//          val filtered = origFieldAnnots filter annotationFilter(FieldTargetClass, !vd.mods.isParamAccessor)
-////          println(s"triaging for ${fieldOrGetter.debugFlagString} $fieldOrGetter from $origFieldAnnots to $filtered")
-//          fieldOrGetter setAnnotations filtered
-//        }
-
-        // TODO: revive
-        // Verify each annotation landed safely somewhere, else warn.
-        // Filtering when isParamAccessor is a necessary simplification
-        // because there's a bunch of unwritten annotation code involving
-        // the propagation of annotations - constructor parameter annotations
-        // may need to make their way to parameters of the constructor as
-        // well as fields of the class, etc.
-        //      if (!mods.isParamAccessor) annotations foreach (ann =>
-        //        if (!trees.exists(_.symbol hasAnnotation ann.symbol))
-        //          issueAnnotationWarning(vd, ann, GetterTargetClass)
-        //        )
-        //      warnForDroppedValAnnotations(vd.symbol)
-      }
+      // The annotations amongst those found on the original symbol which
+      // should be propagated to this kind of accessor.
+      valAnnots filter accessorAnnot
     }
 
 
@@ -1589,7 +1577,7 @@ trait Namers extends MethodSynthesis {
      * is then assigned to the corresponding symbol (typeSig itself does not need to assign
      * the type to the symbol, but it can if necessary).
      */
-    def typeSig(tree: Tree): Type = {
+    def typeSig(tree: Tree, ainfos: List[AnnotationInfo]): Type = {
       // log("typeSig " + tree)
       /* For definitions, transform Annotation trees to AnnotationInfos, assign
        * them to the sym's annotations. Type annotations: see Typer.typedAnnotated
@@ -1599,32 +1587,19 @@ trait Namers extends MethodSynthesis {
        * or may not be visible.
        */
       def annotate(annotated: Symbol) = {
-        // typeSig might be called multiple times, e.g. on a ValDef: val, getter, setter
-        // parse the annotations only once.
-        if (!annotated.isInitialized) tree match {
-          case defn: MemberDef =>
-            val ainfos = defn.mods.annotations filterNot (_ eq null) map { ann =>
-              val ctx    = typer.context
-              val annCtx = ctx.makeNonSilent(ann)
-              // need to be lazy, #1782. beforeTyper to allow inferView in annotation args, SI-5892.
-              AnnotationInfo lazily {
-                enteringTyper(newTyper(annCtx) typedAnnotation ann)
-              }
-            }
-            if (ainfos.nonEmpty) {
-              annotated setAnnotations ainfos
-              if (annotated.isTypeSkolem)
-                annotated.deSkolemize setAnnotations ainfos
-            }
-          case _ =>
-        }
+        annotated setAnnotations ainfos
+        if (annotated.isTypeSkolem)
+          annotated.deSkolemize setAnnotations ainfos
       }
+
 
       val sym: Symbol = tree.symbol
 
       // TODO: meta-annotations to indicate where module annotations should go (module vs moduleClass)
-      annotate(sym)
-      if (sym.isModule) annotate(sym.moduleClass)
+      if (ainfos.nonEmpty) {
+        annotate(sym)
+        if (sym.isModule) annotate(sym.moduleClass)
+      }
 
       def getSig = tree match {
         case cdef: ClassDef =>
@@ -1649,6 +1624,19 @@ trait Namers extends MethodSynthesis {
       try getSig
       catch typeErrorHandler(tree, ErrorType)
     }
+
+    def annotSig(annotations: List[Tree]): List[AnnotationInfo] =
+      annotations filterNot (_ eq null) map { ann =>
+        val ctx = typer.context
+        // need to be lazy, #1782. enteringTyper to allow inferView in annotation args, SI-5892.
+        AnnotationInfo lazily {
+          enteringTyper {
+            newTyper(ctx.makeNonSilent(ann)) typedAnnotation ann
+          }
+        }
+      }
+
+
 
     def includeParent(tpe: Type, parent: Symbol): Type = tpe match {
       case PolyType(tparams, restpe) =>
