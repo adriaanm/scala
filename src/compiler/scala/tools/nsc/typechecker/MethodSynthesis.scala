@@ -120,49 +120,73 @@ trait MethodSynthesis {
       ImplicitClassWrapper(tree).createAndEnterSymbol()
     }
 
-    // TODO: see if we can link symbol creation & tree derivation by sharing the Field/Getter/Setter factories
-    // maybe we can at least reuse some variant of standardAccessors?
+    // trees are later created by addDerivedTrees (common logic is encapsulated in field/standardAccessors/beanAccessors)
     def enterGetterSetter(tree: ValDef): Unit = {
-      tree.symbol =
-        if (tree.mods.isLazy) {
-          val lazyValGetter = LazyValGetter(tree).createAndEnterSymbol()
-          enterLazyVal(tree, lazyValGetter)
-        } else {
-          val getter = Getter(tree)
-          val getterSym = getter.createAndEnterSymbol()
+      val fields = field(tree)
 
-          // Create the setter if necessary.
-          if (getter.needsSetter) Setter(tree).createAndEnterSymbol()
+      val accessors@(getter :: _) = standardAccessors(tree)
+      val accessorSyms@(getterSym :: setterSyms) = accessors.map(_.newAccessor)
 
-          // If the getter's abstract, the tree gets the getter's symbol,
-          // otherwise, create a field (we have to assume the getter requires storage for now).
-          // NOTE: we cannot look at symbol info, since we're in the process of deriving them
-          // (luckily, they only matter for lazy vals, which we've ruled out in this else branch,
-          // and `doNotDeriveField` will skip them if `!mods.isLazy`)
-          if (Field.noFieldFor(tree)) getterSym setPos tree.pos // TODO: why do setPos? `createAndEnterSymbol` already gave `getterSym` the position `tree.pos.focus`
-          else enterStrictVal(tree)
-        }
+      // a lazy field is linked to its lazy accessor (TODO: can we do the same for field -> getter -> setter)
+      val fieldSym = if (fields.nonEmpty) fields.head.newSymbol(getterSym) else NoSymbol
+      val namer = if (fields.nonEmpty) namerOf(fieldSym) else namerOf(getterSym)
 
-      enterBeans(tree)
+      // TODO: why change the getter's position -- it's already at `tree.pos.focus`
+      tree.symbol = fieldSym orElse (getterSym setPos tree.pos)
+
+      val beans = beanAccessorsFromNames(tree)
+      val beanAccessorSyms =
+        if (beans.nonEmpty) {
+          if (!tree.name.charAt(0).isLetter)
+            BeanPropertyAnnotationFieldWithoutLetterError(tree)
+          else if (tree.mods.isPrivate)  // avoids name clashes with private fields in traits
+            BeanPropertyAnnotationPrivateFieldError(tree)
+
+          beans map (_.newAccessor)
+        } else Nil
+
+
+      if (fieldSym != NoSymbol) {
+        fieldSym setInfo namer.valTypeCompleter(tree)
+        enterInScope(fieldSym)
+      }
+
+      // There's no reliable way to detect all kinds of setters from flags or name!!!
+      // A BeanSetter's name does not end in `_=` -- it does begin with "set", but so could the getter
+      // for a regular Scala field... TODO: can we add a flag to distinguish getter/setter accessors?
+      val getterCompleter = namer.accessorTypeCompleter(tree, isSetter = false)
+      val setterCompleter = namer.accessorTypeCompleter(tree, isSetter = true)
+
+      getterSym setInfo getterCompleter
+      setterSyms foreach (_ setInfo setterCompleter)
+
+      if (beanAccessorSyms.nonEmpty) {
+        beanAccessorSyms.head setInfo getterCompleter
+        beanAccessorSyms.tail foreach (_ setInfo setterCompleter)
+      }
+
+      accessorSyms foreach enterInScope
+      beanAccessorSyms foreach enterInScope
     }
+
 
     import AnnotationInfo.{mkFilter => annotationFilter}
 
-    /** This is called for those ValDefs which addDerivedTrees ignores, but
-     *  which might have a warnable annotation situation.
-     */
-    private def warnForDroppedValAnnotations(sym: Symbol) {
-      val targetClass   = if (sym.isValueParameter || sym.isParamAccessor) ParamTargetClass else FieldTargetClass
-      val annotations   = sym.initialize.annotations
-      val retained      = annotations filter annotationFilter(targetClass, defaultRetention = true)
-
-      annotations filterNot (retained contains _) foreach (ann => issueAnnotationWarning(sym, ann, targetClass))
-    }
-    private def issueAnnotationWarning(sym: Symbol, ann: AnnotationInfo, defaultTarget: Symbol) {
-      global.reporter.warning(ann.pos,
-        s"no valid targets for annotation on $sym - it is discarded unused. " +
-        s"You may specify targets with meta-annotations, e.g. @($ann @${defaultTarget.name})")
-    }
+//    /** This is called for those ValDefs which addDerivedTrees ignores, but
+//     *  which might have a warnable annotation situation.
+//     */
+//    private def warnForDroppedValAnnotations(sym: Symbol) {
+//      val targetClass   = if (sym.isValueParameter || sym.isParamAccessor) ParamTargetClass else FieldTargetClass
+//      val annotations   = sym.initialize.annotations
+//      val retained      = annotations filter annotationFilter(targetClass, defaultRetention = true)
+//
+//      annotations filterNot (retained contains _) foreach (ann => issueAnnotationWarning(sym, ann, targetClass))
+//    }
+//    private def issueAnnotationWarning(sym: Symbol, ann: AnnotationInfo, defaultTarget: Symbol) {
+//      global.reporter.warning(ann.pos,
+//        s"no valid targets for annotation on $sym - it is discarded unused. " +
+//        s"You may specify targets with meta-annotations, e.g. @($ann @${defaultTarget.name})")
+//    }
 
     def addDerivedTrees(typer: Typer, stat: Tree): List[Tree] = stat match {
       case vd @ ValDef(mods, name, tpt, rhs) if deriveAccessors(vd) && !vd.symbol.isModuleVar =>
@@ -192,6 +216,10 @@ trait MethodSynthesis {
         stat :: Nil
       }
 
+
+    def field(vd: ValDef): List[Field] = if (Field.noFieldFor(vd)) Nil else List(Field(vd))
+
+    // getter is head of resulting list
     def standardAccessors(vd: ValDef): List[DerivedFromValDef] =
       if (vd.mods.isLazy) List(LazyValGetter(vd))
       else {
@@ -209,7 +237,24 @@ trait MethodSynthesis {
       else Nil
     }
 
-    def field(vd: ValDef): List[Field] = if (Field.noFieldFor(vd)) Nil else List(Field(vd))
+    // same as beanAccessors, but without needing symbols -- TODO: can we use the symbol-based variant? (name-based introduced in 8cc477f8b6)
+    private def beanAccessorsFromNames(tree: ValDef) = {
+      val ValDef(mods, _, _, _) = tree
+      val hasBP     = mods hasAnnotationNamed tpnme.BeanPropertyAnnot
+      val hasBoolBP = mods hasAnnotationNamed tpnme.BooleanBeanPropertyAnnot
+
+      if (hasBP || hasBoolBP) {
+        val getter = (
+          if (hasBP) new BeanGetter(tree) with NoSymbolBeanGetter
+          else new BooleanBeanGetter(tree) with NoSymbolBeanGetter
+          )
+        getter :: {
+          if (mods.isMutable) List(BeanSetter(tree)) else Nil
+        }
+      }
+      else Nil
+    }
+
 
     /** This trait assembles what's needed for synthesizing derived methods.
      *  Important: Typically, instances of this trait are created TWICE for each derived
@@ -232,10 +277,6 @@ trait MethodSynthesis {
       /** The flags that the derived symbol has in addition to those retained from
        *  the original symbol*/
       def flagsExtra: Long
-
-      /** type completer for the synthetic member.
-       */
-      def completer(sym: Symbol): Type
 
       /** The derived symbol. It is assumed that this symbol already exists and has been
        *  entered in the parent scope when derivedSym is called */
@@ -264,11 +305,6 @@ trait MethodSynthesis {
       def tree: ValDef
       final def enclClass = basisSym.enclClass
 
-
-      // There's no reliable way to detect all kinds of setters from flags or name!!!
-      // A BeanSetter's name does not end in `_=` -- it does begin with "set", but so could the getter
-      // for a regular Scala field... TODO: can we add a flag to distinguish getter/setter accessors?
-      final def completer(sym: Symbol) = namerOf(sym).accessorTypeCompleter(tree, this.isInstanceOf[DerivedSetter])
       final def fieldSelection         = Select(This(enclClass), basisSym)
 
       def derivedSym: Symbol = tree.symbol
@@ -276,12 +312,15 @@ trait MethodSynthesis {
 
       def isDeferred = mods.isDeferred
       def validate() { }
-      def createAndEnterSymbol(): MethodSymbol = {
+
+      def newAccessor: MethodSymbol = {
         val sym = owner.newMethod(name, tree.pos.focus, derivedMods.flags)
         setPrivateWithin(tree, sym)
-        enterInScope(sym)
-        sym setInfo completer(sym)
+
+        sym
       }
+
+
       private def logDerived(result: Tree): Tree = {
         debuglog("[+derived] " + ojoin(mods.flagString, basisSym.accurateKindString, basisSym.getterName.decode)
           + " (" + derivedSym + ")\n        " + result)
@@ -342,6 +381,7 @@ trait MethodSynthesis {
         super.validate()
       }
     }
+
     case class Getter(tree: ValDef) extends BaseGetter(tree) {
       override def derivedSym = if (Field.noFieldFor(tree)) basisSym else basisSym.getterIn(enclClass)
       private def derivedRhs  = if (Field.noFieldFor(tree)) tree.rhs else fieldSelection
@@ -448,14 +488,30 @@ trait MethodSynthesis {
       def flagsMask  = FieldFlags
       def flagsExtra = PrivateLocal
 
-      // TODO: override def createAndEnterSymbol (currently never called on Field)
-      // and do `enterStrictVal(tree)`, so that enterGetterSetter and addDerivedTrees can share some logic...
+      private val isLazy = mods.isLazy
 
-      // handle lazy val first for now (we emit a Field even though we probably shouldn't...)
       override def derivedTree =
-        if (mods.isLazy) copyValDef(tree)(mods = mods | flagsExtra, name = this.name, rhs = EmptyTree).setPos(tree.pos.focus)
-        else if (Field.noFieldFor(tree)) EmptyTree
+        if (isLazy) copyValDef(tree)(mods = mods | flagsExtra, name = this.name, rhs = EmptyTree).setPos(tree.pos.focus)
         else copyValDef(tree)(mods = mods | flagsExtra, name = this.name)
+
+      def newSymbol(getter: MethodSymbol) = {
+        // If the owner is not a class, this is a lazy val from a method,
+        // with no associated field.  It has an accessor with $lzy appended to its name and
+        // its flags are set differently.  The implicit flag is reset because otherwise
+        // a local implicit "lazy val x" will create an ambiguity with itself
+        // via "x$lzy" as can be seen in test #3927.
+        val localLazyVal = isLazy && !owner.isClass
+        val name = if (localLazyVal) tree.name append nme.LAZY_LOCAL else tree.localName
+        val flags =
+          if (localLazyVal) (mods.flags | ARTIFACT | MUTABLE) & ~IMPLICIT
+          else mods.flags & FieldFlags | PrivateLocal | (if (isLazy) MUTABLE else 0)
+
+        val sym = owner.newValue(name, tree.pos, flags)
+
+        if (isLazy) sym setLazyAccessor getter
+
+        sym
+      }
 
     }
 
@@ -486,7 +542,7 @@ trait MethodSynthesis {
           )
         }
       }
-      override def createAndEnterSymbol(): MethodSymbol = enterSyntheticSym(derivedTree).asInstanceOf[MethodSymbol]
+      override def newAccessor(): MethodSymbol = enterSyntheticSym(derivedTree).asInstanceOf[MethodSymbol]
     }
 
     // NoSymbolBeanGetter synthesizes the getter's RHS (which defers to the regular setter)
@@ -498,38 +554,6 @@ trait MethodSynthesis {
     // the bean setter's RHS delegates to the setter
     case class BeanSetter(tree: ValDef) extends BeanAccessor("set") with DerivedSetter {
       override protected def setterRhs = Apply(Ident(tree.name.setterName), List(Ident(setterParam)))
-    }
-
-    // No Symbols available.
-    private def beanAccessorsFromNames(tree: ValDef) = {
-      val ValDef(mods, _, _, _) = tree
-      val hasBP     = mods hasAnnotationNamed tpnme.BeanPropertyAnnot
-      val hasBoolBP = mods hasAnnotationNamed tpnme.BooleanBeanPropertyAnnot
-
-      if (hasBP || hasBoolBP) {
-        val getter = (
-          if (hasBP) new BeanGetter(tree) with NoSymbolBeanGetter
-          else new BooleanBeanGetter(tree) with NoSymbolBeanGetter
-        )
-        getter :: {
-          if (mods.isMutable) List(BeanSetter(tree)) else Nil
-        }
-      }
-      else Nil
-    }
-
-    protected def enterBeans(tree: ValDef) {
-      val ValDef(mods, name, _, _) = tree
-      val beans = beanAccessorsFromNames(tree)
-      if (beans.nonEmpty) {
-        if (!name.charAt(0).isLetter)
-          BeanPropertyAnnotationFieldWithoutLetterError(tree)
-        else if (mods.isPrivate)  // avoids name clashes with private fields in traits
-          BeanPropertyAnnotationPrivateFieldError(tree)
-
-        // Create and enter the symbols here, add the trees in finishGetterSetter.
-        beans foreach (_.createAndEnterSymbol())
-      }
     }
   }
 }
