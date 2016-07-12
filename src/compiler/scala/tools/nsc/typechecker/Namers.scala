@@ -805,9 +805,9 @@ trait Namers extends MethodSynthesis {
       // sym is an accessor, while tree is the field (which may have the same symbol as the getter, or maybe it's the field)
       // reuse work done in valTypeCompleter if we already computed the type signature of the val
       // (assuming the field and accessor symbols are distinct -- i.e., we're not in a trait)
-      val valSig =
-        if ((sym ne tree.symbol) && tree.symbol.isInitialized) tree.symbol.info
-        else typeSig(tree)
+      val valSig = typeSig(tree)
+//        if ((sym ne tree.symbol) && tree.symbol.isInitialized) tree.symbol.info
+//        else typeSig(tree)
 
       val sig = accessorSigFromFieldTp(sym, isSetter, valSig)
 
