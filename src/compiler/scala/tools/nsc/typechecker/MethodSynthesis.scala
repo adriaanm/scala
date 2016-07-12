@@ -152,12 +152,49 @@ trait MethodSynthesis {
 
       val beans = beanAccessorsFromNames(tree)
       if (beans.nonEmpty) {
+        def deriveTree(bean: BeanAccessor, sym: Symbol): DefDef = {
+          val mods = bean.derivedMods mapAnnotations (_ => Nil)
+
+          val setterParam = nme.syntheticParamName(1)
+
+          val tptToPatch = tree.tpt.duplicate
+
+          // note: tree.tpt may be EmptyTree, which will be a problem when use as the tpt of a parameter
+          // the completer will patch this up (we can't do this now without completing the field)
+          val (vparams, tpt) =
+            if (bean.isInstanceOf[BeanSetter]) (List(ValDef(Modifiers(PARAM | SYNTHETIC), setterParam, tptToPatch, EmptyTree)), TypeTree(UnitTpe))
+            else (Nil, tptToPatch)
+
+          val rhs =
+            if (bean.isDeferred) EmptyTree
+            else if (bean.isInstanceOf[BeanSetter]) Apply(Ident(tree.name.setterName), List(Ident(setterParam)))
+            else Select(This(owner), tree.name)
+
+          val ddef: DefDef = atPos(tree.pos.focus)(DefDef(mods, bean.name, Nil, List(vparams), tpt, rhs))
+          ddef.symbol = sym
+          context.unit.synthetics(sym) = ddef
+
+          ddef
+        }
+
         if (!tree.name.charAt(0).isLetter)
           BeanPropertyAnnotationFieldWithoutLetterError(tree)
         else if (tree.mods.isPrivate)  // avoids name clashes with private fields in traits
           BeanPropertyAnnotationPrivateFieldError(tree)
 
-        beans foreach (b => enterSyntheticSym(b.derivedTree))
+        val accessorSyms@(getterSym :: setterSyms) = beans.map { b =>
+          val sym = b.newAccessorSymbol
+          deriveTree(b, sym)
+          sym
+        }
+
+        val getterCompleter = namer.beanAccessorTypeCompleter(tree, isSetter = false)
+        val setterCompleter = namer.beanAccessorTypeCompleter(tree, isSetter = true)
+
+        getterSym setInfo getterCompleter
+        setterSyms foreach (_ setInfo setterCompleter)
+
+        accessorSyms foreach enterInScope
       }
 
     }
@@ -185,7 +222,7 @@ trait MethodSynthesis {
       case vd @ ValDef(mods, name, tpt, rhs) if deriveAccessors(vd) && !vd.symbol.isModuleVar =>
         stat.symbol.initialize // needed!
 
-        ((field(vd) ::: standardAccessors(vd) ::: beanAccessors(vd))
+        ((field(vd) ::: standardAccessors(vd))
               map { acc => acc.validate() ; atPos(vd.pos.focus)(acc.derivedTree) }
         filterNot (_ eq EmptyTree))
       case cd @ ClassDef(mods, _, _, _) if mods.isImplicit =>
@@ -232,20 +269,12 @@ trait MethodSynthesis {
 
     // same as beanAccessors, but without needing symbols -- TODO: can we use the symbol-based variant? (name-based introduced in 8cc477f8b6)
     private def beanAccessorsFromNames(tree: ValDef): List[BeanAccessor] = {
-      val ValDef(mods, _, _, _) = tree
-      val hasBP     = mods hasAnnotationNamed tpnme.BeanPropertyAnnot
-      val hasBoolBP = mods hasAnnotationNamed tpnme.BooleanBeanPropertyAnnot
+      val hasBP     = tree.mods hasAnnotationNamed tpnme.BeanPropertyAnnot
+      val hasBoolBP = tree.mods hasAnnotationNamed tpnme.BooleanBeanPropertyAnnot
 
-      if (hasBP || hasBoolBP) {
-        val getter = (
-          if (hasBP) new BeanGetter(tree) with NoSymbolBeanGetter
-          else new BooleanBeanGetter(tree) with NoSymbolBeanGetter
-          )
-        getter :: {
-          if (mods.isMutable) List(BeanSetter(tree)) else Nil
-        }
-      }
-      else Nil
+      if (!hasBP && !hasBoolBP) Nil
+      else (if (hasBP) new BeanGetter(tree) else new BooleanBeanGetter(tree)) ::
+        (if (tree.mods.isMutable) List(BeanSetter(tree)) else Nil)
     }
 
 
@@ -518,18 +547,6 @@ trait MethodSynthesis {
           BeanPropertyAnnotationLimitationError(tree)
         }
         super.validate()
-      }
-    }
-
-    // This trait is mixed into BooleanBeanGetter and BeanGetter by beanAccessorsFromNames, but not by beanAccessors
-    trait NoSymbolBeanGetter extends AnyBeanGetter {
-      // Derives a tree without attempting to use the original tree's symbol.
-      override def derivedTree = {
-        atPos(tree.pos.focus) {
-          DefDef(derivedMods mapAnnotations (_ => Nil), name, Nil, ListOfNil, tree.tpt.duplicate,
-            if (isDeferred) EmptyTree else Select(This(owner), tree.name)
-          )
-        }
       }
     }
 

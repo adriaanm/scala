@@ -834,6 +834,37 @@ trait Namers extends MethodSynthesis {
       validate(sym)
     }
 
+    /* Explicit isSetter required for bean setters (beanSetterSym.isSetter is false) */
+    def beanAccessorTypeCompleter(tree: ValDef, isSetter: Boolean) = mkTypeCompleter(tree) { sym =>
+      // println(s"triaging for ${sym.debugFlagString} $sym from $valAnnots to $annots")
+
+      // typeSig calls valDefSig (because tree: ValDef)
+      // sym is an accessor, while tree is the field (which may have the same symbol as the getter, or maybe it's the field)
+      // TODO: can we make this work? typeSig is called on same tree (valdef) to complete info for field and all its accessors
+      // reuse work done in valTypeCompleter if we already computed the type signature of the val
+      // (assuming the field and accessor symbols are distinct -- i.e., we're not in a trait)
+      // val valSig =  if ((sym ne tree.symbol) && tree.symbol.isInitialized) tree.symbol.info
+      //  else typeSig(tree)
+      val valSig = typeSig(tree, Nil) // don't set annotations for the valdef -- we just want to compute the type sig
+
+      if (isSetter) {
+        context.unit.synthetics get sym match {
+          case Some(DefDef(_, _, _, List(List(ValDef(_, _, tpt, _))), _, _)) =>
+            tpt setType valSig
+          case _ =>
+        }
+      }
+
+      val sig = accessorSigFromFieldTp(sym, isSetter, valSig)
+
+      if (tree.mods.annotations.nonEmpty)
+        sym setAnnotations filterAccessorAnnotations(annotSig(tree.mods.annotations), isSetter)
+
+      sym setInfo pluginsTypeSigAccessor(sig, typer, tree, sym)
+
+      validate(sym)
+    }
+
 
     // see scala.annotation.meta's package class for more info
     // Annotations on ValDefs can be targeted towards the following: field, getter, setter, beanGetter, beanSetter, param.
