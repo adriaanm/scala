@@ -134,18 +134,6 @@ trait MethodSynthesis {
       // TODO: why change the getter's position -- it's already at `tree.pos.focus`
       tree.symbol = fieldSym orElse (getterSym setPos tree.pos)
 
-      val beans = beanAccessorsFromNames(tree)
-      val beanAccessorSyms =
-        if (beans.nonEmpty) {
-          if (!tree.name.charAt(0).isLetter)
-            BeanPropertyAnnotationFieldWithoutLetterError(tree)
-          else if (tree.mods.isPrivate)  // avoids name clashes with private fields in traits
-            BeanPropertyAnnotationPrivateFieldError(tree)
-
-          beans map (_.newAccessor)
-        } else Nil
-
-
       if (fieldSym != NoSymbol) {
         fieldSym setInfo namer.valTypeCompleter(tree)
         enterInScope(fieldSym)
@@ -160,13 +148,18 @@ trait MethodSynthesis {
       getterSym setInfo getterCompleter
       setterSyms foreach (_ setInfo setterCompleter)
 
-      if (beanAccessorSyms.nonEmpty) {
-        beanAccessorSyms.head setInfo getterCompleter
-        beanAccessorSyms.tail foreach (_ setInfo setterCompleter)
+      accessorSyms foreach enterInScope
+
+      val beans = beanAccessorsFromNames(tree)
+      if (beans.nonEmpty) {
+        if (!tree.name.charAt(0).isLetter)
+          BeanPropertyAnnotationFieldWithoutLetterError(tree)
+        else if (tree.mods.isPrivate)  // avoids name clashes with private fields in traits
+          BeanPropertyAnnotationPrivateFieldError(tree)
+
+        beans foreach (b => enterSyntheticSym(b.derivedTree))
       }
 
-      accessorSyms foreach enterInScope
-      beanAccessorSyms foreach enterInScope
     }
 
 
@@ -238,7 +231,7 @@ trait MethodSynthesis {
     }
 
     // same as beanAccessors, but without needing symbols -- TODO: can we use the symbol-based variant? (name-based introduced in 8cc477f8b6)
-    private def beanAccessorsFromNames(tree: ValDef) = {
+    private def beanAccessorsFromNames(tree: ValDef): List[BeanAccessor] = {
       val ValDef(mods, _, _, _) = tree
       val hasBP     = mods hasAnnotationNamed tpnme.BeanPropertyAnnot
       val hasBoolBP = mods hasAnnotationNamed tpnme.BooleanBeanPropertyAnnot
@@ -310,16 +303,14 @@ trait MethodSynthesis {
       def derivedSym: Symbol = tree.symbol
       def derivedTree: Tree  = EmptyTree
 
-      def isDeferred = mods.isDeferred
-      def validate() { }
-
-      def newAccessor: MethodSymbol = {
+      final def newAccessor: MethodSymbol = {
         val sym = owner.newMethod(name, tree.pos.focus, derivedMods.flags)
         setPrivateWithin(tree, sym)
-
         sym
       }
 
+      def isDeferred = mods.isDeferred
+      def validate() { }
 
       private def logDerived(result: Tree): Tree = {
         debuglog("[+derived] " + ojoin(mods.flagString, basisSym.accurateKindString, basisSym.getterName.decode)
@@ -542,7 +533,6 @@ trait MethodSynthesis {
           )
         }
       }
-      override def newAccessor(): MethodSymbol = enterSyntheticSym(derivedTree).asInstanceOf[MethodSymbol]
     }
 
     // NoSymbolBeanGetter synthesizes the getter's RHS (which defers to the regular setter)
