@@ -853,11 +853,11 @@ trait Namers extends MethodSynthesis {
           accessor setAnnotations filtered
         }
 
-        if (!fieldOrGetter.isMethod) {
-          val filtered = origFieldAnnots filter annotationFilter(FieldTargetClass, !vd.mods.isParamAccessor)
-//          println(s"triaging for ${fieldOrGetter.debugFlagString} $fieldOrGetter from $origFieldAnnots to $filtered")
-          fieldOrGetter setAnnotations filtered
-        }
+//        if (!fieldOrGetter.isMethod) {
+//          val filtered = origFieldAnnots filter annotationFilter(FieldTargetClass, !vd.mods.isParamAccessor)
+////          println(s"triaging for ${fieldOrGetter.debugFlagString} $fieldOrGetter from $origFieldAnnots to $filtered")
+//          fieldOrGetter setAnnotations filtered
+//        }
 
         // TODO: revive
         // Verify each annotation landed safely somewhere, else warn.
