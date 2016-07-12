@@ -116,8 +116,8 @@ trait MethodSynthesis {
 
     import NamerErrorGen._
 
-    def enterImplicitWrapper(tree: ClassDef) {
-      ImplicitClassWrapper(tree).createAndEnterSymbol()
+    def enterImplicitWrapper(tree: ClassDef): Unit = {
+      enterSyntheticSym(ImplicitClassWrapper(tree).derivedTree)
     }
 
     // trees are later created by addDerivedTrees (common logic is encapsulated in field/standardAccessors/beanAccessors)
@@ -125,10 +125,10 @@ trait MethodSynthesis {
       val fields = field(tree)
 
       val accessors@(getter :: _) = standardAccessors(tree)
-      val accessorSyms@(getterSym :: setterSyms) = accessors.map(_.newAccessor)
+      val accessorSyms@(getterSym :: setterSyms) = accessors.map(_.newAccessorSymbol)
 
       // a lazy field is linked to its lazy accessor (TODO: can we do the same for field -> getter -> setter)
-      val fieldSym = if (fields.nonEmpty) fields.head.newSymbol(getterSym) else NoSymbol
+      val fieldSym = if (fields.nonEmpty) fields.head.newFieldSymbol(getterSym) else NoSymbol
       val namer = if (fields.nonEmpty) namerOf(fieldSym) else namerOf(getterSym)
 
       // TODO: why change the getter's position -- it's already at `tree.pos.focus`
@@ -303,7 +303,7 @@ trait MethodSynthesis {
       def derivedSym: Symbol = tree.symbol
       def derivedTree: Tree  = EmptyTree
 
-      final def newAccessor: MethodSymbol = {
+      final def newAccessorSymbol: MethodSymbol = {
         val sym = owner.newMethod(name, tree.pos.focus, derivedMods.flags)
         setPrivateWithin(tree, sym)
         sym
@@ -343,8 +343,6 @@ trait MethodSynthesis {
      *  the declaration of an implicit class.
      */
     case class ImplicitClassWrapper(tree: ClassDef) extends DerivedFromClassDef {
-      def completer(sym: Symbol): Type = ??? // not needed
-      def createAndEnterSymbol(): Symbol = enterSyntheticSym(derivedTree)
       def derivedSym: Symbol = {
         // Only methods will do! Don't want to pick up any stray
         // companion objects of the same name.
@@ -485,7 +483,7 @@ trait MethodSynthesis {
         if (isLazy) copyValDef(tree)(mods = mods | flagsExtra, name = this.name, rhs = EmptyTree).setPos(tree.pos.focus)
         else copyValDef(tree)(mods = mods | flagsExtra, name = this.name)
 
-      def newSymbol(getter: MethodSymbol) = {
+      def newFieldSymbol(getter: MethodSymbol) = {
         // If the owner is not a class, this is a lazy val from a method,
         // with no associated field.  It has an accessor with $lzy appended to its name and
         // its flags are set differently.  The implicit flag is reset because otherwise
