@@ -837,39 +837,37 @@ trait Namers extends MethodSynthesis {
     }
 
     /* Explicit isSetter required for bean setters (beanSetterSym.isSetter is false) */
-    def beanAccessorTypeCompleter(tree: ValDef, isSetter: Boolean) = mkTypeCompleter(tree) { sym =>
-      // println(s"triaging for ${sym.debugFlagString} $sym from $valAnnots to $annots")
+    def beanAccessorTypeCompleter(tree: ValDef, tptNotSpecified: Boolean, isSetter: Boolean) = mkTypeCompleter(tree) { sym =>
+      context.unit.synthetics get sym match {
+        case Some(ddef: DefDef) =>
+          // sym is an accessor, while tree is the field (for traits it's actually the getter, and we're completing the setter)
+          // reuse work done in valTypeCompleter if we already computed the type signature of the val
+          // (assuming the field and accessor symbols are distinct -- i.e., we're not in a trait)
+          val valSig =
+            if ((sym ne tree.symbol) && tree.symbol.isInitialized) tree.symbol.info
+            else typeSig(tree, Nil) // don't set annotations for the valdef -- we just want to compute the type sig
 
-      // typeSig calls valDefSig (because tree: ValDef)
-      // sym is an accessor, while tree is the field (which may have the same symbol as the getter, or maybe it's the field)
-      // TODO: can we make this work? typeSig is called on same tree (valdef) to complete info for field and all its accessors
-      // reuse work done in valTypeCompleter if we already computed the type signature of the val
-      // (assuming the field and accessor symbols are distinct -- i.e., we're not in a trait)
-      val valSig =
-        if ((sym ne tree.symbol) && tree.symbol.isInitialized) tree.symbol.info
-        else typeSig(tree, Nil)  // don't set annotations for the valdef -- we just want to compute the type sig
+          // patch up the accessor's tree if the valdef's tpt was not known back when the tree was synthesized
+          if (tptNotSpecified) { // can't look at tree.tpt here because it may have been completed by now
+            if (!isSetter) ddef.tpt setType valSig
+            else if (ddef.vparamss.nonEmpty && ddef.vparamss.head.nonEmpty) ddef.vparamss.head.head.tpt setType valSig
+            else throw new TypeError(tree.pos, s"Internal error: could not complete parameter/return type for $ddef from $sym")
+          }
 
-      val ddef = (context.unit.synthetics get sym).get.asInstanceOf[DefDef] // TODO
+          val annots =
+            if (tree.mods.annotations.isEmpty) Nil
+            else annotSig(tree.mods.annotations) filter filterBeanAccessorAnnotations(isSetter)
 
-      // patch up if the valdef's tpt was not known back when the synthetic tree was created
-      ddef match {
-        case DefDef(_, _, _, List(List(ValDef(_, _, tpt, _))), _, _) if isSetter =>
-          if (tpt.isEmpty) tpt setType valSig
-        case DefDef(_, _, _, List(Nil), _, tpt) if !isSetter =>
-          if (tpt.isEmpty) tpt setType valSig
-        case t =>
-          println(s"wat? $sym synthetic $t")
+          val sig = typeSig(ddef, annots)
+
+          sym setInfo pluginsTypeSigAccessor(sig, typer, tree, sym)
+
+          validate(sym)
+
+        case None =>
+          throw new TypeError(tree.pos, s"Internal error: no synthetic tree found for bean accessor $sym")
       }
 
-      val annots =
-        if (tree.mods.annotations.isEmpty) Nil
-        else annotSig(tree.mods.annotations) filter filterBeanAccessorAnnotations(isSetter)
-
-      val sig = typeSig(ddef, annots)
-
-      sym setInfo pluginsTypeSigAccessor(sig, typer, tree, sym)
-
-      validate(sym)
     }
 
 
