@@ -187,8 +187,8 @@ trait MethodSynthesis {
           sym
         }
 
-        val getterCompleter = namer.beanAccessorTypeCompleter(tree, isSetter = false)
-        val setterCompleter = namer.beanAccessorTypeCompleter(tree, isSetter = true)
+        val getterCompleter = namer.beanAccessorTypeCompleter(tree, tptNotSpecified = tree.tpt.isEmpty, isSetter = false)
+        val setterCompleter = namer.beanAccessorTypeCompleter(tree, tptNotSpecified = tree.tpt.isEmpty, isSetter = true)
 
         getterSym setInfo getterCompleter
         setterSyms foreach (_ setInfo setterCompleter)

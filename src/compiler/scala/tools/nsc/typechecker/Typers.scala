@@ -2208,6 +2208,8 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
     }
 
     def typedDefDef(ddef: DefDef): DefDef = {
+      // an accessor's type completer may mutate a type inside `ddef` (`== context.unit.synthetics(ddef.symbol)`)
+      // concretely: it sets the setter's parameter type or the getter's return type (when derived from a valdef with empty tpt)
       val meth = ddef.symbol.initialize
 
       reenterTypeParams(ddef.tparams)
