@@ -837,7 +837,7 @@ trait Namers extends MethodSynthesis {
     }
 
     /* Explicit isSetter required for bean setters (beanSetterSym.isSetter is false) */
-    def beanAccessorTypeCompleter(tree: ValDef, tptNotSpecified: Boolean, isSetter: Boolean) = mkTypeCompleter(tree) { sym =>
+    def beanAccessorTypeCompleter(tree: ValDef, propagateTpt: Boolean, isSetter: Boolean) = mkTypeCompleter(tree) { sym =>
       context.unit.synthetics get sym match {
         case Some(ddef: DefDef) =>
           // sym is an accessor, while tree is the field (for traits it's actually the getter, and we're completing the setter)
@@ -848,7 +848,7 @@ trait Namers extends MethodSynthesis {
             else typeSig(tree, Nil) // don't set annotations for the valdef -- we just want to compute the type sig
 
           // patch up the accessor's tree if the valdef's tpt was not known back when the tree was synthesized
-          if (tptNotSpecified) { // can't look at tree.tpt here because it may have been completed by now
+          if (propagateTpt) { // can't look at tree.tpt here because it may have been completed by now
             if (!isSetter) ddef.tpt setType valSig
             else if (ddef.vparamss.nonEmpty && ddef.vparamss.head.nonEmpty) ddef.vparamss.head.head.tpt setType valSig
             else throw new TypeError(tree.pos, s"Internal error: could not complete parameter/return type for $ddef from $sym")
@@ -864,7 +864,7 @@ trait Namers extends MethodSynthesis {
 
           validate(sym)
 
-        case None =>
+        case _ =>
           throw new TypeError(tree.pos, s"Internal error: no synthetic tree found for bean accessor $sym")
       }
 
