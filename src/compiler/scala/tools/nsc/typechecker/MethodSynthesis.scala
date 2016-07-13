@@ -156,7 +156,7 @@ trait MethodSynthesis {
 
           val setterParam = nme.syntheticParamName(1)
 
-          val tptToPatch = tree.tpt.duplicate
+          val tptToPatch = if (tree.tpt.isEmpty) TypeTree() else tree.tpt.duplicate
 
           // note: tree.tpt may be EmptyTree, which will be a problem when use as the tpt of a parameter
           // the completer will patch this up (we can't do this now without completing the field)
