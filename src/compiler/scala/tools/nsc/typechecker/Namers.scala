@@ -820,14 +820,16 @@ trait Namers extends MethodSynthesis {
       // TODO: can we make this work? typeSig is called on same tree (valdef) to complete info for field and all its accessors
       // reuse work done in valTypeCompleter if we already computed the type signature of the val
       // (assuming the field and accessor symbols are distinct -- i.e., we're not in a trait)
-      // val valSig =  if ((sym ne tree.symbol) && tree.symbol.isInitialized) tree.symbol.info
-      //  else typeSig(tree)
+//      val valSig =
+//        if ((sym ne tree.symbol) && tree.symbol.isInitialized) tree.symbol.info
+//        else typeSig(tree, Nil) // don't set annotations for the valdef -- we just want to compute the type sig
+
       val valSig = typeSig(tree, Nil) // don't set annotations for the valdef -- we just want to compute the type sig
 
       val sig = accessorSigFromFieldTp(sym, isSetter, valSig)
 
       if (tree.mods.annotations.nonEmpty)
-        sym setAnnotations filterAccessorAnnotations(annotSig(tree.mods.annotations), isSetter)
+        sym setAnnotations (annotSig(tree.mods.annotations) filter filterAccessorAnnotations(isSetter))
 
       sym setInfo pluginsTypeSigAccessor(sig, typer, tree, sym)
 
@@ -843,22 +845,27 @@ trait Namers extends MethodSynthesis {
       // TODO: can we make this work? typeSig is called on same tree (valdef) to complete info for field and all its accessors
       // reuse work done in valTypeCompleter if we already computed the type signature of the val
       // (assuming the field and accessor symbols are distinct -- i.e., we're not in a trait)
-      // val valSig =  if ((sym ne tree.symbol) && tree.symbol.isInitialized) tree.symbol.info
-      //  else typeSig(tree)
-      val valSig = typeSig(tree, Nil) // don't set annotations for the valdef -- we just want to compute the type sig
+      val valSig =
+        if ((sym ne tree.symbol) && tree.symbol.isInitialized) tree.symbol.info
+        else typeSig(tree, Nil)  // don't set annotations for the valdef -- we just want to compute the type sig
 
-      if (isSetter) {
-        context.unit.synthetics get sym match {
-          case Some(DefDef(_, _, _, List(List(ValDef(_, _, tpt, _))), _, _)) =>
-            tpt setType valSig
-          case _ =>
-        }
+      val ddef = (context.unit.synthetics get sym).get.asInstanceOf[DefDef] // TODO
+
+      // patch up if the valdef's tpt was not known back when the synthetic tree was created
+      ddef match {
+        case DefDef(_, _, _, List(List(ValDef(_, _, tpt, _))), _, _) if isSetter =>
+          if (tpt.isEmpty) tpt setType valSig
+        case DefDef(_, _, _, List(Nil), _, tpt) if !isSetter =>
+          if (tpt.isEmpty) tpt setType valSig
+        case t =>
+          println(s"wat? $sym synthetic $t")
       }
 
-      val sig = accessorSigFromFieldTp(sym, isSetter, valSig)
+      val annots =
+        if (tree.mods.annotations.isEmpty) Nil
+        else annotSig(tree.mods.annotations) filter filterBeanAccessorAnnotations(isSetter)
 
-      if (tree.mods.annotations.nonEmpty)
-        sym setAnnotations filterAccessorAnnotations(annotSig(tree.mods.annotations), isSetter)
+      val sig = typeSig(ddef, annots)
 
       sym setInfo pluginsTypeSigAccessor(sig, typer, tree, sym)
 
@@ -876,26 +883,25 @@ trait Namers extends MethodSynthesis {
     //
     // TODO: these defaults can be surprising for annotations not meant for accessors/fields -- should we revisit?
     // (In order to have `@foo val X` result in the X getter being annotated with `@foo`, foo needs to be meta-annotated with @getter)
-    private def filterAccessorAnnotations(valAnnots: List[AnnotationInfo], isSetter: Boolean) = {
-      val isBean = valAnnots exists (annot => (annot matches BeanPropertyAttr) || (annot matches BooleanBeanPropertyAttr))
+    private def filterAccessorAnnotations(isSetter: Boolean): AnnotationInfo => Boolean =
+      if (isSetter || !owner.isTrait)
+        annotationFilter(if (isSetter) SetterTargetClass else GetterTargetClass, defaultRetention = false)
+      else (ann =>
+        annotationFilter(FieldTargetClass, defaultRetention = true)(ann) ||
+        annotationFilter(GetterTargetClass, defaultRetention = true)(ann))
 
-      val accessorAnnot: AnnotationInfo => Boolean =
-        if (!isSetter && owner.isTrait) ann =>
-          annotationFilter(FieldTargetClass, defaultRetention = true)(ann) ||
-            annotationFilter(if (isBean) BeanGetterTargetClass else GetterTargetClass, defaultRetention = true)(ann)
-        else annotationFilter(
-          if (isBean) (if (isSetter) BeanSetterTargetClass else BeanGetterTargetClass)
-          else (if (isSetter) SetterTargetClass else GetterTargetClass), defaultRetention = false)
-
-      // The annotations amongst those found on the original symbol which
-      // should be propagated to this kind of accessor.
-      valAnnots filter accessorAnnot
-    }
+    private def filterBeanAccessorAnnotations(isSetter: Boolean): AnnotationInfo => Boolean =
+      if (isSetter || !owner.isTrait)
+        annotationFilter(if (isSetter) BeanSetterTargetClass else BeanGetterTargetClass, defaultRetention = false)
+      else (ann =>
+        annotationFilter(FieldTargetClass, defaultRetention = true)(ann) ||
+          annotationFilter(BeanGetterTargetClass, defaultRetention = true)(ann))
 
 
-    private def accessorSigFromFieldTp(sym: global.Symbol, isSetter: Boolean, tp: global.Type): global.Type with Product with Serializable = {
-      if (isSetter) MethodType(List(sym.newSyntheticValueParam(tp)), UnitTpe) else NullaryMethodType(tp)
-    }
+    private def accessorSigFromFieldTp(sym: Symbol, isSetter: Boolean, tp: Type): Type =
+      if (isSetter) MethodType(List(sym.newSyntheticValueParam(tp)), UnitTpe)
+      else NullaryMethodType(tp)
+
     def selfTypeCompleter(tree: Tree) = mkTypeCompleter(tree) { sym =>
       val selftpe = typer.typedType(tree).tpe
       sym setInfo {
