@@ -199,29 +199,7 @@ trait MethodSynthesis {
       }
     }
 
-
-
-    // TODO: annotation warnings neg/t6375
-    //    /** This is called for those ValDefs which addDerivedTrees ignores, but
-//     *  which might have a warnable annotation situation.
-//     */
-//    private def warnForDroppedValAnnotations(sym: Symbol) {
-//      val targetClass   = if (sym.isValueParameter || sym.isParamAccessor) ParamTargetClass else FieldTargetClass
-//      val annotations   = sym.initialize.annotations
-//      val retained      = annotations filter annotationFilter(targetClass, defaultRetention = true)
-//
-//      annotations filterNot (retained contains _) foreach (ann => issueAnnotationWarning(sym, ann, targetClass))
-//    }
-//    private def issueAnnotationWarning(sym: Symbol, ann: AnnotationInfo, defaultTarget: Symbol) {
-//      global.reporter.warning(ann.pos,
-//        s"no valid targets for annotation on $sym - it is discarded unused. " +
-//        s"You may specify targets with meta-annotations, e.g. @($ann @${defaultTarget.name})")
-//    }
-
-
-
     import AnnotationInfo.{mkFilter => annotationFilter}
-
     def addDerivedTrees(typer: Typer, stat: Tree): List[Tree] = stat match {
       case vd @ ValDef(mods, name, tpt, rhs) if deriveAccessors(vd) && !vd.symbol.isModuleVar =>
         stat.symbol.initialize // needed!
