@@ -1611,54 +1611,22 @@ trait Namers extends MethodSynthesis {
      * is then assigned to the corresponding symbol (typeSig itself does not need to assign
      * the type to the symbol, but it can if necessary).
      */
-    def typeSig(tree: Tree, ainfos: List[AnnotationInfo]): Type = {
-      // log("typeSig " + tree)
-      /* For definitions, transform Annotation trees to AnnotationInfos, assign
-       * them to the sym's annotations. Type annotations: see Typer.typedAnnotated
-       * We have to parse definition annotations here (not in the typer when traversing
-       * the MemberDef tree): the typer looks at annotations of certain symbols; if
-       * they were added only in typer, depending on the compilation order, they may
-       * or may not be visible.
-       */
-      def annotate(annotated: Symbol) = {
-        annotated setAnnotations ainfos
-        if (annotated.isTypeSkolem)
-          annotated.deSkolemize setAnnotations ainfos
-      }
+    def typeSig(tree: Tree, annotSigs: List[AnnotationInfo]): Type = {
+      if (annotSigs.nonEmpty) annotate(tree.symbol, annotSigs)
 
-
-      val sym: Symbol = tree.symbol
-
-      // TODO: meta-annotations to indicate where module annotations should go (module vs moduleClass)
-      if (ainfos.nonEmpty) {
-        annotate(sym)
-        if (sym.isModule) annotate(sym.moduleClass)
-      }
-
-      def getSig = tree match {
-        case cdef: ClassDef =>
-          createNamer(tree).classSig(cdef)
-
-        case mdef: ModuleDef =>
-          createNamer(tree).moduleSig(mdef)
-
-        case ddef: DefDef =>
-          createNamer(tree).methodSig(ddef)
-
-        case vdef: ValDef =>
-          createNamer(tree).valDefSig(vdef)
-
-        case tdef: TypeDef =>
-          createNamer(tree).typeDefSig(tdef) //@M!
-
-        case imp: Import =>
-          importSig(imp)
-      }
-
-      try getSig
-      catch typeErrorHandler(tree, ErrorType)
+      try tree match {
+        case member: MemberDef => createNamer(tree).memberSig(member)
+        case imp: Import       => importSig(imp)
+      } catch typeErrorHandler(tree, ErrorType)
     }
 
+    /* For definitions, transform Annotation trees to AnnotationInfos, assign
+     * them to the sym's annotations. Type annotations: see Typer.typedAnnotated
+     * We have to parse definition annotations here (not in the typer when traversing
+     * the MemberDef tree): the typer looks at annotations of certain symbols; if
+     * they were added only in typer, depending on the compilation order, they may
+     * or may not be visible.
+     */
     def annotSig(annotations: List[Tree]): List[AnnotationInfo] =
       annotations filterNot (_ eq null) map { ann =>
         val ctx = typer.context
@@ -1670,7 +1638,24 @@ trait Namers extends MethodSynthesis {
         }
       }
 
+    private def annotate(sym: Symbol, annotSigs: List[AnnotationInfo]): Unit = {
+      sym setAnnotations annotSigs
 
+      // TODO: meta-annotations to indicate where module annotations should go (module vs moduleClass)
+      if (sym.isModule) sym.moduleClass setAnnotations annotSigs
+      else if (sym.isTypeSkolem) sym.deSkolemize setAnnotations annotSigs
+    }
+
+    // TODO OPT: move to method on MemberDef?
+    private def memberSig(member: MemberDef) =
+      member match {
+        case ddef: DefDef    => methodSig(ddef)
+        case vdef: ValDef    => valDefSig(vdef)
+        case tdef: TypeDef   => typeDefSig(tdef)
+        case cdef: ClassDef  => classSig(cdef)
+        case mdef: ModuleDef => moduleSig(mdef)
+        // skip PackageDef
+      }
 
     def includeParent(tpe: Type, parent: Symbol): Type = tpe match {
       case PolyType(tparams, restpe) =>
