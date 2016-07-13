@@ -134,10 +134,8 @@ trait MethodSynthesis {
       // TODO: why change the getter's position -- it's already at `tree.pos.focus`
       tree.symbol = fieldSym orElse (getterSym setPos tree.pos)
 
-      if (fieldSym != NoSymbol) {
-        fieldSym setInfo namer.valTypeCompleter(tree)
-        enterInScope(fieldSym)
-      }
+      if (fieldSym != NoSymbol) fieldSym setInfo namer.valTypeCompleter(tree)
+
 
       // There's no reliable way to detect all kinds of setters from flags or name!!!
       // A BeanSetter's name does not end in `_=` -- it does begin with "set", but so could the getter
@@ -149,6 +147,7 @@ trait MethodSynthesis {
       setterSyms foreach (_ setInfo setterCompleter)
 
       accessorSyms foreach enterInScope
+      if (fieldSym != NoSymbol) enterInScope(fieldSym)
 
       val beans = beanAccessorsFromNames(tree)
       if (beans.nonEmpty) {
