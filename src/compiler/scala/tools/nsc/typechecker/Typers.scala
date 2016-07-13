@@ -3038,6 +3038,14 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
           result
       }
 
+      // TODO: adapt to new trait field encoding, figure out why this exaemption is made
+      // 'accessor' and 'accessed' are so similar it becomes very difficult to
+      //follow the logic, so I renamed one to something distinct.
+      def accesses(looker: Symbol, accessed: Symbol) = accessed.isLocalToThis && (
+        (accessed.isParamAccessor)
+          || (looker.hasAccessorFlag && !accessed.hasAccessorFlag && accessed.isPrivate)
+        )
+
       def checkNoDoubleDefs: Unit = {
         val scope = if (inBlock) context.scope else context.owner.info.decls
         var e = scope.elems
@@ -3063,7 +3071,8 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
               *      and equal numbers of type parameters $\overline t$, $\overline t'$, say,
               *      and  $\overline T' = [\overline t'/\overline t]\overline T$.
               */
-            if ((inBlock || !(sym.isMethod || sym1.isMethod) || (sym.tpe matches sym1.tpe))
+            if (!(accesses(sym, sym1) || accesses(sym1, sym))  // TODO: does this purely defer errors until later?
+                && (inBlock || !(sym.isMethod || sym1.isMethod) || (sym.tpe matches sym1.tpe))
                 // default getters are defined twice when multiple overloads have defaults.
                 // The error for this is deferred until RefChecks.checkDefaultsInOverloaded
                 && (!sym.isErroneous && !sym1.isErroneous && !sym.hasDefault &&
