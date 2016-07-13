@@ -123,9 +123,11 @@ trait MethodSynthesis {
     // trees are later created by addDerivedTrees (common logic is encapsulated in field/standardAccessors/beanAccessors)
     def enterGetterSetter(tree: ValDef): Unit = {
       val fields = field(tree)
+      val derivedPos = tree.pos.focus
 
       val accessors@(getter :: _) = standardAccessors(tree)
-      val accessorSyms@(getterSym :: setterSyms) = accessors.map(_.newAccessorSymbol)
+      val accessorSyms@(getterSym :: setterSyms) =
+        accessors.map(acc => createMethod(tree, acc.name, derivedPos, acc.derivedMods.flags))
 
       // a lazy field is linked to its lazy accessor (TODO: can we do the same for field -> getter -> setter)
       val fieldSym = if (fields.nonEmpty) fields.head.newFieldSymbol(getterSym) else NoSymbol
@@ -135,7 +137,6 @@ trait MethodSynthesis {
       tree.symbol = fieldSym orElse (getterSym setPos tree.pos)
 
       if (fieldSym != NoSymbol) fieldSym setInfo namer.valTypeCompleter(tree)
-
 
       // There's no reliable way to detect all kinds of setters from flags or name!!!
       // A BeanSetter's name does not end in `_=` -- it does begin with "set", but so could the getter
@@ -149,59 +150,59 @@ trait MethodSynthesis {
       accessorSyms foreach enterInScope
       if (fieldSym != NoSymbol) enterInScope(fieldSym)
 
-      val beans = beanAccessorsFromNames(tree)
-      if (beans.nonEmpty) {
-        def deriveTree(bean: BeanAccessor, sym: Symbol): DefDef = {
-          val mods = bean.derivedMods mapAnnotations (_ => Nil)
+      deriveBeanAccessors(tree, namer)
+    }
 
+    private def deriveBeanAccessors(tree: ValDef, namer: Namer): Unit = {
+      // TODO: can we look at the annotations symbols? (name-based introduced in 8cc477f8b6, see neg/t3403)
+      val hasBeanProperty = tree.mods hasAnnotationNamed tpnme.BeanPropertyAnnot
+      val hasBoolBP = tree.mods hasAnnotationNamed tpnme.BooleanBeanPropertyAnnot
+
+      if (hasBeanProperty || hasBoolBP) {
+        if (!tree.name.charAt(0).isLetter) BeanPropertyAnnotationFieldWithoutLetterError(tree)
+        // avoids name clashes with private fields in traits
+        else if (tree.mods.isPrivate) BeanPropertyAnnotationPrivateFieldError(tree)
+
+        val derivedPos = tree.pos.focus
+        val missingTpt = tree.tpt.isEmpty
+
+        def deriveBeanAccessor(prefix: String): Symbol = {
+          val isSetter = prefix == "set"
+          val name = newTermName(prefix + tree.name.toString.capitalize)
           val setterParam = nme.syntheticParamName(1)
-
-          val tptToPatch = if (tree.tpt.isEmpty) TypeTree() else tree.tpt.duplicate
 
           // note: tree.tpt may be EmptyTree, which will be a problem when use as the tpt of a parameter
           // the completer will patch this up (we can't do this now without completing the field)
+          val tptToPatch = if (missingTpt) TypeTree() else tree.tpt.duplicate
+
           val (vparams, tpt) =
-            if (bean.isInstanceOf[BeanSetter]) (List(ValDef(Modifiers(PARAM | SYNTHETIC), setterParam, tptToPatch, EmptyTree)), TypeTree(UnitTpe))
+            if (isSetter) (List(ValDef(Modifiers(PARAM | SYNTHETIC), setterParam, tptToPatch, EmptyTree)), TypeTree(UnitTpe))
             else (Nil, tptToPatch)
 
           val rhs =
-            if (bean.isDeferred) EmptyTree
-            else if (bean.isInstanceOf[BeanSetter]) Apply(Ident(tree.name.setterName), List(Ident(setterParam)))
+            if (tree.mods.isDeferred) EmptyTree
+            else if (isSetter) Apply(Ident(tree.name.setterName), List(Ident(setterParam)))
             else Select(This(owner), tree.name)
 
-          val ddef: DefDef = atPos(tree.pos.focus)(DefDef(mods, bean.name, Nil, List(vparams), tpt, rhs))
-          ddef.symbol = sym
-          context.unit.synthetics(sym) = ddef
-
-          ddef
-        }
-
-        if (!tree.name.charAt(0).isLetter)
-          BeanPropertyAnnotationFieldWithoutLetterError(tree)
-        else if (tree.mods.isPrivate)  // avoids name clashes with private fields in traits
-          BeanPropertyAnnotationPrivateFieldError(tree)
-
-        val accessorSyms@(getterSym :: setterSyms) = beans.map { b =>
-          val sym = b.newAccessorSymbol
-          deriveTree(b, sym)
+          val sym = createMethod(tree, name, derivedPos, tree.mods.flags & BeanPropertyFlags)
+          context.unit.synthetics(sym) = newDefDef(sym, rhs)(tparams = Nil, vparamss = List(vparams), tpt = tpt)
           sym
         }
 
-        val getterCompleter = namer.beanAccessorTypeCompleter(tree, propagateTpt = tree.tpt.isEmpty, isSetter = false)
-        val setterCompleter = namer.beanAccessorTypeCompleter(tree, propagateTpt = tree.tpt.isEmpty, isSetter = true)
+        val getterCompleter = namer.beanAccessorTypeCompleter(tree, missingTpt, isSetter = false)
+        enterInScope(deriveBeanAccessor(if (hasBeanProperty) "get" else "is") setInfo getterCompleter)
 
-        getterSym setInfo getterCompleter
-        setterSyms foreach (_ setInfo setterCompleter)
-
-        accessorSyms foreach enterInScope
+        if (tree.mods.isMutable) {
+          val setterCompleter = namer.beanAccessorTypeCompleter(tree, missingTpt, isSetter = true)
+          enterInScope(deriveBeanAccessor("set") setInfo setterCompleter)
+        }
       }
-
     }
 
 
-    import AnnotationInfo.{mkFilter => annotationFilter}
 
-//    /** This is called for those ValDefs which addDerivedTrees ignores, but
+    // TODO: annotation warnings neg/t6375
+    //    /** This is called for those ValDefs which addDerivedTrees ignores, but
 //     *  which might have a warnable annotation situation.
 //     */
 //    private def warnForDroppedValAnnotations(sym: Symbol) {
@@ -216,6 +217,10 @@ trait MethodSynthesis {
 //        s"no valid targets for annotation on $sym - it is discarded unused. " +
 //        s"You may specify targets with meta-annotations, e.g. @($ann @${defaultTarget.name})")
 //    }
+
+
+
+    import AnnotationInfo.{mkFilter => annotationFilter}
 
     def addDerivedTrees(typer: Typer, stat: Tree): List[Tree] = stat match {
       case vd @ ValDef(mods, name, tpt, rhs) if deriveAccessors(vd) && !vd.symbol.isModuleVar =>
@@ -257,25 +262,6 @@ trait MethodSynthesis {
         else List(getter)
       }
 
-    def beanAccessors(vd: ValDef): List[DerivedFromValDef] = {
-      val setter = if (vd.mods.isMutable) List(BeanSetter(vd)) else Nil
-      if (vd.symbol hasAnnotation BeanPropertyAttr)
-        BeanGetter(vd) :: setter
-      else if (vd.symbol hasAnnotation BooleanBeanPropertyAttr)
-        BooleanBeanGetter(vd) :: setter
-      else Nil
-    }
-
-    // same as beanAccessors, but without needing symbols -- TODO: can we use the symbol-based variant? (name-based introduced in 8cc477f8b6)
-    private def beanAccessorsFromNames(tree: ValDef): List[BeanAccessor] = {
-      val hasBP     = tree.mods hasAnnotationNamed tpnme.BeanPropertyAnnot
-      val hasBoolBP = tree.mods hasAnnotationNamed tpnme.BooleanBeanPropertyAnnot
-
-      if (!hasBP && !hasBoolBP) Nil
-      else (if (hasBP) new BeanGetter(tree) else new BooleanBeanGetter(tree)) ::
-        (if (tree.mods.isMutable) List(BeanSetter(tree)) else Nil)
-    }
-
 
     /** This trait assembles what's needed for synthesizing derived methods.
      *  Important: Typically, instances of this trait are created TWICE for each derived
@@ -284,10 +270,9 @@ trait MethodSynthesis {
      *  or if it has a side effect, control that it is done only once.
      */
     sealed trait Derived {
-
       /** The tree from which we are deriving a synthetic member. Typically, that's
        *  given as an argument of the instance. */
-      def tree: Tree
+      def tree: MemberDef
 
       /** The name of the method */
       def name: TermName
@@ -309,12 +294,13 @@ trait MethodSynthesis {
 
     sealed trait DerivedFromMemberDef extends Derived {
       def tree: MemberDef
-      def enclClass: Symbol
 
       // Final methods to make the rest easier to reason about.
       final def mods        = tree.mods
-      final def basisSym    = tree.symbol
       final def derivedMods = mods & flagsMask | flagsExtra
+
+      def enclClass: Symbol
+      final def basisSym    = tree.symbol
     }
 
     sealed trait DerivedFromClassDef extends DerivedFromMemberDef {
@@ -331,13 +317,6 @@ trait MethodSynthesis {
       def derivedSym: Symbol = tree.symbol
       def derivedTree: Tree  = EmptyTree
 
-      final def newAccessorSymbol: MethodSymbol = {
-        val sym = owner.newMethod(name, tree.pos.focus, derivedMods.flags)
-        setPrivateWithin(tree, sym)
-        sym
-      }
-
-      def isDeferred = mods.isDeferred
       def validate() { }
 
       private def logDerived(result: Tree): Tree = {
@@ -418,7 +397,7 @@ trait MethodSynthesis {
           // Range position errors ensue if we don't duplicate this in some
           // circumstances (at least: concrete vals with existential types.)
           case _: ExistentialType => TypeTree() setOriginal (tree.tpt.duplicate setPos tree.tpt.pos.focus)
-          case _ if isDeferred    => TypeTree() setOriginal tree.tpt // keep type tree of original abstract field
+          case _ if mods.isDeferred    => TypeTree() setOriginal tree.tpt // keep type tree of original abstract field
           case _                  => TypeTree(getterTp)
         }
         tpt setPos tree.tpt.pos.focus
@@ -529,35 +508,7 @@ trait MethodSynthesis {
 
         sym
       }
-
     }
 
-    sealed abstract class BeanAccessor(bean: String) extends DerivedFromValDef {
-      val name       = newTermName(bean + tree.name.toString.capitalize)
-      def flagsMask  = BeanPropertyFlags
-      def flagsExtra = 0
-      override def derivedSym = enclClass.info decl name
-    }
-    sealed trait AnyBeanGetter extends BeanAccessor with DerivedGetter {
-      override def validate() {
-        if (derivedSym == NoSymbol) {
-          // the namer decides whether to generate these symbols or not. at that point, we don't
-          // have symbolic information yet, so we only look for annotations named "BeanProperty".
-          BeanPropertyAnnotationLimitationError(tree)
-        }
-        super.validate()
-      }
-    }
-
-    // NoSymbolBeanGetter synthesizes the getter's RHS (which defers to the regular setter)
-    // (not sure why, but there is one use site of the BeanGetters where NoSymbolBeanGetter is not mixed in)
-    // TODO: clean this up...
-    case class BooleanBeanGetter(tree: ValDef) extends BeanAccessor("is") with AnyBeanGetter
-    case class BeanGetter(tree: ValDef) extends BeanAccessor("get") with AnyBeanGetter
-
-    // the bean setter's RHS delegates to the setter
-    case class BeanSetter(tree: ValDef) extends BeanAccessor("set") with DerivedSetter {
-      override protected def setterRhs = Apply(Ident(tree.name.setterName), List(Ident(setterParam)))
-    }
   }
 }

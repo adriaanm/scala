@@ -319,6 +319,12 @@ trait Namers extends MethodSynthesis {
       sym
     }
 
+    def createMethod(accessQual: MemberDef, name: TermName, pos: Position, flags: Long): MethodSymbol = {
+      val sym = owner.newMethod(name, pos, flags)
+      setPrivateWithin(accessQual, sym)
+      sym
+    }
+
     private def logAssignSymbol(tree: Tree, sym: Symbol): Symbol = {
       if (isPastTyper) sym.name.toTermName match {
         case nme.IMPORT | nme.OUTER | nme.ANON_CLASS_NAME | nme.ANON_FUN_NAME | nme.CONSTRUCTOR => ()
@@ -759,8 +765,6 @@ trait Namers extends MethodSynthesis {
       // on these flag checks so it can't hurt.
       def needsCycleCheck = sym.isNonClassType && !sym.isParameter && !sym.isExistential
 
-      // logDefinition(sym) {
-      // TODO: simplify? probably don't need to check that !sym.isInitialized
       val annotations = annotSig(tree.mods.annotations)
 
       val tp = typeSig(tree, annotations)
@@ -774,16 +778,14 @@ trait Namers extends MethodSynthesis {
           sym.initialize
         }
       }
-      sym setInfo {
-        if (sym.isJavaDefined) RestrictJavaArraysMap(tp)
-        else tp
-      }
+
+      sym.setInfo(if (!sym.isJavaDefined) tp else RestrictJavaArraysMap(tp))
+
       if (needsCycleCheck) {
         log(s"Needs cycle check: ${sym.debugLocationString}")
         if (!typer.checkNonCyclic(tree.pos, tp))
           sym setInfo ErrorType
       }
-      //}
 
       validate(sym)
     }
@@ -828,8 +830,18 @@ trait Namers extends MethodSynthesis {
 
       val sig = accessorSigFromFieldTp(sym, isSetter, valSig)
 
-      if (tree.mods.annotations.nonEmpty)
-        sym setAnnotations (annotSig(tree.mods.annotations) filter filterAccessorAnnotations(isSetter))
+      val mods = tree.mods
+      if (mods.annotations.nonEmpty) {
+        val annotSigs = annotSig(mods.annotations)
+
+        // neg/t3403: check that we didn't get a sneaky type alias/renamed import that we couldn't detect because we only look at names during synthesis
+        // (TODO: can we look at symbols earlier?)
+        if (!((mods hasAnnotationNamed tpnme.BeanPropertyAnnot) || (mods hasAnnotationNamed tpnme.BooleanBeanPropertyAnnot))
+           && annotSigs.exists(ann => (ann.matches(BeanPropertyAttr)) || ann.matches(BooleanBeanPropertyAttr)))
+          BeanPropertyAnnotationLimitationError(tree)
+
+        sym setAnnotations (annotSigs filter filterAccessorAnnotations(isSetter))
+      }
 
       sym setInfo pluginsTypeSigAccessor(sig, typer, tree, sym)
 
@@ -837,7 +849,7 @@ trait Namers extends MethodSynthesis {
     }
 
     /* Explicit isSetter required for bean setters (beanSetterSym.isSetter is false) */
-    def beanAccessorTypeCompleter(tree: ValDef, propagateTpt: Boolean, isSetter: Boolean) = mkTypeCompleter(tree) { sym =>
+    def beanAccessorTypeCompleter(tree: ValDef, missingTpt: Boolean, isSetter: Boolean) = mkTypeCompleter(tree) { sym =>
       context.unit.synthetics get sym match {
         case Some(ddef: DefDef) =>
           // sym is an accessor, while tree is the field (for traits it's actually the getter, and we're completing the setter)
@@ -848,7 +860,7 @@ trait Namers extends MethodSynthesis {
             else typeSig(tree, Nil) // don't set annotations for the valdef -- we just want to compute the type sig
 
           // patch up the accessor's tree if the valdef's tpt was not known back when the tree was synthesized
-          if (propagateTpt) { // can't look at tree.tpt here because it may have been completed by now
+          if (missingTpt) { // can't look at tree.tpt here because it may have been completed by now
             if (!isSetter) ddef.tpt setType valSig
             else if (ddef.vparamss.nonEmpty && ddef.vparamss.head.nonEmpty) ddef.vparamss.head.head.tpt setType valSig
             else throw new TypeError(tree.pos, s"Internal error: could not complete parameter/return type for $ddef from $sym")
