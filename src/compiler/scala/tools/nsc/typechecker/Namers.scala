@@ -808,48 +808,19 @@ trait Namers extends MethodSynthesis {
         if (tree.mods.annotations.isEmpty) Nil
         else annotSig(tree.mods.annotations) filter annotationFilter(FieldTargetClass, !tree.mods.isParamAccessor)
 
-      sym setInfo typeSig(tree, annots)
+      val sig = typeSig(tree, annots)
+
+      sym setInfo (if (tree.mods.isLazy) NullaryMethodType(sig) else sig)
 
       validate(sym)
     }
 
-    /* Explicit isSetter required for bean setters (beanSetterSym.isSetter is false) */
-    def accessorTypeCompleter(tree: ValDef, isSetter: Boolean) = mkTypeCompleter(tree) { sym =>
-      // println(s"triaging for ${sym.debugFlagString} $sym from $valAnnots to $annots")
 
-      // typeSig calls valDefSig (because tree: ValDef)
-      // sym is an accessor, while tree is the field (which may have the same symbol as the getter, or maybe it's the field)
-      // TODO: can we make this work? typeSig is called on same tree (valdef) to complete info for field and all its accessors
-      // reuse work done in valTypeCompleter if we already computed the type signature of the val
-      // (assuming the field and accessor symbols are distinct -- i.e., we're not in a trait)
-//      val valSig =
-//        if ((sym ne tree.symbol) && tree.symbol.isInitialized) tree.symbol.info
-//        else typeSig(tree, Nil) // don't set annotations for the valdef -- we just want to compute the type sig
 
-      val valSig = typeSig(tree, Nil) // don't set annotations for the valdef -- we just want to compute the type sig
-
-      val sig = accessorSigFromFieldTp(sym, isSetter, valSig)
-
-      val mods = tree.mods
-      if (mods.annotations.nonEmpty) {
-        val annotSigs = annotSig(mods.annotations)
-
-        // neg/t3403: check that we didn't get a sneaky type alias/renamed import that we couldn't detect because we only look at names during synthesis
-        // (TODO: can we look at symbols earlier?)
-        if (!((mods hasAnnotationNamed tpnme.BeanPropertyAnnot) || (mods hasAnnotationNamed tpnme.BooleanBeanPropertyAnnot))
-           && annotSigs.exists(ann => (ann.matches(BeanPropertyAttr)) || ann.matches(BooleanBeanPropertyAttr)))
-          BeanPropertyAnnotationLimitationError(tree)
-
-        sym setAnnotations (annotSigs filter filterAccessorAnnotations(isSetter))
-      }
-
-      sym setInfo pluginsTypeSigAccessor(sig, typer, tree, sym)
-
-      validate(sym)
-    }
-
-    /* Explicit isSetter required for bean setters (beanSetterSym.isSetter is false) */
-    def beanAccessorTypeCompleter(tree: ValDef, missingTpt: Boolean, isSetter: Boolean) = mkTypeCompleter(tree) { sym =>
+    // There's no reliable way to detect all kinds of setters from flags or name!!!
+    // A BeanSetter's name does not end in `_=` -- it does begin with "set", but so could the getter
+    // for a regular Scala field... TODO: can we add a flag to distinguish getter/setter accessors?
+    def accessorTypeCompleter(tree: ValDef, missingTpt: Boolean, isBean: Boolean, isSetter: Boolean) = mkTypeCompleter(tree) { sym =>
       context.unit.synthetics get sym match {
         case Some(ddef: DefDef) =>
           // sym is an accessor, while tree is the field (for traits it's actually the getter, and we're completing the setter)
@@ -866,13 +837,29 @@ trait Namers extends MethodSynthesis {
             else throw new TypeError(tree.pos, s"Internal error: could not complete parameter/return type for $ddef from $sym")
           }
 
+          val mods = tree.mods
           val annots =
-            if (tree.mods.annotations.isEmpty) Nil
-            else annotSig(tree.mods.annotations) filter filterBeanAccessorAnnotations(isSetter)
+            if (mods.annotations.isEmpty) Nil
+            else {
+              val annotSigs = annotSig(mods.annotations)
+              if (!isBean) {
+                // neg/t3403: check that we didn't get a sneaky type alias/renamed import that we couldn't detect because we only look at names during synthesis
+                // (TODO: can we look at symbols earlier?)
+                if (!((mods hasAnnotationNamed tpnme.BeanPropertyAnnot) || (mods hasAnnotationNamed tpnme.BooleanBeanPropertyAnnot))
+                  && annotSigs.exists(ann => (ann.matches(BeanPropertyAttr)) || ann.matches(BooleanBeanPropertyAttr)))
+                  BeanPropertyAnnotationLimitationError(tree)
+              }
+
+              annotSigs filter (if (isBean) filterBeanAccessorAnnotations(isSetter) else filterAccessorAnnotations(isSetter))
+            }
 
           val sig = typeSig(ddef, annots)
 
           sym setInfo pluginsTypeSigAccessor(sig, typer, tree, sym)
+
+          if (!isBean && sym.isOverloaded)
+            if (isSetter) ddef.rhs.setType(ErrorType)
+            else GetterDefinedTwiceError(sym)
 
           validate(sym)
 

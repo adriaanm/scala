@@ -502,6 +502,43 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
                                            && fieldMemoizationIn(statSym, clazz).pureConstant =>
           deriveDefDef(stat)(_ => gen.mkAttributedQualifier(rhs.tpe)) // TODO: recurse?
 
+
+        /** Implements lazy value accessors:
+          *    - for lazy values of type Unit and all lazy fields inside traits,
+          *      the rhs is the initializer itself, because we'll just "compute" the result on every access
+          *     ("computing" unit / constant type is free -- the side-effect is still only run once, using the init bitmap)
+          *    - for all other lazy values z the accessor is a block of this form:
+          *      { z = <rhs>; z } where z can be an identifier or a field.
+          */
+        case ValDef(mods, name, tpt, rhs) if mods.isLazy && statSym.isMethod =>
+          val memo = fieldMemoizationIn(statSym, clazz)
+          if (memo.pureConstant || isUnitType(memo.tp)) mkAccessor(statSym)(atOwner(statSym)(transform(rhs)))
+          else {
+            val lazyVar = {
+              // If the owner is not a class, this is a lazy val from a method,
+              // with no associated field.  It has an accessor with $lzy appended to its name and
+              // its flags are set differently.  The implicit flag is reset because otherwise
+              // a local implicit "lazy val x" will create an ambiguity with itself
+              // via "x$lzy" as can be seen in test #3927.
+              val localLazyVal = !clazz.isClass
+              val nameSuffix =
+                if (!localLazyVal) reflect.NameTransformer.LOCAL_SUFFIX_STRING
+                else reflect.NameTransformer.LAZY_LOCAL_SUFFIX_STRING
+
+              val flags = mods.flags
+              val fieldFlags =
+                if (!localLazyVal) flags & FieldFlags | PrivateLocal | MUTABLE
+                else (flags | ARTIFACT | MUTABLE) & ~IMPLICIT
+
+              val sym = currentOwner.newValue(name.append(nameSuffix), stat.pos.focus, fieldFlags)
+              sym setLazyAccessor statSym
+              sym setInfo statSym.info.resultType
+              sym
+            }
+
+            Thicket(mkField(lazyVar) :: mkAccessor(statSym)(gen.mkAssignAndReturn(lazyVar, atOwner(statSym)(transform(rhs)))) :: Nil)
+          }
+
         // drop the val for (a) constant (pure & not-stored) and (b) not-stored (but still effectful) fields
         case ValDef(mods, _, _, rhs) if (rhs ne EmptyTree) && !excludedAccessorOrFieldByFlags(statSym)
                                         && fieldMemoizationIn(statSym, clazz).pureConstant =>
