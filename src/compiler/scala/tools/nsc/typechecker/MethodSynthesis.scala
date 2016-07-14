@@ -122,21 +122,18 @@ trait MethodSynthesis {
 
     // trees are later created by addDerivedTrees (common logic is encapsulated in field/standardAccessors/beanAccessors)
     def enterGetterSetter(tree: ValDef): Unit = {
-      val fields = field(tree)
-      val derivedPos = tree.pos.focus
-
-      val accessors@(getter :: _) = standardAccessors(tree)
-      val accessorSyms@(getterSym :: setterSyms) =
-        accessors.map(acc => createMethod(tree, acc.name, derivedPos, acc.derivedMods.flags))
+      val getter = Getter(tree)
+      val getterSym = getter.createSym
+      val setterSym = if (getter.needsSetter) Setter(tree).createSym else NoSymbol
 
       // a lazy field is linked to its lazy accessor (TODO: can we do the same for field -> getter -> setter)
-      val fieldSym = if (fields.nonEmpty) fields.head.newFieldSymbol(getterSym) else NoSymbol
-      val namer = if (fields.nonEmpty) namerOf(fieldSym) else namerOf(getterSym)
+      val fieldSym = if (Field.noFieldFor(tree)) NoSymbol else Field(tree).createSym(getterSym)
 
-      // TODO: why change the getter's position -- it's already at `tree.pos.focus`
+      // only one symbol can have `tree.pos`, the others must focus their position
+      // normally the field gets the range position, but if there is none, give it to the getter
       tree.symbol = fieldSym orElse (getterSym setPos tree.pos)
 
-      if (fieldSym != NoSymbol) fieldSym setInfo namer.valTypeCompleter(tree)
+      val namer = if (fieldSym != NoSymbol) namerOf(fieldSym) else namerOf(getterSym)
 
       // There's no reliable way to detect all kinds of setters from flags or name!!!
       // A BeanSetter's name does not end in `_=` -- it does begin with "set", but so could the getter
@@ -145,10 +142,12 @@ trait MethodSynthesis {
       val setterCompleter = namer.accessorTypeCompleter(tree, isSetter = true)
 
       getterSym setInfo getterCompleter
-      setterSyms foreach (_ setInfo setterCompleter)
+      setterSym andAlso (_ setInfo setterCompleter)
+      fieldSym andAlso (_ setInfo namer.valTypeCompleter(tree))
 
-      accessorSyms foreach enterInScope
-      if (fieldSym != NoSymbol) enterInScope(fieldSym)
+      enterInScope(getterSym)
+      setterSym andAlso (enterInScope(_))
+      fieldSym andAlso (enterInScope(_))
 
       deriveBeanAccessors(tree, namer)
     }
@@ -199,14 +198,21 @@ trait MethodSynthesis {
       }
     }
 
+
     import AnnotationInfo.{mkFilter => annotationFilter}
     def addDerivedTrees(typer: Typer, stat: Tree): List[Tree] = stat match {
       case vd @ ValDef(mods, name, tpt, rhs) if deriveAccessors(vd) && !vd.symbol.isModuleVar =>
         stat.symbol.initialize // needed!
 
-        ((field(vd) ::: standardAccessors(vd))
-              map { acc => acc.validate() ; atPos(vd.pos.focus)(acc.derivedTree) }
-        filterNot (_ eq EmptyTree))
+        val getter = Getter(vd)
+
+        assert(getter.derivedSym != NoSymbol, getter.tree)
+        if (getter.derivedSym.isOverloaded)
+          GetterDefinedTwiceError(getter.derivedSym)
+
+        val accessors = getter :: (if (getter.needsSetter) Setter(vd) :: Nil else Nil)
+        (Field(vd) :: accessors).map(_.derivedTree).filter(_ ne EmptyTree)
+
       case cd @ ClassDef(mods, _, _, _) if mods.isImplicit =>
         val annotations = stat.symbol.initialize.annotations
         // TODO: need to shuffle annotations between wrapper and class.
@@ -229,136 +235,85 @@ trait MethodSynthesis {
       }
 
 
-    def field(vd: ValDef): List[Field] = if (Field.noFieldFor(vd)) Nil else List(Field(vd))
-
-    // getter is head of resulting list
-    def standardAccessors(vd: ValDef): List[DerivedFromValDef] =
-      if (vd.mods.isLazy) List(LazyValGetter(vd))
-      else {
-        val getter = Getter(vd)
-        if (getter.needsSetter) List(getter, Setter(vd))
-        else List(getter)
-      }
-
-
-    /** This trait assembles what's needed for synthesizing derived methods.
-     *  Important: Typically, instances of this trait are created TWICE for each derived
-     *  symbol; once form Namers in an enter method, and once from Typers in addDerivedTrees.
-     *  So it's important that creating an instance of Derived does not have a side effect,
-     *  or if it has a side effect, control that it is done only once.
-     */
     sealed trait Derived {
-      /** The tree from which we are deriving a synthetic member. Typically, that's
-       *  given as an argument of the instance. */
-      def tree: MemberDef
-
-      /** The name of the method */
-      def name: TermName
-
-      /** The flags that are retained from the original symbol */
-      def flagsMask: Long
-
-      /** The flags that the derived symbol has in addition to those retained from
-       *  the original symbol*/
-      def flagsExtra: Long
-
       /** The derived symbol. It is assumed that this symbol already exists and has been
-       *  entered in the parent scope when derivedSym is called */
+        * entered in the parent scope when derivedSym is called
+        */
       def derivedSym: Symbol
 
       /** The definition tree of the derived symbol. */
       def derivedTree: Tree
     }
 
-    sealed trait DerivedFromMemberDef extends Derived {
-      def tree: MemberDef
-
-      // Final methods to make the rest easier to reason about.
-      final def mods        = tree.mods
-      final def derivedMods = mods & flagsMask | flagsExtra
-
-      def enclClass: Symbol
-      final def basisSym    = tree.symbol
-    }
-
-    sealed trait DerivedFromClassDef extends DerivedFromMemberDef {
-      def tree: ClassDef
-      final def enclClass = basisSym.owner.enclClass
-    }
-
-    sealed trait DerivedFromValDef extends DerivedFromMemberDef {
-      def tree: ValDef
-      final def enclClass = basisSym.enclClass
-
-      final def fieldSelection         = Select(This(enclClass), basisSym)
-
-      def derivedSym: Symbol = tree.symbol
-      def derivedTree: Tree  = EmptyTree
-
-      def validate() { }
-
-      private def logDerived(result: Tree): Tree = {
-        debuglog("[+derived] " + ojoin(mods.flagString, basisSym.accurateKindString, basisSym.getterName.decode)
-          + " (" + derivedSym + ")\n        " + result)
-
-        result
-      }
-    }
-
-    sealed trait DerivedGetter extends DerivedFromValDef {
-      def needsSetter = mods.isMutable
-    }
-    sealed trait DerivedSetter extends DerivedFromValDef {
-      protected def setterParam = derivedSym.paramss match {
-        case (p :: Nil) :: _  => p
-        case _                => NoSymbol
-      }
-
-      protected def setterRhs = {
-        assert(!derivedSym.isOverloaded, s"Unexpected overloaded setter $derivedSym for $basisSym in $enclClass")
-        if (Field.noFieldFor(tree) || derivedSym.isOverloaded) EmptyTree
-        else Assign(fieldSelection, Ident(setterParam))
-      }
-
-      private def setterDef = DefDef(derivedSym, setterRhs)
-      override def derivedTree: Tree = if (setterParam == NoSymbol) EmptyTree else setterDef
-    }
 
     /** A synthetic method which performs the implicit conversion implied by
-     *  the declaration of an implicit class.
-     */
-    case class ImplicitClassWrapper(tree: ClassDef) extends DerivedFromClassDef {
-      def derivedSym: Symbol = {
+      *  the declaration of an implicit class.
+      */
+    case class ImplicitClassWrapper(tree: ClassDef) extends Derived {
+      def derivedSym = {
+        val enclClass = tree.symbol.owner.enclClass
         // Only methods will do! Don't want to pick up any stray
         // companion objects of the same name.
-        val result = enclClass.info decl name filter (x => x.isMethod && x.isSynthetic)
+        val result = enclClass.info decl derivedName filter (x => x.isMethod && x.isSynthetic)
         if (result == NoSymbol || result.isOverloaded)
-          context.error(tree.pos, s"Internal error: Unable to find the synthetic factory method corresponding to implicit class $name in $enclClass / ${enclClass.info.decls}")
+          context.error(tree.pos, s"Internal error: Unable to find the synthetic factory method corresponding to implicit class $derivedName in $enclClass / ${enclClass.info.decls}")
         result
       }
-      def derivedTree: DefDef          = factoryMeth(derivedMods, name, tree)
-      def flagsExtra: Long             = METHOD | IMPLICIT | SYNTHETIC
-      def flagsMask: Long              = AccessFlags
-      def name: TermName               = tree.name.toTermName
+
+      def derivedTree = factoryMeth(derivedMods, derivedName, tree)
+
+      def derivedName = tree.name.toTermName
+      def derivedMods = tree.mods & AccessFlags | METHOD | IMPLICIT | SYNTHETIC
     }
 
-    sealed abstract class BaseGetter(tree: ValDef) extends DerivedGetter {
-      def name       = tree.name
-      def flagsMask  = GetterFlags
-      def flagsExtra = ACCESSOR.toLong | ( if (tree.mods.isMutable) 0 else STABLE )
+    trait DerivedAccessor extends Derived {
+      def tree: ValDef
+      def derivedName: TermName
+      def derivedFlags: Long
 
-      override def validate() {
-        assert(derivedSym != NoSymbol, tree)
-        if (derivedSym.isOverloaded)
-          GetterDefinedTwiceError(derivedSym)
+      def derivedPos = tree.pos.focus
+      def createSym = createMethod(tree, derivedName, derivedPos, derivedFlags)
+    }
 
-        super.validate()
+    case class Getter(tree: ValDef) extends DerivedAccessor {
+      def derivedName = tree.name
+
+      def derivedSym =
+        if (tree.mods.isLazy) tree.symbol.lazyAccessor
+        else if (Field.noFieldFor(tree)) tree.symbol
+        else tree.symbol.getterIn(tree.symbol.enclClass)
+
+      def derivedFlags = tree.mods.flags & GetterFlags | ACCESSOR.toLong | ( if (needsSetter) 0 else STABLE )
+
+      def needsSetter = tree.mods.isMutable  // implies !lazy
+
+      override def derivedTree =
+        if (tree.mods.isLazy) deriveLazyAccessor
+        else newDefDef(derivedSym, if (Field.noFieldFor(tree)) tree.rhs else Select(This(tree.symbol.enclClass), tree.symbol))(tpt = derivedTpt)
+
+      /** Implements lazy value accessors:
+        *    - for lazy values of type Unit and all lazy fields inside traits,
+        *      the rhs is the initializer itself, because we'll just "compute" the result on every access
+        *     ("computing" unit / constant type is free -- the side-effect is still only run once, using the init bitmap)
+        *    - for all other lazy values z the accessor is a block of this form:
+        *      { z = <rhs>; z } where z can be an identifier or a field.
+        */
+      private def deriveLazyAccessor: DefDef = {
+        val ValDef(_, _, tpt0, rhs0) = tree
+        val rhs1 = context.unit.transformed.getOrElse(rhs0, rhs0)
+        val body =
+          if (tree.symbol.owner.isTrait || Field.noFieldFor(tree)) rhs1 // TODO move tree.symbol.owner.isTrait into noFieldFor
+          else gen.mkAssignAndReturn(tree.symbol, rhs1)
+
+        derivedSym setPos tree.pos // cannot set it at createAndEnterSymbol because basisSym can possibly still have NoPosition
+        val ddefRes = DefDef(derivedSym, new ChangeOwnerTraverser(tree.symbol, derivedSym)(body))
+        // ValDef will have its position focused whereas DefDef will have original correct rangepos
+        // ideally positions would be correct at the creation time but lazy vals are really a special case
+        // here so for the sake of keeping api clean we fix positions manually in LazyValGetter
+        ddefRes.tpt.setPos(tpt0.pos)
+        tpt0.setPos(tpt0.pos.focus)
+        ddefRes
       }
-    }
-
-    case class Getter(tree: ValDef) extends BaseGetter(tree) {
-      override def derivedSym = if (Field.noFieldFor(tree)) basisSym else basisSym.getterIn(enclClass)
-      private def derivedRhs  = if (Field.noFieldFor(tree)) tree.rhs else fieldSelection
 
       // TODO: more principled approach -- this is a bit bizarre
       private def derivedTpt = {
@@ -375,61 +330,28 @@ trait MethodSynthesis {
           // Range position errors ensue if we don't duplicate this in some
           // circumstances (at least: concrete vals with existential types.)
           case _: ExistentialType => TypeTree() setOriginal (tree.tpt.duplicate setPos tree.tpt.pos.focus)
-          case _ if mods.isDeferred    => TypeTree() setOriginal tree.tpt // keep type tree of original abstract field
+          case _ if tree.mods.isDeferred    => TypeTree() setOriginal tree.tpt // keep type tree of original abstract field
           case _                  => TypeTree(getterTp)
         }
         tpt setPos tree.tpt.pos.focus
       }
-      override def derivedTree: DefDef = newDefDef(derivedSym, derivedRhs)(tpt = derivedTpt)
     }
 
-    /** Implements lazy value accessors:
-      *    - for lazy values of type Unit and all lazy fields inside traits,
-      *      the rhs is the initializer itself, because we'll just "compute" the result on every access
-      *     ("computing" unit / constant type is free -- the side-effect is still only run once, using the init bitmap)
-      *    - for all other lazy values z the accessor is a block of this form:
-      *      { z = <rhs>; z } where z can be an identifier or a field.
-      */
-    case class LazyValGetter(tree: ValDef) extends BaseGetter(tree) {
-      class ChangeOwnerAndModuleClassTraverser(oldowner: Symbol, newowner: Symbol)
-        extends ChangeOwnerTraverser(oldowner, newowner) {
+    case class Setter(tree: ValDef) extends DerivedAccessor {
+      def derivedName  = tree.setterName
+      def derivedSym   = tree.symbol.setterIn(tree.symbol.enclClass)
+      def derivedFlags = tree.mods.flags & SetterFlags | ACCESSOR
+      def derivedTree  =
+        derivedSym.paramss match {
+          case (setterParam :: Nil) :: _ =>
+            // assert(!derivedSym.isOverloaded, s"Unexpected overloaded setter $derivedSym for ${tree.symbol} in ${tree.symbol.enclClass}")
+            val rhs =
+              if (Field.noFieldFor(tree) || derivedSym.isOverloaded) EmptyTree
+              else Assign(Select(This(tree.symbol.enclClass), tree.symbol), Ident(setterParam))
 
-        override def traverse(tree: Tree) {
-          tree match {
-            case _: DefTree => change(tree.symbol.moduleClass)
-            case _          =>
-          }
-          super.traverse(tree)
+            DefDef(derivedSym, rhs)
+          case _ => EmptyTree
         }
-      }
-
-      // todo: in future this should be enabled but now other phases still depend on the flag for various reasons
-      //override def flagsMask = (super.flagsMask & ~LAZY)
-      override def derivedSym = basisSym.lazyAccessor
-      override def derivedTree: DefDef = {
-        val ValDef(_, _, tpt0, rhs0) = tree
-        val rhs1 = context.unit.transformed.getOrElse(rhs0, rhs0)
-        val body =
-          if (tree.symbol.owner.isTrait || Field.noFieldFor(tree)) rhs1 // TODO move tree.symbol.owner.isTrait into noFieldFor
-          else gen.mkAssignAndReturn(basisSym, rhs1)
-
-        derivedSym setPos tree.pos // cannot set it at createAndEnterSymbol because basisSym can possibly still have NoPosition
-        val ddefRes = DefDef(derivedSym, new ChangeOwnerAndModuleClassTraverser(basisSym, derivedSym)(body))
-        // ValDef will have its position focused whereas DefDef will have original correct rangepos
-        // ideally positions would be correct at the creation time but lazy vals are really a special case
-        // here so for the sake of keeping api clean we fix positions manually in LazyValGetter
-        ddefRes.tpt.setPos(tpt0.pos)
-        tpt0.setPos(tpt0.pos.focus)
-        ddefRes
-      }
-    }
-    case class Setter(tree: ValDef) extends DerivedSetter {
-      def name       = tree.setterName
-      def flagsMask  = SetterFlags
-      def flagsExtra = ACCESSOR
-
-      // TODO: double check logic behind need for name expansion in context of new fields phase
-      override def derivedSym = basisSym.setterIn(enclClass)
     }
 
     object Field {
@@ -457,35 +379,34 @@ trait MethodSynthesis {
       private def traitFieldFor(vd: ValDef): Boolean = vd.mods.hasFlag(PRESUPER | LAZY)
     }
 
-    case class Field(tree: ValDef) extends DerivedFromValDef {
-      def name       = tree.localName
-      def flagsMask  = FieldFlags
-      def flagsExtra = PrivateLocal
+    case class Field(tree: ValDef) extends Derived {
+      private val isLazy = tree.mods.isLazy
+      private val localLazyVal = isLazy && !owner.isClass
 
-      private val isLazy = mods.isLazy
+      // If the owner is not a class, this is a lazy val from a method,
+      // with no associated field.  It has an accessor with $lzy appended to its name and
+      // its flags are set differently.  The implicit flag is reset because otherwise
+      // a local implicit "lazy val x" will create an ambiguity with itself
+      // via "x$lzy" as can be seen in test #3927.
+      def derivedName = tree.name.append(if (localLazyVal) reflect.NameTransformer.LAZY_LOCAL_SUFFIX_STRING else reflect.NameTransformer.LOCAL_SUFFIX_STRING)
 
-      override def derivedTree =
-        if (isLazy) copyValDef(tree)(mods = mods | flagsExtra, name = this.name, rhs = EmptyTree).setPos(tree.pos.focus)
-        else copyValDef(tree)(mods = mods | flagsExtra, name = this.name)
-
-      def newFieldSymbol(getter: MethodSymbol) = {
-        // If the owner is not a class, this is a lazy val from a method,
-        // with no associated field.  It has an accessor with $lzy appended to its name and
-        // its flags are set differently.  The implicit flag is reset because otherwise
-        // a local implicit "lazy val x" will create an ambiguity with itself
-        // via "x$lzy" as can be seen in test #3927.
-        val localLazyVal = isLazy && !owner.isClass
-        val name = if (localLazyVal) tree.name append nme.LAZY_LOCAL else tree.localName
-        val flags =
-          if (localLazyVal) (mods.flags | ARTIFACT | MUTABLE) & ~IMPLICIT
-          else mods.flags & FieldFlags | PrivateLocal | (if (isLazy) MUTABLE else 0)
-
-        val sym = owner.newValue(name, tree.pos, flags)
-
+      def createSym(getter: MethodSymbol) = {
+        val sym = owner.newValue(derivedName, tree.pos, derivedMods.flags)
         if (isLazy) sym setLazyAccessor getter
-
         sym
       }
+
+      def derivedSym = tree.symbol
+
+      def derivedMods =
+        if (!localLazyVal) tree.mods & FieldFlags | PrivateLocal | (if (isLazy) MUTABLE else 0)
+        else (tree.mods | ARTIFACT | MUTABLE) & ~IMPLICIT
+
+      def derivedTree =
+        if (Field.noFieldFor(tree)) EmptyTree
+        else if (isLazy) copyValDef(tree)(mods = derivedMods, name = derivedName, rhs = EmptyTree).setPos(tree.pos.focus)
+        else copyValDef(tree)(mods = derivedMods, name = derivedName)
+
     }
 
   }
