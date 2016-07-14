@@ -2420,15 +2420,9 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
             case _ =>
           }
         }
-        val stats1 = if (isPastTyper) block.stats else
-          block.stats.flatMap(stat => stat match {
-            case vd@ValDef(_, _, _, _) if vd.symbol.isLazy =>
-              namer.addDerivedTrees(Typer.this, vd)
-            case _ => stat::Nil
-            })
-        val stats2 = typedStats(stats1, context.owner)
+        val statsTyped = typedStats(block.stats, context.owner)
         val expr1 = typed(block.expr, mode &~ (FUNmode | QUALmode), pt)
-        treeCopy.Block(block, stats2, expr1)
+        treeCopy.Block(block, statsTyped, expr1)
           .setType(if (treeInfo.isExprSafeToInline(block)) expr1.tpe else expr1.tpe.deconst)
       } finally {
         // enable escaping privates checking from the outside and recycle
