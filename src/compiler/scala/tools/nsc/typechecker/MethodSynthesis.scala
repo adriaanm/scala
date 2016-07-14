@@ -402,10 +402,13 @@ trait MethodSynthesis {
         if (!localLazyVal) tree.mods & FieldFlags | PrivateLocal | (if (isLazy) MUTABLE else 0)
         else (tree.mods | ARTIFACT | MUTABLE) & ~IMPLICIT
 
+      // TODO: why was this different from the symbol!?
+      private def derivedModsForTree = tree.mods | PrivateLocal
+
       def derivedTree =
         if (Field.noFieldFor(tree)) EmptyTree
-        else if (isLazy) copyValDef(tree)(mods = derivedMods, name = derivedName, rhs = EmptyTree).setPos(tree.pos.focus)
-        else copyValDef(tree)(mods = derivedMods, name = derivedName)
+        else if (isLazy) copyValDef(tree)(mods = derivedModsForTree, name = derivedName, rhs = EmptyTree).setPos(tree.pos.focus)
+        else copyValDef(tree)(mods = derivedModsForTree, name = derivedName)
 
     }
 
