@@ -205,11 +205,7 @@ trait MethodSynthesis {
         stat.symbol.initialize // needed!
 
         val getter = Getter(vd)
-
-        assert(getter.derivedSym != NoSymbol, getter.tree)
-        if (getter.derivedSym.isOverloaded)
-          GetterDefinedTwiceError(getter.derivedSym)
-
+        getter.validate()
         val accessors = getter :: (if (getter.needsSetter) Setter(vd) :: Nil else Nil)
         (Field(vd) :: accessors).map(_.derivedTree).filter(_ ne EmptyTree)
 
@@ -335,6 +331,13 @@ trait MethodSynthesis {
         }
         tpt setPos tree.tpt.pos.focus
       }
+
+      def validate() = {
+        assert(derivedSym != NoSymbol, tree)
+        if (derivedSym.isOverloaded)
+          GetterDefinedTwiceError(derivedSym)
+      }
+
     }
 
     case class Setter(tree: ValDef) extends DerivedAccessor {
@@ -381,14 +384,18 @@ trait MethodSynthesis {
 
     case class Field(tree: ValDef) extends Derived {
       private val isLazy = tree.mods.isLazy
-      private val localLazyVal = isLazy && !owner.isClass
 
       // If the owner is not a class, this is a lazy val from a method,
       // with no associated field.  It has an accessor with $lzy appended to its name and
       // its flags are set differently.  The implicit flag is reset because otherwise
       // a local implicit "lazy val x" will create an ambiguity with itself
       // via "x$lzy" as can be seen in test #3927.
-      def derivedName = tree.name.append(if (localLazyVal) reflect.NameTransformer.LAZY_LOCAL_SUFFIX_STRING else reflect.NameTransformer.LOCAL_SUFFIX_STRING)
+      private val localLazyVal = isLazy && !owner.isClass
+      private val nameSuffix =
+        if (!localLazyVal) reflect.NameTransformer.LOCAL_SUFFIX_STRING
+        else reflect.NameTransformer.LAZY_LOCAL_SUFFIX_STRING
+
+      def derivedName = tree.name.append(nameSuffix)
 
       def createSym(getter: MethodSymbol) = {
         val sym = owner.newValue(derivedName, tree.pos, derivedMods.flags)
@@ -402,7 +409,7 @@ trait MethodSynthesis {
         if (!localLazyVal) tree.mods & FieldFlags | PrivateLocal | (if (isLazy) MUTABLE else 0)
         else (tree.mods | ARTIFACT | MUTABLE) & ~IMPLICIT
 
-      // TODO: why was this different from the symbol!?
+      // TODO: why is this different from the symbol!?
       private def derivedModsForTree = tree.mods | PrivateLocal
 
       def derivedTree =
