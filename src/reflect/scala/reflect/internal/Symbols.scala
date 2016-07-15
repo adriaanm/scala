@@ -655,7 +655,6 @@ trait Symbols extends api.Symbols { self: SymbolTable =>
       isClass && isFinal && loop(typeParams)
     }
 
-    final def isLazyAccessor       = isLazy && lazyAccessor != NoSymbol
     final def isOverridableMember  = !(isClass || isEffectivelyFinal) && safeOwner.isClass
 
     /** Does this symbol denote a wrapper created by the repl? */
@@ -2075,12 +2074,6 @@ trait Symbols extends api.Symbols { self: SymbolTable =>
      */
     def alias: Symbol = NoSymbol
 
-    /** For a lazy value, its lazy accessor. NoSymbol for all others. */
-    def lazyAccessor: Symbol = NoSymbol
-
-    /** If this is a lazy value, the lazy accessor; otherwise this symbol. */
-    def lazyAccessorOrSelf: Symbol = if (isLazy) lazyAccessor else this
-
     /** `accessed`, if this is an accessor that should have an underlying field. Otherwise, `this`.
       *  Note that a "regular" accessor in a trait does not have a field, as an interface cannot define a field.
       *  "non-regular" vals are: early initialized or lazy vals.
@@ -2832,17 +2825,6 @@ trait Symbols extends api.Symbols { self: SymbolTable =>
       assert(isModule, this)
       referenced = clazz
       this
-    }
-
-    def setLazyAccessor(sym: Symbol): TermSymbol = {
-      assert(isLazy && (referenced == NoSymbol || referenced == sym), (this, debugFlagString, referenced, sym))
-      referenced = sym
-      this
-    }
-
-    override def lazyAccessor: Symbol = {
-      assert(isLazy, this)
-      referenced
     }
 
     /** change name by appending $$<fully-qualified-name-of-class `base`>
