@@ -1146,7 +1146,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
           adapt(tree setType restpe, mode, pt, original)
         case TypeRef(_, ByNameParamClass, arg :: Nil) if mode.inExprMode => // (2)
           adapt(tree setType arg, mode, pt, original)
-        case tp if mode.typingExprNotLhs && isExistentialType(tp) =>
+        case tp if mode.typingExprNotLhs && isExistentialType(tp) && !context.owner.isAccessor => // accessor exemption: don't skolemize if we're just going to deskolemize immediately
           adapt(tree setType tp.dealias.skolemizeExistential(context.owner, tree), mode, pt, original)
         case PolyType(tparams, restpe) if mode.inNone(TAPPmode | PATTERNmode) && !context.inTypeConstructorAllowed => // (3)
           // assert((mode & HKmode) == 0) //@M a PolyType in HKmode represents an anonymous type function,
