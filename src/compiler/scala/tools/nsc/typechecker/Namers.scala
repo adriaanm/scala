@@ -896,10 +896,6 @@ trait Namers extends MethodSynthesis {
           annotationFilter(BeanGetterTargetClass, defaultRetention = true)(ann))
 
 
-    private def accessorSigFromFieldTp(sym: Symbol, isSetter: Boolean, tp: Type): Type =
-      if (isSetter) MethodType(List(sym.newSyntheticValueParam(tp)), UnitTpe)
-      else NullaryMethodType(tp)
-
     def selfTypeCompleter(tree: Tree) = mkTypeCompleter(tree) { sym =>
       val selftpe = typer.typedType(tree).tpe
       sym setInfo {

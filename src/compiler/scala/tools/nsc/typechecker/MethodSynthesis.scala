@@ -5,6 +5,7 @@
 package scala.tools.nsc
 package typechecker
 
+import scala.reflect.NameTransformer
 import symtab.Flags._
 import scala.reflect.internal.util.StringOps.ojoin
 import scala.reflect.internal.util.ListOfNil
@@ -138,7 +139,7 @@ trait MethodSynthesis {
     def enterGetterSetter(tree: ValDef): Unit = {
       val fieldSym =
         if (noFieldFor(tree)) NoSymbol
-        else owner.newValue(tree.name.localName, tree.pos, tree.mods.flags & FieldFlags | PrivateLocal)
+        else owner.newValue(tree.name append NameTransformer.LOCAL_SUFFIX_STRING, tree.pos, tree.mods.flags & FieldFlags | PrivateLocal)
 
       val getter = Getter(tree)
       val getterSym = getter.createSym
@@ -148,7 +149,7 @@ trait MethodSynthesis {
       tree.symbol = fieldSym orElse (getterSym setPos tree.pos)
       val namer = namerOf(tree.symbol)
 
-      def enter(deriver: DerivedAccessor, sym: Symbol) = {
+      def synthAndEnter(deriver: DerivedAccessor, sym: Symbol) = {
         context.unit.synthetics(sym) = deriver.derivedTree(sym)
         sym setInfo namer.accessorTypeCompleter(tree, tree.tpt.isEmpty, isBean = false, deriver.isInstanceOf[Setter])
         enterInScope(sym)
@@ -157,11 +158,11 @@ trait MethodSynthesis {
       // the valdef gets the accessor symbol for a lazy val (too much going on in its RHS)
       // the fields phase creates the field symbol
       if (!tree.mods.isLazy) {
-        enter(getter, getterSym)
+        synthAndEnter(getter, getterSym)
 
         if (getter.needsSetter) {
           val setter = Setter(tree)
-          enter(setter, setter.createSym)
+          synthAndEnter(setter, setter.createSym)
         }
 
         if (fieldSym != NoSymbol) {
@@ -292,7 +293,7 @@ trait MethodSynthesis {
           if (noFieldFor(tree)) tree.rhs // context.unit.transformed.getOrElse(tree.rhs, tree.rhs)
           else Select(This(tree.symbol.enclClass), tree.symbol)
 
-        newDefDef(derivedSym, rhs)(tparams = Nil, vparamss = ListOfNil, tpt = tpt) // don't look at derivedSym's info!
+        newDefDef(derivedSym, rhs)(tparams = Nil, vparamss = ListOfNil, tpt = tpt)
       }
 
 //      private def deriveLazyAccessor(derivedSym: Symbol): DefDef = {
