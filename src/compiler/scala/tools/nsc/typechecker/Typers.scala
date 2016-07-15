@@ -1876,8 +1876,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
       else newNamer(txt) enterSym tree
 
     private def dropVals(list: List[Tree]): List[Tree] = {
-      if (isPastTyper) list
-      else list mapConserve { case vd: ValDef if namer.noFieldFor(vd) => EmptyTree case t => t } filter (_ != EmptyTree)
+      list mapConserve { case vd: ValDef if !vd.mods.isLazy && namer.noFieldFor(vd) => EmptyTree case t => t } filter (_ != EmptyTree)
     }
 
     /** <!-- 2 --> Check that inner classes do not inherit from Annotation
@@ -2425,7 +2424,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
             case _ =>
           }
         }
-        val statsTyped = typedStats(dropVals(block.stats), context.owner)
+        val statsTyped = typedStats(if (!isPastTyper) dropVals(block.stats) else block.stats, context.owner)
         val expr1 = typed(block.expr, mode &~ (FUNmode | QUALmode), pt)
         treeCopy.Block(block, statsTyped, expr1)
           .setType(if (treeInfo.isExprSafeToInline(block)) expr1.tpe else expr1.tpe.deconst)
