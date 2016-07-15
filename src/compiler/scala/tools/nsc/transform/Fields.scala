@@ -246,7 +246,7 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
           if (member hasFlag ACCESSOR) {
             val fieldMemoization = fieldMemoizationIn(member, clazz)
             // check flags before calling makeNotPrivate
-            val accessorUnderConsideration = !(member hasFlag (DEFERRED | LAZY))
+            val accessorUnderConsideration = !(member hasFlag DEFERRED)
 
             // destructively mangle accessor's name (which may cause rehashing of decls), also sets flags
             // this accessor has to be implemented in a subclass -- can't be private
@@ -265,7 +265,7 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
             if (accessorUnderConsideration && fieldMemoization.stored) {
               synthesizeImplInSubclasses(member)
 
-              if (member hasFlag STABLE) // TODO: check isGetter?
+              if ((member hasFlag STABLE) && !(member hasFlag LAZY))
                 newDecls += newTraitSetter(member, clazz)
             }
           } else if (member hasFlag MODULE) {
@@ -360,6 +360,11 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
           // don't cause conflicts, skip overridden accessors contributed by supertraits (only act on the last overriding one)
           // see pos/trait_fields_dependent_conflict.scala and neg/t1960.scala
           else if (accessorConflictsExistingVal(member) || isOverriddenAccessor(member, clazz)) Nil
+          else if (member.isLazy) {
+            val lazyCallingSuper = cloneAccessor()
+            lazyCallingSuper setInfo site.memberInfo(lazyCallingSuper)
+            List(lazyCallingSuper)
+          }
           else if (member.isGetter && fieldMemoizationIn(member, clazz).stored) {
             // add field if needed
             val field = clazz.newValue(member.localName, member.pos) setInfo fieldTypeForGetterIn(member, clazz.thisType)
@@ -417,42 +422,48 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
     def mkAccessor(accessor: Symbol)(body: Tree) = localTyper.typedPos(accessor.pos)(DefDef(accessor, body)).asInstanceOf[DefDef]
 
     def mkField(sym: Symbol) = localTyper.typedPos(sym.pos)(ValDef(sym)).asInstanceOf[ValDef]
+    def mkFieldWithRhs(sym: Symbol)(rhs: Tree) = localTyper.typedPos(sym.pos)(ValDef(sym, rhs)).asInstanceOf[ValDef]
 
 
     // synth trees for accessors/fields and trait setters when they are mixed into a class
     def fieldsAndAccessors(clazz: Symbol): List[ValOrDefDef] = {
-      def fieldAccess(accessor: Symbol): Option[Tree] = {
+      def fieldAccess(accessor: Symbol): List[Tree] = {
         val fieldName = accessor.localName
         val field = clazz.info.decl(fieldName)
         // The `None` result denotes an error, but it's refchecks' job to report it (this fallback is for robustness).
         // This is the result of overriding a val with a def, so that no field is found in the subclass.
-        if (field.exists) Some(Select(This(clazz), field))
-        else None
+        if (field.exists) List(Select(This(clazz), field))
+        else Nil
       }
 
-      def getterBody(getter: Symbol): Option[Tree] = {
+      def superLazy(getter: Symbol): Tree = {
+        // this contortion was the only way I can get the super select to be type checked correctly.. TODO: why does SelectSuper not work?
+        Apply(Select(Super(This(clazz), tpnme.EMPTY), getter.name), Nil)
+      }
+
+      def getterBody(getter: Symbol): List[Tree] = {
         // accessor created by newMatchingModuleAccessor for a static module that does need an accessor
         // (because there's a matching member in a super class)
         if (getter.asTerm.referenced.isModule) {
-          Some(gen.mkAttributedRef(clazz.thisType, getter.asTerm.referenced))
+          List(gen.mkAttributedRef(clazz.thisType, getter.asTerm.referenced))
         } else {
           val fieldMemoization = fieldMemoizationIn(getter, clazz)
-          if (fieldMemoization.pureConstant) Some(gen.mkAttributedQualifier(fieldMemoization.tp)) // TODO: drop when we no longer care about producing identical bytecode
+          if (fieldMemoization.pureConstant) List(gen.mkAttributedQualifier(fieldMemoization.tp)) // TODO: drop when we no longer care about producing identical bytecode
           else fieldAccess(getter)
         }
       }
 
       //      println(s"accessorsAndFieldsNeedingTrees for $templateSym: $accessorsAndFieldsNeedingTrees")
-      def setterBody(setter: Symbol): Option[Tree] = {
+      def setterBody(setter: Symbol): List[Tree] = {
         // trait setter in trait
-        if (clazz.isTrait) Some(EmptyTree)
+        if (clazz.isTrait) List(EmptyTree)
         // trait setter for overridden val in class
-        else if (checkAndClearOverriddenTraitSetter(setter)) Some(mkTypedUnit(setter.pos))
+        else if (checkAndClearOverriddenTraitSetter(setter)) List(mkTypedUnit(setter.pos))
         // trait val/var setter mixed into class
         else fieldAccess(setter) map (fieldSel => Assign(fieldSel, Ident(setter.firstParam)))
       }
 
-      def moduleAccessorBody(module: Symbol): Some[Tree] = Some(
+      def moduleAccessorBody(module: Symbol): List[Tree] = List(
         // added during synthFieldsAndAccessors using newModuleAccessor
         // a module defined in a trait by definition can't be static (it's a member of the trait and thus gets a new instance for every outer instance)
         if (clazz.isTrait) EmptyTree
@@ -463,6 +474,7 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
       clazz.info.decls.toList.filter(checkAndClearNeedsTrees) flatMap {
         case module if module hasAllFlags (MODULE | METHOD) => moduleAccessorBody(module) map mkAccessor(module)
         case setter if setter.isSetter                      => setterBody(setter) map mkAccessor(setter)
+        case getter if getter.hasFlag(LAZY)                 => explodeLazy(mkFieldWithRhs(getter)(superLazy(getter)))
         case getter if getter.hasFlag(ACCESSOR)             => getterBody(getter) map mkAccessor(getter)
         case field  if !(field hasFlag METHOD)              => Some(mkField(field)) // vals/vars and module vars (cannot have flags PACKAGE | JAVA since those never receive NEEDS_TREES)
         case _ => None
@@ -471,7 +483,6 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
 
     def rhsAtOwner(stat: ValOrDefDef, newOwner: Symbol): Tree =
       atOwner(newOwner)(super.transform(stat.rhs.changeOwner(stat.symbol -> newOwner)))
-
 
     private def Thicket(trees: List[Tree]) = Block(trees, EmptyTree)
     override def transform(stat: Tree): Tree = {
@@ -510,34 +521,10 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
           *    - for all other lazy values z the accessor is a block of this form:
           *      { z = <rhs>; z } where z can be an identifier or a field.
           */
-        case ValDef(mods, name, tpt, rhs) if mods.isLazy && statSym.isMethod =>
+        case vd@ValDef(mods, name, tpt, rhs) if mods.isLazy && statSym.isMethod =>
           val memo = fieldMemoizationIn(statSym, clazz)
-          if (memo.pureConstant || isUnitType(memo.tp)) mkAccessor(statSym)(atOwner(statSym)(transform(rhs)))
-          else {
-            val lazyVar = {
-              // If the owner is not a class, this is a lazy val from a method,
-              // with no associated field.  It has an accessor with $lzy appended to its name and
-              // its flags are set differently.  The implicit flag is reset because otherwise
-              // a local implicit "lazy val x" will create an ambiguity with itself
-              // via "x$lzy" as can be seen in test #3927.
-              val localLazyVal = !clazz.isClass
-              val nameSuffix =
-                if (!localLazyVal) reflect.NameTransformer.LOCAL_SUFFIX_STRING
-                else reflect.NameTransformer.LAZY_LOCAL_SUFFIX_STRING
-
-              val flags = mods.flags
-              val fieldFlags =
-                if (!localLazyVal) flags & FieldFlags | PrivateLocal | MUTABLE
-                else (flags | ARTIFACT | MUTABLE) & ~IMPLICIT
-
-              val sym = currentOwner.newValue(name.append(nameSuffix), stat.pos.focus, fieldFlags)
-              sym setLazyAccessor statSym
-              sym setInfo statSym.info.resultType
-              sym
-            }
-
-            Thicket(mkField(lazyVar) :: mkAccessor(statSym)(gen.mkAssignAndReturn(lazyVar, atOwner(statSym)(transform(rhs)))) :: Nil)
-          }
+          if (memo.pureConstant || isUnitType(memo.tp) || clazz.isTrait) mkAccessor(statSym)(atOwner(statSym)(transform(rhs)))
+          else Thicket(explodeLazy(vd, !clazz.isClass))
 
         // drop the val for (a) constant (pure & not-stored) and (b) not-stored (but still effectful) fields
         case ValDef(mods, _, _, rhs) if (rhs ne EmptyTree) && !excludedAccessorOrFieldByFlags(statSym)
@@ -557,6 +544,33 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
           super.transform(tree)
 
       }
+    }
+
+    private def explodeLazy(stat: ValDef, localLazyVal: Boolean = false): List[ValOrDefDef] = {
+      val statSym = stat.symbol
+      val ValDef(mods, name, _, rhs) = stat
+
+      val lazyVar = {
+        // If the owner is not a class, this is a lazy val from a method,
+        // with no associated field.  It has an accessor with $lzy appended to its name and
+        // its flags are set differently.  The implicit flag is reset because otherwise
+        // a local implicit "lazy val x" will create an ambiguity with itself
+        // via "x$lzy" as can be seen in test #3927.
+        val nameSuffix =
+          if (!localLazyVal) reflect.NameTransformer.LOCAL_SUFFIX_STRING
+          else reflect.NameTransformer.LAZY_LOCAL_SUFFIX_STRING
+
+        val flags = mods.flags
+        val fieldFlags =
+          if (!localLazyVal) flags & FieldFlags | PrivateLocal | MUTABLE
+          else (flags | ARTIFACT | MUTABLE) & ~IMPLICIT
+
+        val sym = currentOwner.newValue(name.append(nameSuffix), stat.pos.focus, fieldFlags)
+        sym setInfo statSym.info.resultType
+        sym
+      }
+
+      mkField(lazyVar) :: mkAccessor(statSym)(gen.mkAssignAndReturn(lazyVar, atOwner(statSym)(transform(rhs)))) :: Nil
     }
 
     def transformTermsAtExprOwner(exprOwner: Symbol)(stat: Tree) =
