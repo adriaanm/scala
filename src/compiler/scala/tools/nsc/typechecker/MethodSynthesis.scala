@@ -286,7 +286,8 @@ trait MethodSynthesis {
       def needsSetter  = tree.mods.isMutable  // implies !lazy
 
       override def derivedTree(derivedSym: Symbol) = {
-        val missingTpt = tree.tpt.isEmpty
+        // can't reuse type from param accessors because of scoping issues (?) -- pos/t0085.scala, pos/t0054.scala
+        val missingTpt = derivedSym.isParamAccessor || tree.tpt.isEmpty
         val tpt = if (missingTpt) TypeTree() else tree.tpt.duplicate
 
         val rhs =
