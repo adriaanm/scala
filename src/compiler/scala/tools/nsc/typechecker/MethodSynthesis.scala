@@ -131,7 +131,7 @@ trait MethodSynthesis {
     //     each access will "evaluate" the RHS (a literal) again
     // We would like to avoid emitting unnecessary fields, but the required knowledge isn't available until after typer.
     // The only way to avoid emitting & suppressing, is to not emit at all until we are sure to need the field, as dotty does.
-    private def noFieldFor(vd: ValDef) = vd.mods.isDeferred || vd.mods.isLazy || (owner.isTrait && !vd.mods.hasFlag(PRESUPER))
+    def noFieldFor(vd: ValDef) = vd.mods.isDeferred || vd.mods.isLazy || (owner.isTrait && !vd.mods.hasFlag(PRESUPER))
 
     // populate synthetics for this unit with trees that will later be added by the typer
     // we get here when entering the symbol for the valdef, so its rhs has not yet been type checked

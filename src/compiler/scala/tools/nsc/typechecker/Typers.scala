@@ -1875,6 +1875,11 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
       if (txt eq context) namer enterSym tree
       else newNamer(txt) enterSym tree
 
+    private def dropVals(list: List[Tree]): List[Tree] = {
+      if (isPastTyper) list
+      else list mapConserve { case vd: ValDef if namer.noFieldFor(vd) => EmptyTree case t => t } filter (_ != EmptyTree)
+    }
+
     /** <!-- 2 --> Check that inner classes do not inherit from Annotation
      */
     def typedTemplate(templ0: Template, parents1: List[Tree]): Template = {
@@ -1946,7 +1951,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
       val body2 = {
         val body2 =
           if (isPastTyper || reporter.hasErrors) body1
-          else body1 flatMap rewrappingWrapperTrees(namer.addDerivedTrees(Typer.this, _))
+          else dropVals(body1) flatMap rewrappingWrapperTrees(namer.addDerivedTrees(Typer.this, _))
         val primaryCtor = treeInfo.firstConstructor(body2)
         val primaryCtor1 = primaryCtor match {
           case DefDef(_, _, _, _, _, Block(earlyVals :+ global.pendingSuperCall, unit)) =>
@@ -2420,7 +2425,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
             case _ =>
           }
         }
-        val statsTyped = typedStats(block.stats, context.owner)
+        val statsTyped = typedStats(dropVals(block.stats), context.owner)
         val expr1 = typed(block.expr, mode &~ (FUNmode | QUALmode), pt)
         treeCopy.Block(block, statsTyped, expr1)
           .setType(if (treeInfo.isExprSafeToInline(block)) expr1.tpe else expr1.tpe.deconst)
