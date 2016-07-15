@@ -853,7 +853,13 @@ trait Namers extends MethodSynthesis {
               annotSigs filter (if (isBean) filterBeanAccessorAnnotations(isSetter) else filterAccessorAnnotations(isSetter))
             }
 
-          val sig = typeSig(ddef, annots)
+          val sig =
+            if (isSetter || isBean) typeSig(ddef, annots)
+            else {
+              if (annots.nonEmpty) annotate(tree.symbol, annots)
+
+              NullaryMethodType(valSig)
+            }
 
           sym setInfo pluginsTypeSigAccessor(sig, typer, tree, sym)
 
