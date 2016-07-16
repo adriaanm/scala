@@ -450,9 +450,9 @@ abstract class RefChecks extends Transform {
           } else if (other.isStable && !member.isStable) { // (1.4)
             overrideError("needs to be a stable, immutable value")
           } else if (member.isValue && member.isLazy &&
-                     other.isValue && !other.isSourceMethod && !other.isDeferred && !other.isLazy) {
+                     other.isValue && other.hasFlag(STABLE) && !(other.isDeferred || other.isLazy)) {
             overrideError("cannot override a concrete non-lazy value")
-          } else if (other.isValue && other.isLazy && !other.isSourceMethod && !other.isDeferred && // !(other.hasFlag(MODULE) && other.hasFlag(PACKAGE | JAVA)) && other.hasFlag(LAZY)  && (!other.isMethod || other.hasFlag(STABLE)) && !other.hasFlag(DEFERRED)
+          } else if (other.isValue && other.isLazy &&
                      member.isValue && !member.isLazy) {
             overrideError("must be declared lazy to override a concrete lazy value")
           } else if (other.isDeferred && member.isTermMacro && member.extendedOverriddenSymbols.forall(_.isDeferred)) { // (1.9)
@@ -919,17 +919,11 @@ abstract class RefChecks extends Transform {
       var index = -1
       for (stat <- stats) {
         index = index + 1
-        def enterSym(sym: Symbol) = if (sym.isLocalToBlock) {
-          currentLevel.scope.enter(sym)
-          symIndex(sym) = index
-        }
 
         stat match {
-          case DefDef(_, _, _, _, _, _) if stat.symbol.isLazy                 =>
-            enterSym(stat.symbol)
-          case ClassDef(_, _, _, _) | DefDef(_, _, _, _, _, _) | ModuleDef(_, _, _) | ValDef(_, _, _, _) =>
-            //assert(stat.symbol != NoSymbol, stat);//debug
-            enterSym(stat.symbol.lazyAccessorOrSelf)
+          case _ : MemberDef if stat.symbol.isLocalToBlock =>
+            currentLevel.scope.enter(stat.symbol)
+            symIndex(stat.symbol) = index
           case _ =>
         }
       }
@@ -1180,10 +1174,10 @@ abstract class RefChecks extends Transform {
         val tree1 = transform(tree) // important to do before forward reference check
         if (tree1.symbol.isLazy) tree1 :: Nil
         else {
-          val lazySym = tree.symbol.lazyAccessorOrSelf
-          if (lazySym.isLocalToBlock && index <= currentLevel.maxindex) {
+          val sym = tree.symbol
+          if (sym.isLocalToBlock && index <= currentLevel.maxindex) {
             debuglog("refsym = " + currentLevel.refsym)
-            reporter.error(currentLevel.refpos, "forward reference extends over definition of " + lazySym)
+            reporter.error(currentLevel.refpos, "forward reference extends over definition of " + sym)
           }
           tree1 :: Nil
         }
@@ -1451,9 +1445,9 @@ abstract class RefChecks extends Transform {
             )
       }
 
-      sym.isSourceMethod &&
+      sym.name == nme.apply &&
+        !(sym hasFlag STABLE) && // ???
         sym.isCase &&
-        sym.name == nme.apply &&
         isClassTypeAccessible(tree) &&
         !tree.tpe.finalResultType.typeSymbol.primaryConstructor.isLessAccessibleThan(tree.symbol)
     }
