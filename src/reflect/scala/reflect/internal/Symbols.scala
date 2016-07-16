@@ -2081,7 +2081,7 @@ trait Symbols extends api.Symbols { self: SymbolTable =>
       *  as they are an implementation detail that's irrelevant to type checking.
       */
     def accessedOrSelf: Symbol =
-      if (hasAccessorFlag && (!owner.isTrait || hasFlag(PRESUPER | LAZY))) accessed
+      if (hasAccessorFlag && (!owner.isTrait || hasFlag(PRESUPER))) accessed
       else this
 
     /** For an outer accessor: The class from which the outer originates.

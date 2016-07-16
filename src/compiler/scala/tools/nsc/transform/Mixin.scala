@@ -465,7 +465,7 @@ abstract class Mixin extends InfoTransform with ast.TreeDSL {
         else if (needsInitFlag(field) && !field.isDeferred) false
         else return NO_NAME
       )
-      if (field.accessed hasAnnotation TransientAttr) {
+      if (field.accessedOrSelf hasAnnotation TransientAttr) {
         if (isNormal) BITMAP_TRANSIENT
         else BITMAP_CHECKINIT_TRANSIENT
       } else {
