@@ -808,8 +808,7 @@ trait Namers extends MethodSynthesis {
         if (tree.mods.annotations.isEmpty) Nil
         else annotSig(tree.mods.annotations) filter annotationFilter(FieldTargetClass, !tree.mods.isParamAccessor)
 
-      // skolemize, because the val is only accessed from the accessor def, where it's seen from inside the method (and thus skolemized)
-      val sig = typeSig(tree, annots).skolemizeExistential(sym, tree)
+      val sig = typeSig(tree, annots)
 
       sym setInfo (if (tree.mods.isLazy) NullaryMethodType(sig) else sig)
 
