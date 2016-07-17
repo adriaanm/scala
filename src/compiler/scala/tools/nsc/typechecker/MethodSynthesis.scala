@@ -117,30 +117,18 @@ trait MethodSynthesis {
 
     import NamerErrorGen._
 
+
+    import treeInfo.noFieldFor
+
     def enterImplicitWrapper(tree: ClassDef): Unit = {
       enterSyntheticSym(ImplicitClassWrapper(tree).derivedTree)
     }
-
-    // No field for these vals (either not emitted, not emitted yet, or removed later...):
-    //   - abstract vals have no value we could store (until they become concrete, potentially)
-    //   - lazy vals: the ValDef carries the symbol of the lazy accessor.
-    //     The sausage factory will spew out the inner workings during the fields phase (actual bitmaps won't follow
-    //     until lazyvals & mixins, though we should move this stuff from mixins to lazyvals now that fields takes care of mixing in lazy vals)
-    //   - concrete vals in traits don't yield a field here either (their getter's RHS has the initial value)
-    //     Constructors will move the assignment to the constructor, abstracting over the field using the field setter,
-    //     and Fields will add a field to the class that mixes in the trait, implementing the accessors in terms of it
-    //   - [Emitted, later removed during Constructors] a concrete val with a statically known value (ConstantType)
-    //     performs its side effect according to lazy/strict semantics, but doesn't need to store its value
-    //     each access will "evaluate" the RHS (a literal) again
-    // We would like to avoid emitting unnecessary fields, but the required knowledge isn't available until after typer.
-    // The only way to avoid emitting & suppressing, is to not emit at all until we are sure to need the field, as dotty does.
-    def noFieldFor(vd: ValDef) = vd.mods.isDeferred || vd.mods.isLazy || (owner.isTrait && !vd.mods.hasFlag(PRESUPER))
 
     // populate synthetics for this unit with trees that will later be added by the typer
     // we get here when entering the symbol for the valdef, so its rhs has not yet been type checked
     def enterGetterSetter(tree: ValDef): Unit = {
       val fieldSym =
-        if (noFieldFor(tree)) NoSymbol
+        if (noFieldFor(tree, owner)) NoSymbol
         else owner.newValue(tree.name append NameTransformer.LOCAL_SUFFIX_STRING, tree.pos, tree.mods.flags & FieldFlags | PrivateLocal)
 
       val getter = Getter(tree)
@@ -151,22 +139,27 @@ trait MethodSynthesis {
       tree.symbol = fieldSym orElse (getterSym setPos tree.pos)
       val namer = namerOf(tree.symbol)
 
-      def synthAndEnter(deriver: DerivedAccessor, sym: Symbol) = {
-        context.unit.synthetics(sym) = deriver.derivedTree(sym)
-        sym setInfo namer.accessorTypeCompleter(tree, tree.tpt.isEmpty, isBean = false, deriver.isInstanceOf[Setter])
-        enterInScope(sym)
-      }
-
       // the valdef gets the accessor symbol for a lazy val (too much going on in its RHS)
       // the fields phase creates the field symbol
       if (!tree.mods.isLazy) {
-        synthAndEnter(getter, getterSym)
+        // if there's a field symbol, the getter is considered a synthetic that must be added later
+        // if there's no field symbol, the ValDef tree receives the getter symbol and thus is not a synthetic
+        if (fieldSym != NoSymbol) {
+          context.unit.synthetics(getterSym) = getter.derivedTree(getterSym)
+          getterSym setInfo namer.accessorTypeCompleter(tree, tree.tpt.isEmpty, isBean = false, isSetter = false)
+        } else getterSym setInfo namer.valTypeCompleter(tree)
+
+        enterInScope(getterSym)
 
         if (getter.needsSetter) {
           val setter = Setter(tree)
-          synthAndEnter(setter, setter.createSym)
+          val setterSym = setter.createSym
+          context.unit.synthetics(setterSym) = setter.derivedTree(setterSym)
+          setterSym setInfo namer.accessorTypeCompleter(tree, tree.tpt.isEmpty, isBean = false, isSetter = true)
+          enterInScope(setterSym)
         }
 
+        // TODO: delay emitting the field to the fields phase (except for private[this] vals, which only get a field and no accessors)
         if (fieldSym != NoSymbol) {
           fieldSym setInfo namer.valTypeCompleter(tree)
           enterInScope(fieldSym)
@@ -293,7 +286,7 @@ trait MethodSynthesis {
         val tpt = if (missingTpt) TypeTree() else tree.tpt.duplicate
 
         val rhs =
-          if (noFieldFor(tree)) tree.rhs // context.unit.transformed.getOrElse(tree.rhs, tree.rhs)
+          if (noFieldFor(tree, owner)) tree.rhs // context.unit.transformed.getOrElse(tree.rhs, tree.rhs)
           else Select(This(tree.symbol.enclClass), tree.symbol)
 
         newDefDef(derivedSym, rhs)(tparams = Nil, vparamss = ListOfNil, tpt = tpt)
@@ -352,7 +345,7 @@ trait MethodSynthesis {
         val tpt = TypeTree(UnitTpe)
 
         val rhs =
-          if (noFieldFor(tree)) EmptyTree
+          if (noFieldFor(tree, owner)) EmptyTree
           else Assign(Select(This(tree.symbol.enclClass), tree.symbol), Ident(setterParam))
 
         newDefDef(derivedSym, rhs)(tparams = Nil, vparamss = List(vparams), tpt = tpt)

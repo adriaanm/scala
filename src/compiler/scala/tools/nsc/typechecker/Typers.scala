@@ -1875,10 +1875,6 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
       if (txt eq context) namer enterSym tree
       else newNamer(txt) enterSym tree
 
-    private def dropVals(list: List[Tree]): List[Tree] = {
-      list mapConserve { case vd: ValDef if !vd.mods.isLazy && namer.noFieldFor(vd) => EmptyTree case t => t } filter (_ != EmptyTree)
-    }
-
     /** <!-- 2 --> Check that inner classes do not inherit from Annotation
      */
     def typedTemplate(templ0: Template, parents1: List[Tree]): Template = {
@@ -1950,7 +1946,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
       val body2 = {
         val body2 =
           if (isPastTyper || reporter.hasErrors) body1
-          else dropVals(body1) flatMap rewrappingWrapperTrees(namer.addDerivedTrees(Typer.this, _))
+          else body1 flatMap rewrappingWrapperTrees(namer.addDerivedTrees(Typer.this, _))
         val primaryCtor = treeInfo.firstConstructor(body2)
         val primaryCtor1 = primaryCtor match {
           case DefDef(_, _, _, _, _, Block(earlyVals :+ global.pendingSuperCall, unit)) =>
@@ -2425,7 +2421,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
             case _ =>
           }
         }
-        val statsTyped = typedStats(if (!isPastTyper) dropVals(block.stats) else block.stats, context.owner)
+        val statsTyped = typedStats(block.stats, context.owner)
         val expr1 = typed(block.expr, mode &~ (FUNmode | QUALmode), pt)
         treeCopy.Block(block, statsTyped, expr1)
           .setType(if (treeInfo.isExprSafeToInline(block)) expr1.tpe else expr1.tpe.deconst)
@@ -3128,6 +3124,10 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
             // synt is implicit def for implicit class (#6278)
             case (ClassDef(cmods, cname, _, _), DefDef(dmods, dname, _, _, _, _)) =>
               cmods.isImplicit && dmods.isImplicit && cname.toTermName == dname
+
+            // ValDef and Accessor
+            case (ValDef(_, cname, _, _), DefDef(_, dname, _, _, _, _)) =>
+              cname.getterName == dname.getterName
 
             case _ => false
           }

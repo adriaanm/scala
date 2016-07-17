@@ -129,6 +129,7 @@ trait Namers extends MethodSynthesis {
       !(vd.name startsWith nme.OUTER) && // outer accessors are added later, in explicitouter
       !isEnumConstant(vd)                // enums can only occur in classes, so only check here
 
+
     /** Determines whether this field holds an enum constant.
       * To qualify, the following conditions must be met:
       *  - The field's class has the ENUM flag set
@@ -803,19 +804,22 @@ trait Namers extends MethodSynthesis {
 
     import AnnotationInfo.{mkFilter => annotationFilter}
 
+    // complete the type of a value definition (may have a method symbol, for those valdefs that never receive a field,
+    // as specified by Field.noFieldFor)
     def valTypeCompleter(tree: ValDef) = mkTypeCompleter(tree) { sym =>
+      val mods = tree.mods
+      val isGetter = sym.isMethod
       val annots =
-        if (tree.mods.annotations.isEmpty) Nil
-        else annotSig(tree.mods.annotations) filter annotationFilter(FieldTargetClass, !tree.mods.isParamAccessor)
+        if (mods.annotations.isEmpty) Nil
+        else if (isGetter) filterAccessorAnnots(annotSig(mods.annotations), tree)
+        else annotSig(mods.annotations) filter annotationFilter(FieldTargetClass, !mods.isParamAccessor)
 
       val sig = typeSig(tree, annots)
 
-      sym setInfo (if (tree.mods.isLazy) NullaryMethodType(sig) else sig)
+      sym setInfo (if (isGetter) NullaryMethodType(sig) else sig)
 
       validate(sym)
     }
-
-
 
     // There's no reliable way to detect all kinds of setters from flags or name!!!
     // A BeanSetter's name does not end in `_=` -- it does begin with "set", but so could the getter
@@ -840,18 +844,7 @@ trait Namers extends MethodSynthesis {
           val mods = tree.mods
           val annots =
             if (mods.annotations.isEmpty) Nil
-            else {
-              val annotSigs = annotSig(mods.annotations)
-              if (!isBean) {
-                // neg/t3403: check that we didn't get a sneaky type alias/renamed import that we couldn't detect because we only look at names during synthesis
-                // (TODO: can we look at symbols earlier?)
-                if (!((mods hasAnnotationNamed tpnme.BeanPropertyAnnot) || (mods hasAnnotationNamed tpnme.BooleanBeanPropertyAnnot))
-                  && annotSigs.exists(ann => (ann.matches(BeanPropertyAttr)) || ann.matches(BooleanBeanPropertyAttr)))
-                  BeanPropertyAnnotationLimitationError(tree)
-              }
-
-              annotSigs filter (if (isBean) filterBeanAccessorAnnotations(isSetter) else filterAccessorAnnotations(isSetter))
-            }
+            else filterAccessorAnnots(annotSig(mods.annotations), tree, isSetter, isBean)
 
           val sig =
             if (isSetter || isBean) typeSig(ddef, annots)
@@ -875,7 +868,6 @@ trait Namers extends MethodSynthesis {
 
     }
 
-
     // see scala.annotation.meta's package class for more info
     // Annotations on ValDefs can be targeted towards the following: field, getter, setter, beanGetter, beanSetter, param.
     // The defaults are:
@@ -886,19 +878,32 @@ trait Namers extends MethodSynthesis {
     //
     // TODO: these defaults can be surprising for annotations not meant for accessors/fields -- should we revisit?
     // (In order to have `@foo val X` result in the X getter being annotated with `@foo`, foo needs to be meta-annotated with @getter)
-    private def filterAccessorAnnotations(isSetter: Boolean): AnnotationInfo => Boolean =
-      if (isSetter || !owner.isTrait)
-        annotationFilter(if (isSetter) SetterTargetClass else GetterTargetClass, defaultRetention = false)
-      else (ann =>
-        annotationFilter(FieldTargetClass, defaultRetention = true)(ann) ||
-        annotationFilter(GetterTargetClass, defaultRetention = true)(ann))
+    private def filterAccessorAnnots(annotSigs: List[global.AnnotationInfo], tree: global.ValDef, isSetter: Boolean = false, isBean: Boolean = false): List[AnnotationInfo] = {
+      val mods = tree.mods
+      if (!isBean) {
+        // neg/t3403: check that we didn't get a sneaky type alias/renamed import that we couldn't detect because we only look at names during synthesis
+        // (TODO: can we look at symbols earlier?)
+        if (!((mods hasAnnotationNamed tpnme.BeanPropertyAnnot) || (mods hasAnnotationNamed tpnme.BooleanBeanPropertyAnnot))
+          && annotSigs.exists(ann => (ann.matches(BeanPropertyAttr)) || ann.matches(BooleanBeanPropertyAttr)))
+          BeanPropertyAnnotationLimitationError(tree)
+      }
 
-    private def filterBeanAccessorAnnotations(isSetter: Boolean): AnnotationInfo => Boolean =
-      if (isSetter || !owner.isTrait)
-        annotationFilter(if (isSetter) BeanSetterTargetClass else BeanGetterTargetClass, defaultRetention = false)
-      else (ann =>
-        annotationFilter(FieldTargetClass, defaultRetention = true)(ann) ||
-          annotationFilter(BeanGetterTargetClass, defaultRetention = true)(ann))
+      def filterAccessorAnnotations: AnnotationInfo => Boolean =
+        if (isSetter || !owner.isTrait)
+          annotationFilter(if (isSetter) SetterTargetClass else GetterTargetClass, defaultRetention = false)
+        else (ann =>
+          annotationFilter(FieldTargetClass, defaultRetention = true)(ann) ||
+            annotationFilter(GetterTargetClass, defaultRetention = true)(ann))
+
+      def filterBeanAccessorAnnotations: AnnotationInfo => Boolean =
+        if (isSetter || !owner.isTrait)
+          annotationFilter(if (isSetter) BeanSetterTargetClass else BeanGetterTargetClass, defaultRetention = false)
+        else (ann =>
+          annotationFilter(FieldTargetClass, defaultRetention = true)(ann) ||
+            annotationFilter(BeanGetterTargetClass, defaultRetention = true)(ann))
+
+      annotSigs filter (if (isBean) filterBeanAccessorAnnotations else filterAccessorAnnotations)
+    }
 
 
     def selfTypeCompleter(tree: Tree) = mkTypeCompleter(tree) { sym =>

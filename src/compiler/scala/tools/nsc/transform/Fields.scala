@@ -562,18 +562,22 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
                                            && fieldMemoizationIn(statSym, clazz).pureConstant =>
           deriveDefDef(stat)(_ => gen.mkAttributedQualifier(rhs.tpe))
 
-        /** Implements lazy value accessors:
+        /** Normalize ValDefs to corresponding accessors + field
+          *
+          * ValDef in trait --> getter DefDef
+          * Lazy val receives field with a new symbol (if stored) and the ValDef's symbol is moved to a DefDef (the lazy accessor):
           *    - for lazy values of type Unit and all lazy fields inside traits,
           *      the rhs is the initializer itself, because we'll just "compute" the result on every access
           *     ("computing" unit / constant type is free -- the side-effect is still only run once, using the init bitmap)
           *    - for all other lazy values z the accessor is a block of this form:
           *      { z = <rhs>; z } where z can be an identifier or a field.
           */
-        case vd@ValDef(mods, name, tpt, rhs) if mods.isLazy =>
+        case vd@ValDef(mods, name, tpt, rhs) if vd.symbol.hasFlag(ACCESSOR) && treeInfo.noFieldFor(vd, clazz) =>
           def notStored = {val resultType = statSym.info.resultType ; (resultType.isInstanceOf[ConstantType] || isUnitType(resultType))}
           val transformedRhs = atOwner(statSym)(transform(rhs))
 
-          if (clazz.isTrait || notStored) mkAccessor(statSym)(transformedRhs)
+          if (rhs == EmptyTree) mkAccessor(statSym)(EmptyTree)
+          else if (clazz.isTrait || notStored) mkAccessor(statSym)(transformedRhs)
           else if (clazz.isClass) mkAccessor(statSym)(gen.mkAssignAndReturn(moduleVarOf(vd.symbol), transformedRhs))
           else {
             // local lazy val (same story as modules: info transformer doesn't get here, so can't drive tree synthesis)
