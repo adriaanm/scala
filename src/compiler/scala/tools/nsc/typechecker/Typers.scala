@@ -2008,7 +2008,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
       val tpt1 = checkNoEscaping.privates(sym, typedType(vdef.tpt))
       checkNonCyclic(vdef, tpt1)
 
-      if (sym.hasAnnotation(definitions.VolatileAttr) && !sym.isMutable)
+      if (sym.hasAnnotation(definitions.VolatileAttr) && !sym.isMutable && !sym.isAccessor) // a trait val is a ValDef with a method symbol
         VolatileValueError(vdef)
 
       val rhs1 =
