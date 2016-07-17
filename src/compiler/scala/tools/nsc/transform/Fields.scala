@@ -390,18 +390,9 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
             clonedAccessor setInfo ((clazz.thisType memberType member) cloneInfo clonedAccessor) // accessor.info.cloneInfo(clonedAccessor).asSeenFrom(clazz.thisType, accessor.owner)
           }
 
-          if (member hasFlag MODULE) {
-            val moduleVar = newModuleVar(member)
-            List(moduleVar, newModuleAccessor(member, clazz, moduleVar))
-          }
-          else if (member.isLazy) {
-            val mixedinLazy = cloneAccessor()
-            val lazyVar = newLazyVar(mixedinLazy)
-            List(lazyVar, newSuperLazy(mixedinLazy, site, lazyVar))
-          }
           // when considering whether to mix in the trait setter, forget about conflicts -- they are reported for the getter
           // a trait setter for an overridden val will receive a unit body in the tree transform
-          else if (nme.isTraitSetterName(member.name)) {
+          if (nme.isTraitSetterName(member.name)) {
             val getter = member.getterIn(member.owner)
             val clone = cloneAccessor()
 
@@ -413,6 +404,15 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
           // don't cause conflicts, skip overridden accessors contributed by supertraits (only act on the last overriding one)
           // see pos/trait_fields_dependent_conflict.scala and neg/t1960.scala
           else if (accessorConflictsExistingVal(member) || isOverriddenAccessor(member, clazz)) Nil
+          else if (member hasFlag MODULE) {
+            val moduleVar = newModuleVar(member)
+            List(moduleVar, newModuleAccessor(member, clazz, moduleVar))
+          }
+          else if (member hasFlag LAZY) {
+            val mixedinLazy = cloneAccessor()
+            val lazyVar = newLazyVar(mixedinLazy)
+            List(lazyVar, newSuperLazy(mixedinLazy, site, lazyVar))
+          }
           else if (member.isGetter && fieldMemoizationIn(member, clazz).stored) {
             // add field if needed
             val field = clazz.newValue(member.localName, member.pos) setInfo fieldTypeForGetterIn(member, clazz.thisType)
