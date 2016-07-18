@@ -849,7 +849,7 @@ trait Namers extends MethodSynthesis {
           val sig =
             if (isSetter || isBean) typeSig(ddef, annots)
             else {
-              if (annots.nonEmpty) annotate(tree.symbol, annots)
+              if (annots.nonEmpty) annotate(sym, annots)
 
               NullaryMethodType(valSig)
             }
