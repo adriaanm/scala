@@ -1360,13 +1360,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
               notAllowed(s"redefinition of $name method. See SIP-15, criterion 4.")
             else if (stat.symbol != null && stat.symbol.isParamAccessor)
               notAllowed("additional parameter")
-            // concrete accessor (getter) in trait corresponds to a field definition (neg/anytrait.scala)
-            // TODO: only reject accessors that actually give rise to field (e.g., a constant-type val is fine)
-            else if (!isValueClass && stat.symbol.isAccessor && !stat.symbol.isDeferred)
-              notAllowed("field definition")
             checkEphemeralDeep.traverse(rhs)
-          // for value class or "exotic" vals in traits
-          // (traits don't receive ValDefs for regular vals until fields phase -- well, except for early initialized/lazy vals)
           case _: ValDef =>
             notAllowed("field definition")
           case _: ModuleDef =>
