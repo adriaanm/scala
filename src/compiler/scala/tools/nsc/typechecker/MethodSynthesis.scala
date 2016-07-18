@@ -289,43 +289,15 @@ trait MethodSynthesis {
           if (noFieldFor(tree, owner)) tree.rhs // context.unit.transformed.getOrElse(tree.rhs, tree.rhs)
           else Select(This(tree.symbol.enclClass), tree.symbol)
 
-        newDefDef(derivedSym, rhs)(tparams = Nil, vparamss = ListOfNil, tpt = tpt)
+        newDefDef(derivedSym, rhs)(tparams = Nil, vparamss = Nil, tpt = tpt)
       }
 
-//      private def deriveLazyAccessor(derivedSym: Symbol): DefDef = {
-//        val missingTpt = tree.tpt.isEmpty
-//        val tpt = if (missingTpt) TypeTree() else tree.tpt.duplicate
-//
 //        derivedSym setPos tree.pos
 //        // ValDef will have its position focused whereas DefDef will have original correct rangepos
 //        // ideally positions would be correct at the creation time but lazy vals are really a special case
 //        // here so for the sake of keeping api clean we fix positions manually in LazyValGetter
 //        tpt.setPos(tree.tpt.pos)
 //        tree.tpt.setPos(tree.tpt.pos.focus)
-//
-//        newDefDef(derivedSym, rhs)(tparams = Nil, vparamss = ListOfNil, tpt = tpt) // don't look at derivedSym's info!
-//      }
-
-//      // TODO: more principled approach -- this is a bit bizarre
-//      private def derivedTpt(derivedSym: Symbol) = {
-//        // For existentials, don't specify a type for the getter, even one derived
-//        // from the symbol! This leads to incompatible existentials for the field and
-//        // the getter. Let the typer do all the work. You might think "why only for
-//        // existentials, why not always," and you would be right, except: a single test
-//        // fails, but it looked like some work to deal with it. Test neg/t0606.scala
-//        // starts compiling (instead of failing like it's supposed to) because the typer
-//        // expects to be able to identify escaping locals in typedDefDef, and fails to
-//        // spot that brand of them. In other words it's an artifact of the implementation.
-//        val getterTp = derivedSym.tpe_*.finalResultType
-//        val tpt = getterTp.widen match {
-//          // Range position errors ensue if we don't duplicate this in some
-//          // circumstances (at least: concrete vals with existential types.)
-//          case _: ExistentialType => TypeTree() setOriginal (tree.tpt.duplicate setPos tree.tpt.pos.focus)
-//          case _ if tree.mods.isDeferred    => TypeTree() setOriginal tree.tpt // keep type tree of original abstract field
-//          case _                  => TypeTree(getterTp)
-//        }
-//        tpt setPos tree.tpt.pos.focus
-//      }
 
     }
 
