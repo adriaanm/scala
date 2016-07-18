@@ -440,8 +440,8 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
             val enter    = newDecls enter (_: Symbol)
             val enterAll = (_: List[Symbol]) foreach enter
 
-            oldDecls foreach { d => if (!omittableField(d)) enter(d) }
             expandedModulesAndLazyVals foreach enter
+            oldDecls foreach { d => if (!omittableField(d)) enter(d) }
             mixedInAccessorAndFields foreach enterAll
 
             newDecls
