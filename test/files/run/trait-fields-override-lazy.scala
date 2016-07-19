@@ -9,4 +9,5 @@ object Test extends App {
   }
 
   assert(overrideLazy.foo)
+  println("ok")
 }
