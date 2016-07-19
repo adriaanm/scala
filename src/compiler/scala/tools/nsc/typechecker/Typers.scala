@@ -1937,11 +1937,8 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
       if (!phase.erasedTypes && !clazz.info.resultType.isError) // @S: prevent crash for duplicated type members
         checkFinitary(clazz.info.resultType.asInstanceOf[ClassInfoType])
 
-      val body2 = {
-        val body2 =
-          if (isPastTyper || reporter.hasErrors) body1
-          else body1 flatMap rewrappingWrapperTrees(namer.addDerivedTrees(Typer.this, _))
-        val primaryCtor = treeInfo.firstConstructor(body2)
+      val bodyWithPrimaryCtor = {
+        val primaryCtor = treeInfo.firstConstructor(body1)
         val primaryCtor1 = primaryCtor match {
           case DefDef(_, _, _, _, _, Block(earlyVals :+ global.pendingSuperCall, unit)) =>
             val argss = superArgs(parents1.head) getOrElse Nil
@@ -1950,10 +1947,10 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
             deriveDefDef(primaryCtor)(block => Block(earlyVals :+ superCall, unit) setPos pos) setPos pos
           case _ => primaryCtor
         }
-        body2 mapConserve { case `primaryCtor` => primaryCtor1; case stat => stat }
+        body1 mapConserve { case `primaryCtor` => primaryCtor1; case stat => stat }
       }
 
-      val body3 = typedStats(body2, templ.symbol)
+      val body3 = typedStats(bodyWithPrimaryCtor, templ.symbol)
 
       if (clazz.info.firstParent.typeSymbol == AnyValClass)
         validateDerivedValueClass(clazz, body3)

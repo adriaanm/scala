@@ -804,6 +804,16 @@ trait Namers extends MethodSynthesis {
 
     import AnnotationInfo.{mkFilter => annotationFilter}
 
+    def implicitFactoryMethodCompleter(tree: DefDef, classSym: Symbol, sigCompleter: LockingTypeCompleter) = mkTypeCompleter(tree) { methSym =>
+      sigCompleter.completeImpl(methSym)
+
+      val annotations = classSym.initialize.annotations
+
+      methSym setAnnotations (annotations filter annotationFilter(MethodTargetClass, defaultRetention = false))
+      classSym setAnnotations (annotations filter annotationFilter(ClassTargetClass, defaultRetention = true))
+    }
+
+
     // complete the type of a value definition (may have a method symbol, for those valdefs that never receive a field,
     // as specified by Field.noFieldFor)
     def valTypeCompleter(tree: ValDef) = mkTypeCompleter(tree) { sym =>

@@ -120,10 +120,6 @@ trait MethodSynthesis {
 
     import treeInfo.noFieldFor
 
-    def enterImplicitWrapper(tree: ClassDef): Unit = {
-      enterSyntheticSym(ImplicitClassWrapper(tree).derivedTree)
-    }
-
     // populate synthetics for this unit with trees that will later be added by the typer
     // we get here when entering the symbol for the valdef, so its rhs has not yet been type checked
     def enterGetterSetter(tree: ValDef): Unit = {
@@ -219,49 +215,11 @@ trait MethodSynthesis {
     }
 
 
-
-    def addDerivedTrees(typer: Typer, stat: Tree): List[Tree] = stat match {
-      case cd@ClassDef(mods, _, _, _) if mods.isImplicit =>
-        import AnnotationInfo.{mkFilter => annotationFilter}
-        val annotations = stat.symbol.initialize.annotations
-        // TODO: need to shuffle annotations between wrapper and class.
-        val wrapper = ImplicitClassWrapper(cd)
-        val meth = wrapper.derivedSym
-        context.unit.synthetics get meth match {
-          case Some(mdef) =>
-            context.unit.synthetics -= meth
-            meth setAnnotations (annotations filter annotationFilter(MethodTargetClass, defaultRetention = false))
-            cd.symbol setAnnotations (annotations filter annotationFilter(ClassTargetClass, defaultRetention = true))
-            List(cd, mdef)
-          case _ =>
-            // Shouldn't happen, but let's give ourselves a reasonable error when it does
-            context.error(cd.pos, s"Internal error: Symbol for synthetic factory method not found among ${context.unit.synthetics.keys.mkString(", ")}")
-            // Soldier on for the sake of the presentation compiler
-            List(cd)
-        }
-      case _ =>
-        stat :: Nil
-    }
-
-
-    /** A synthetic method which performs the implicit conversion implied by
-      *  the declaration of an implicit class.
-      */
-    case class ImplicitClassWrapper(tree: ClassDef) {
-      def derivedSym = {
-        val enclClass = tree.symbol.owner.enclClass
-        // Only methods will do! Don't want to pick up any stray
-        // companion objects of the same name.
-        val result = enclClass.info decl derivedName filter (x => x.isMethod && x.isSynthetic)
-        if (result == NoSymbol || result.isOverloaded)
-          context.error(tree.pos, s"Internal error: Unable to find the synthetic factory method corresponding to implicit class $derivedName in $enclClass / ${enclClass.info.decls}")
-        result
-      }
-
-      def derivedTree = factoryMeth(derivedMods, derivedName, tree)
-
-      def derivedName = tree.name.toTermName
-      def derivedMods = tree.mods & AccessFlags | METHOD | IMPLICIT | SYNTHETIC
+    def enterImplicitWrapper(classDef: ClassDef): Unit = {
+      val methDef = factoryMeth(classDef.mods & AccessFlags | METHOD | IMPLICIT | SYNTHETIC, classDef.name.toTermName, classDef)
+      val methSym = assignAndEnterSymbol(methDef)
+      context.unit.synthetics(methSym) = methDef
+      methSym setInfo implicitFactoryMethodCompleter(methDef, classDef.symbol, completerOf(methDef).asInstanceOf[LockingTypeCompleter])
     }
 
 
