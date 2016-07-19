@@ -850,7 +850,10 @@ trait Namers extends MethodSynthesis {
             else typeSig(valDef, Nil) // don't set annotations for the valdef -- we just want to compute the type sig (TODO: dig deeper and see if we can use memberSig)
 
           // patch up the accessor's tree if the valdef's tpt was not known back when the tree was synthesized
-          if (missingTpt) { // can't look at tree.tpt here because it may have been completed by now
+          // can't look at `valDef.tpt` here because it may have been completed by now (this is why we pass in `missingTpt`)
+          // HACK: a param accessor `ddef.tpt.tpe` somehow gets out of whack with `accessorSym.info`, so always patch it back...
+          //       (the tpt is typed in the wrong namer, using the class as owner instead of the outer context, which is where param accessors should be typed)
+          if (missingTpt || accessorSym.isParamAccessor) {
             if (!isSetter) ddef.tpt setType valSig
             else if (ddef.vparamss.nonEmpty && ddef.vparamss.head.nonEmpty) ddef.vparamss.head.head.tpt setType valSig
             else throw new TypeError(valDef.pos, s"Internal error: could not complete parameter/return type for $ddef from $accessorSym")
