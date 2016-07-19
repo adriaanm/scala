@@ -816,66 +816,72 @@ trait Namers extends MethodSynthesis {
 
     // complete the type of a value definition (may have a method symbol, for those valdefs that never receive a field,
     // as specified by Field.noFieldFor)
-    def valTypeCompleter(tree: ValDef) = mkTypeCompleter(tree) { sym =>
+    def valTypeCompleter(tree: ValDef) = mkTypeCompleter(tree) { fieldOrGetterSym =>
       val mods = tree.mods
-      val isGetter = sym.isMethod
+      val isGetter = fieldOrGetterSym.isMethod
       val annots =
         if (mods.annotations.isEmpty) Nil
-        else if (isGetter) filterAccessorAnnots(annotSig(mods.annotations), tree)
-        else annotSig(mods.annotations) filter annotationFilter(FieldTargetClass, !mods.isParamAccessor)
+        else {
+          val annotSigs = annotSig(mods.annotations)
+            if (isGetter) filterAccessorAnnots(annotSigs, tree) // if this is really a getter, retain annots targeting either field/getter
+            else annotSigs filter annotationFilter(FieldTargetClass, !mods.isParamAccessor)
+        }
 
+      // must use typeSig, not memberSig (TODO: when do we need to switch namers?)
       val sig = typeSig(tree, annots)
 
-      sym setInfo (if (isGetter) NullaryMethodType(sig) else sig)
+      fieldOrGetterSym setInfo (if (isGetter) NullaryMethodType(sig) else sig)
 
-      validate(sym)
+      validate(fieldOrGetterSym)
     }
 
-    // There's no reliable way to detect all kinds of setters from flags or name!!!
-    // A BeanSetter's name does not end in `_=` -- it does begin with "set", but so could the getter
-    // for a regular Scala field... TODO: can we add a flag to distinguish getter/setter accessors?
-    def accessorTypeCompleter(tree: ValDef, missingTpt: Boolean, isBean: Boolean, isSetter: Boolean) = mkTypeCompleter(tree) { sym =>
-      context.unit.synthetics get sym match {
+    // knowing `isBean`, we could derive `isSetter` from `valDef.name`
+    def accessorTypeCompleter(valDef: ValDef, missingTpt: Boolean, isBean: Boolean, isSetter: Boolean) = mkTypeCompleter(valDef) { accessorSym =>
+      context.unit.synthetics get accessorSym match {
         case Some(ddef: DefDef) =>
-          // sym is an accessor, while tree is the field (for traits it's actually the getter, and we're completing the setter)
+          // `accessorSym` is the accessor for which we're completing the info (tree == ddef),
+          // while `valDef` is the field definition that spawned the accessor
+          // NOTE: `valTypeCompleter` handles abstract vals, trait vals and lazy vals, where the ValDef carries the getter's symbol
+
           // reuse work done in valTypeCompleter if we already computed the type signature of the val
           // (assuming the field and accessor symbols are distinct -- i.e., we're not in a trait)
           val valSig =
-            if ((sym ne tree.symbol) && tree.symbol.isInitialized) tree.symbol.info
-            else typeSig(tree, Nil) // don't set annotations for the valdef -- we just want to compute the type sig
+            if ((accessorSym ne valDef.symbol) && valDef.symbol.isInitialized) valDef.symbol.info
+            else typeSig(valDef, Nil) // don't set annotations for the valdef -- we just want to compute the type sig (TODO: dig deeper and see if we can use memberSig)
 
           // patch up the accessor's tree if the valdef's tpt was not known back when the tree was synthesized
           if (missingTpt) { // can't look at tree.tpt here because it may have been completed by now
             if (!isSetter) ddef.tpt setType valSig
             else if (ddef.vparamss.nonEmpty && ddef.vparamss.head.nonEmpty) ddef.vparamss.head.head.tpt setType valSig
-            else throw new TypeError(tree.pos, s"Internal error: could not complete parameter/return type for $ddef from $sym")
+            else throw new TypeError(valDef.pos, s"Internal error: could not complete parameter/return type for $ddef from $accessorSym")
           }
 
-          val mods = tree.mods
+          val mods = valDef.mods
           val annots =
             if (mods.annotations.isEmpty) Nil
-            else filterAccessorAnnots(annotSig(mods.annotations), tree, isSetter, isBean)
+            else filterAccessorAnnots(annotSig(mods.annotations), valDef, isSetter, isBean)
 
+          // for a setter, call memberSig to attribute the parameter (for a bean, we always use the regular method sig completer since they receive method types)
+          // for a regular getter, make sure it gets a NullaryMethodType (also, no need to recompute it: we already have the valSig)
           val sig =
             if (isSetter || isBean) typeSig(ddef, annots)
             else {
-              if (annots.nonEmpty) annotate(sym, annots)
+              if (annots.nonEmpty) annotate(accessorSym, annots)
 
               NullaryMethodType(valSig)
             }
 
-          sym setInfo pluginsTypeSigAccessor(sig, typer, tree, sym)
+          accessorSym setInfo pluginsTypeSigAccessor(sig, typer, valDef, accessorSym)
 
-          if (!isBean && sym.isOverloaded)
+          if (!isBean && accessorSym.isOverloaded)
             if (isSetter) ddef.rhs.setType(ErrorType)
-            else GetterDefinedTwiceError(sym)
+            else GetterDefinedTwiceError(accessorSym)
 
-          validate(sym)
+          validate(accessorSym)
 
         case _ =>
-          throw new TypeError(tree.pos, s"Internal error: no synthetic tree found for bean accessor $sym")
+          throw new TypeError(valDef.pos, s"Internal error: no synthetic tree found for bean accessor $accessorSym")
       }
-
     }
 
     // see scala.annotation.meta's package class for more info
