@@ -272,6 +272,9 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
       lazyCallingSuper setInfo tp
     }
 
+    // make sure they end up final in bytecode
+    final private val fieldFlags = PrivateLocal | FINAL | SYNTHETIC | NEEDS_TREES
+
     def apply(tp0: Type): Type = tp0 match {
       // TODO: make less destructive (name changes, decl additions, flag setting --
       // none of this is actually undone when travelling back in time using atPhase)
@@ -335,11 +338,11 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
           (existingGetter ne NoSymbol) && (tp matches (site memberInfo existingGetter).resultType) // !existingGetter.isDeferred && -- see (3)
         }
 
-        def newModuleVar(member: Symbol): TermSymbol =
-          newModuleVarSymbol(clazz, member, site.memberType(member).resultType, PrivateLocal | SYNTHETIC | NEEDS_TREES)
+        def newModuleVarMember(member: Symbol): TermSymbol =
+          newModuleVarSymbol(clazz, member, site.memberType(member).resultType, fieldFlags)
 
-        def newLazyVar(member: Symbol): TermSymbol =
-          newLazyVarSymbol(clazz, member, site.memberType(member).resultType, NEEDS_TREES)
+        def newLazyVarMember(member: Symbol): TermSymbol =
+          newLazyVarSymbol(clazz, member, site.memberType(member).resultType, fieldFlags)
 
         // a module does not need treatment here if it's static, unless it has a matching member in a superclass
         // a non-static method needs a module var
@@ -353,7 +356,7 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
         val expandedModulesAndLazyVals =
           modulesAndLazyValsNeedingExpansion map { member =>
             if (member.isLazy) {
-              newLazyVar(member)
+              newLazyVarMember(member)
             }
             // expanding module def (top-level or nested in static module)
             else if (member.isStatic) { // implies m.isOverridingSymbol as per above filter
@@ -364,7 +367,7 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
               nonStaticModuleToMethod(member)
               // must reuse symbol instead of creating an accessor
               member setFlag NEEDS_TREES
-              newModuleVar(member)
+              newModuleVarMember(member)
             }
           }
 
@@ -405,12 +408,12 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
           // see pos/trait_fields_dependent_conflict.scala and neg/t1960.scala
           else if (accessorConflictsExistingVal(member) || isOverriddenAccessor(member, clazz)) Nil
           else if (member hasFlag MODULE) {
-            val moduleVar = newModuleVar(member)
+            val moduleVar = newModuleVarMember(member)
             List(moduleVar, newModuleAccessor(member, clazz, moduleVar))
           }
           else if (member hasFlag LAZY) {
             val mixedinLazy = cloneAccessor()
-            val lazyVar = newLazyVar(mixedinLazy)
+            val lazyVar = newLazyVarMember(mixedinLazy)
             List(lazyVar, newSuperLazy(mixedinLazy, site, lazyVar))
           }
           else if (member.isGetter && fieldMemoizationIn(member, clazz).stored) {
