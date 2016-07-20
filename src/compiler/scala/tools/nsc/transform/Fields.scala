@@ -203,8 +203,7 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
 
       getter.asTerm.referenced = setter
 
-      setter setInfo MethodType(List(setter.newSyntheticValueParam(fieldTp)), UnitTpe)
-      setter
+      setSetterInfo(setter, fieldTp)
     }
 
     private def newModuleAccessor(module: Symbol, site: Symbol, moduleVar: Symbol) = {
@@ -212,8 +211,7 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
 
       moduleVarOf(accessor) = moduleVar
 
-      // we're in the same prefix as module, so no need for site.thisType.memberType(module)
-      accessor setInfo MethodType(Nil, moduleVar.info)
+      setGetterInfo(accessor, moduleVar.info)
       accessor.setModuleClass(module.moduleClass)
 
       if (module.isPrivate) accessor.expandName(module.owner)
@@ -229,7 +227,7 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
     def newMatchingModuleAccessor(clazz: Symbol, module: Symbol): MethodSymbol = {
       val acc = clazz.newMethod(module.name.toTermName, module.pos, (module.flags & ~MODULE) | STABLE | NEEDS_TREES | ACCESSOR)
       acc.referenced = module
-      acc setInfo MethodType(Nil, module.moduleClass.tpe)
+      setGetterInfo(acc, module.moduleClass.tpe)
     }
 
 
@@ -339,7 +337,11 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
             // if we don't cloneInfo, method argument symbols are shared between trait and subclasses --> lambalift proxy crash
             // TODO: use derive symbol variant?
 //            println(s"cloning accessor $member to $clazz")
-            clonedAccessor setInfo ((clazz.thisType memberType member) cloneInfo clonedAccessor) // accessor.info.cloneInfo(clonedAccessor).asSeenFrom(clazz.thisType, accessor.owner)
+
+            // clone at uncurry to preserve history back to the phase where getters have NullaryMethodType infos (used by scala-js to identify getters)
+            enteringUncurry {
+              clonedAccessor setInfo ((clazz.thisType memberType member) cloneInfo clonedAccessor)
+            }
           }
 
           if (member hasFlag MODULE) {
@@ -402,6 +404,14 @@ abstract class Fields extends InfoTransform with ast.TreeDSL with TypingTransfor
       case tp => mapOver(tp)
     }
   }
+
+
+  private def setSetterInfo(setter: Symbol, tp: Type): setter.type =
+    enteringUncurry(setter setInfo MethodType(List(setter.newSyntheticValueParam(tp)), UnitTpe))
+
+  // to give it the same info history as a getter that was created during namers (scala-js looks for NMT at uncurry to find getters)
+  private def setGetterInfo(getter: Symbol, tp: Type): getter.type =
+    enteringUncurry(getter setInfo NullaryMethodType(tp))
 
 
   // done by uncurry's info transformer
