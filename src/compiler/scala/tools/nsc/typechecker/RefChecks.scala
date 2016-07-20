@@ -609,7 +609,7 @@ abstract class RefChecks extends Transform {
           val (missing, rest) = memberList partition (m => m.isDeferredNotJavaDefault && !ignoreDeferred(m))
           // Group missing members by the name of the underlying symbol,
           // to consolidate getters and setters.
-          val grouped = missing groupBy (sym => analyzer.underlyingSymbol(sym).name)
+          val grouped = missing groupBy (_.name.getterName)
           val missingMethods = grouped.toList flatMap {
             case (name, syms) =>
               if (syms exists (_.isSetter)) syms filterNot (_.isGetter)
@@ -651,15 +651,16 @@ abstract class RefChecks extends Transform {
 
             // Give a specific error message for abstract vars based on why it fails:
             // It could be unimplemented, have only one accessor, or be uninitialized.
-            if (underlying.isVariable) {
-              val isMultiple = grouped.getOrElse(underlying.name, Nil).size > 1
+            val groupedAccessors = grouped.getOrElse(member.name.getterName, Nil)
+            val isMultiple = groupedAccessors.size > 1
 
+            if (groupedAccessors.exists(_.isSetter) || (member.isGetter && !isMultiple && member.setterIn(member.owner).exists)) {
               // If both getter and setter are missing, squelch the setter error.
               if (member.isSetter && isMultiple) ()
               else undefined(
                 if (member.isSetter) "\n(Note that an abstract var requires a setter in addition to the getter)"
                 else if (member.isGetter && !isMultiple) "\n(Note that an abstract var requires a getter in addition to the setter)"
-                else analyzer.abstractVarMessage(member)
+                else "\n(Note that variables need to be initialized to be defined)"
               )
             }
             else if (underlying.isMethod) {

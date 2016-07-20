@@ -97,7 +97,7 @@ trait TypeDiagnostics {
   /** An explanatory note to be added to error messages
    *  when there's a problem with abstract var defs */
   def abstractVarMessage(sym: Symbol): String =
-    if (underlyingSymbol(sym).isVariable)
+    if (sym.isSetter || sym.isGetter && sym.setterIn(sym.owner).exists)
       "\n(Note that variables need to be initialized to be defined)"
     else ""
 
