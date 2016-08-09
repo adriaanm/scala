@@ -620,12 +620,12 @@ trait JavaParsers extends ast.parser.ParsersCommon with JavaScanners {
     // leaves auxiliary constructors unable to access members of the companion object
     // as unqualified identifiers.
     def addCompanionObject(statics: List[Tree], cdef: ClassDef): List[Tree] = {
-      def implWithImport(importStmt: Tree) = deriveTemplate(cdef.impl)(importStmt :: _)
+//      def implWithImport(importStmt: Tree) = deriveTemplate(cdef.impl)(importStmt :: _)
       // if there are no statics we can use the original cdef, but we always
       // create the companion so import A._ is not an error (see ticket #1700)
-      val cdefNew =
-        if (statics.isEmpty) cdef
-        else deriveClassDef(cdef)(_ => implWithImport(importCompanionObject(cdef)))
+      val cdefNew = cdef
+//        if (statics.isEmpty) cdef
+//        else deriveClassDef(cdef)(_ => implWithImport(importCompanionObject(cdef)))
 
       List(makeCompanionObject(cdefNew, statics), cdefNew)
     }
