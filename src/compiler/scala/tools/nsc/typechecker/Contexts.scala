@@ -1107,6 +1107,9 @@ trait Contexts { self: Analyzer =>
         // Defined symbols take precedence over erroneous imports.
         else if (impSym.isError || impSym.name == nme.CONSTRUCTOR)
           impSym = NoSymbol
+        // EXTREME HACK: nested, static java classes that define same-named classes themselves
+        else if (unit.isJava)
+          defSym = NoSymbol
         // Otherwise they are irreconcilably ambiguous
         else
           return ambiguousDefnAndImport(defSym.alternatives.head.owner, imp1)
