@@ -65,7 +65,7 @@ abstract class SymbolLoaders {
     enterIfNew(owner, clazz, completer)
   }
 
-  def newModule(owner: Symbol, name: String): Symbol = owner.newModule(newTermName(name))
+  def newModule(owner: Symbol, name: String): ModuleSymbol = owner.newModule(newTermName(name))
 
   /** Enter module with given `name` into scope of `root`
    *  and give them `completer` as type.
@@ -121,7 +121,7 @@ abstract class SymbolLoaders {
   /** Enter class and module with given `name` into scope of `root`
    *  and give them `completer` as type.
    */
-  def enterClassAndModule(root: Symbol, name: String, getCompleter: (Symbol, Symbol) => SymbolLoader) {
+  def enterClassAndModule(root: Symbol, name: String, getCompleter: (Symbol, ModuleSymbol) => SymbolLoader) {
     val clazz = newClass(root, name)
     val module = newModule(root, name)
     val completer = getCompleter(clazz, module)
@@ -281,7 +281,7 @@ abstract class SymbolLoaders {
     }
   }
 
-  class ClassfileLoader(val classfile: AbstractFile, clazz: Symbol, module: Symbol) extends SymbolLoader with FlagAssigningCompleter {
+  class ClassfileLoader(val classfile: AbstractFile, clazz: Symbol, module: ModuleSymbol) extends SymbolLoader with FlagAssigningCompleter {
     private object classfileParser extends {
       val symbolTable: SymbolLoaders.this.symbolTable.type = SymbolLoaders.this.symbolTable
     } with ClassfileParser {

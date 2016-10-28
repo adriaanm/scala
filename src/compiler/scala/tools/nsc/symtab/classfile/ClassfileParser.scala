@@ -56,7 +56,7 @@ abstract class ClassfileParser {
   protected var file: AbstractFile     = _  // the class file
   protected var in: AbstractFileReader = _  // the class file reader
   protected var clazz: Symbol = _           // the class symbol containing dynamic members
-  protected var staticModule: Symbol = _    // the module symbol containing static members
+  protected var staticModule: ModuleSymbol = _ // the module symbol containing static members
   protected var instanceScope: Scope = _    // the scope of all instance definitions
   protected var staticScope: Scope = _      // the scope of all static definitions
   protected var pool: ThisConstantPool = _  // the classfile's constant pool
@@ -132,7 +132,7 @@ abstract class ClassfileParser {
     finally loaders.parentsLevel -= 1
   }
 
-  def parse(file: AbstractFile, clazz: Symbol, module: Symbol): Unit = {
+  def parse(file: AbstractFile, clazz: Symbol, module: ModuleSymbol): Unit = {
     this.file = file
     pushBusy(clazz) {
       this.in           = new AbstractFileReader(file)
