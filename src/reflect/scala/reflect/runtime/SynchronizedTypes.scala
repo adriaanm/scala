@@ -4,8 +4,9 @@ package runtime
 
 import scala.collection.mutable
 import java.lang.ref.{WeakReference => jWeakRef}
-import scala.ref.{WeakReference => sWeakRef}
+
 import scala.reflect.internal.Depth
+import scala.util.ref.WeakReference
 
 /** This trait overrides methods in reflect.internal, bracketing
  *  them in synchronized { ... } to make them thread-safe
@@ -47,7 +48,7 @@ private[reflect] trait SynchronizedTypes extends internal.Types { self: SymbolTa
   private lazy val _undoLog = mkThreadLocalStorage(new UndoLog)
   override def undoLog = _undoLog.get
 
-  private lazy val _intersectionWitness = mkThreadLocalStorage(perRunCaches.newWeakMap[List[Type], sWeakRef[Type]]())
+  private lazy val _intersectionWitness = mkThreadLocalStorage(perRunCaches.newWeakMap[List[Type], WeakReference[Type]]())
   override def intersectionWitness = _intersectionWitness.get
 
   private lazy val _subsametypeRecursions = mkThreadLocalStorage(0)

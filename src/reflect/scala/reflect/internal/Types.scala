@@ -7,8 +7,7 @@ package scala
 package reflect
 package internal
 
-import scala.collection.{ mutable, immutable }
-import scala.ref.WeakReference
+import scala.collection.{immutable, mutable}
 import mutable.ListBuffer
 import Flags._
 import scala.util.control.ControlThrowable
@@ -18,6 +17,7 @@ import util.ThreeValues._
 import Variance._
 import Depth._
 import TypeConstants._
+import scala.util.ref.WeakReference
 
 /* A standard type pattern match:
   case ErrorType =>
@@ -2131,7 +2131,7 @@ trait Types
 
     //OPT specialize hashCode
     override final def computeHashCode = {
-      import scala.util.hashing.MurmurHash3._
+      import scala.runtime.MurmurHash3._
       val hasArgs = args ne Nil
       var h = productSeed
       h = mix(h, pre.hashCode)

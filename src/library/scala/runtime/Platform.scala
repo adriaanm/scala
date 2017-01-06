@@ -6,10 +6,10 @@
 **                          |/                                          **
 \*                                                                      */
 
-package scala
-package compat
+package scala.runtime
 
-import java.lang.System
+import scala.collection.immutable
+import scala.collection.JavaConverters._
 
 object Platform {
 
@@ -107,7 +107,7 @@ object Platform {
    * On the JVM, this is equivalent to calling the method:
    * `java.lang.System.lineSeparator`
    */
-  val EOL = scala.util.Properties.lineSeparator
+  val EOL = System.lineSeparator()
 
   /** The current time in milliseconds. The time is counted since 1 January 1970
     * UTC.
@@ -130,4 +130,11 @@ object Platform {
   /** The name of the default character set encoding as a string */
   @inline
   def defaultCharsetName: String = java.nio.charset.Charset.defaultCharset.name
+
+  /** An immutable Map representing the current system environment.
+    *
+    *  @return   a Map containing the system environment variables.
+    */
+  def env: immutable.Map[String, String] = immutable.Map(System.getenv().asScala.toSeq: _*)
+
 }

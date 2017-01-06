@@ -11,6 +11,7 @@ package collection
 
 import immutable.List
 import scala.annotation.tailrec
+import scala.runtime.MurmurHash3
 
 /** A template trait for linear sequences of type `LinearSeq[A]`.
  *
@@ -35,7 +36,7 @@ trait LinearSeqLike[+A, +Repr <: LinearSeqLike[A, Repr]] extends SeqLike[A, Repr
 
   def seq: LinearSeq[A]
 
-  override def hashCode()= scala.util.hashing.MurmurHash3.seqHash(seq) // TODO - can we get faster via "linearSeqHash" ?
+  override def hashCode()= MurmurHash3.seqHash(seq) // TODO - can we get faster via "linearSeqHash" ?
 
   override /*IterableLike*/
   def iterator: Iterator[A] = new AbstractIterator[A] {

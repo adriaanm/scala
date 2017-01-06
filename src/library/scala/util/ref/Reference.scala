@@ -6,7 +6,7 @@
 **                          |/                                          **
 \*                                                                      */
 
-package scala.ref
+package scala.util.ref
 
 /**
  * @see `java.lang.ref.Reference`

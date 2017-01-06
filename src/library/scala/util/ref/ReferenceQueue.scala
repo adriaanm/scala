@@ -7,7 +7,7 @@
 \*                                                                      */
 
 
-package scala.ref
+package scala.util.ref
 
 /**
  *  @author Sean McDirmid

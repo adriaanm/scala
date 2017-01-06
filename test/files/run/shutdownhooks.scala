@@ -1,5 +1,8 @@
+import scala.reflect.internal.util
+import scala.reflect.internal.util.ShutdownHookThread
+
 object Test {
-  scala.sys.addShutdownHook {
+  ShutdownHookThread {
     Thread.sleep(1000)
     println("Test#shutdown.")
   }
@@ -30,7 +33,7 @@ object Test {
   def main(args: Array[String]): Unit = {
     daemon()
     nonDaemon()
-    scala.sys.addShutdownHook {
+    util.ShutdownHookThread {
       println("main#shutdown.")
     }
   }

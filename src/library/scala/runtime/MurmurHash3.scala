@@ -6,12 +6,13 @@
 **                          |/                                          **
 \*                                                                      */
 
-package scala
-package util.hashing
+package scala.runtime
 
-import java.lang.Integer.{ rotateLeft => rotl }
+import java.lang.Integer.{rotateLeft => rotl}
 
-private[hashing] class MurmurHash3 {
+import scala.math.Hashing
+
+class MurmurHash3 {
   /** Mix in a block of data into an intermediate hash value. */
   final def mix(hash: Int, data: Int): Int = {
     var h = mixLast(hash, data)

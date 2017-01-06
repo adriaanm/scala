@@ -1,5 +1,5 @@
 import scala.collection._
-import scala.compat.Platform.currentTime
+import scala.runtime.Platform.currentTime
 import scala.language.postfixOps
 
 object Test extends App {

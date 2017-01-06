@@ -65,7 +65,7 @@ class ScriptedTest {
   }
   @Test def `SI-8422 captured multi i/o`() = {
     import java.io.{ StringWriter, StringReader }
-    import scala.compat.Platform.EOL
+    import scala.runtime.Platform.EOL
     val engine = scripted
     val ctx    = new SimpleScriptContext
     val out    = new StringWriter

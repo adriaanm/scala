@@ -1,8 +1,4 @@
-
-
-
-import util.hashing.Hashing
-
+import scala.math.Hashing
 
 
 object Test {

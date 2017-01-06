@@ -6,8 +6,7 @@
 **                          |/                                          **
 \*                                                                      */
 
-package scala
-package util.hashing
+package scala.math
 
 import scala.annotation.implicitNotFound
 

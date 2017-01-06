@@ -11,9 +11,10 @@ package scala
 package math
 
 import scala.language.implicitConversions
+import java.math.{MathContext, BigDecimal => BigDec}
 
-import java.math.{ MathContext, BigDecimal => BigDec }
 import scala.collection.immutable.NumericRange
+import scala.runtime.MurmurHash3
 
 /**
  *  @author  Stephane Micheloud
@@ -419,7 +420,7 @@ extends ScalaNumber with ScalaNumericConversions with Serializable with Ordered[
       else if (isDecimalDouble) doubleValue.##
       else {
         val temp = bigDecimal.stripTrailingZeros
-        scala.util.hashing.MurmurHash3.mixLast( temp.scaleByPowerOfTen(temp.scale).toBigInteger.hashCode, temp.scale )
+        MurmurHash3.mixLast( temp.scaleByPowerOfTen(temp.scale).toBigInteger.hashCode, temp.scale )
       }
   }
 

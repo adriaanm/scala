@@ -11,7 +11,6 @@ package collection
 package concurrent
 
 import java.util.concurrent.atomic._
-import scala.util.hashing.Hashing
 import scala.util.control.ControlThrowable
 import generic._
 import scala.annotation.tailrec

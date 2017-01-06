@@ -3,24 +3,20 @@ package reflect
 package runtime
 
 import scala.language.existentials
-
-import scala.ref.WeakReference
 import scala.collection.mutable.WeakHashMap
-
 import java.lang.{Class => jClass, Package => jPackage}
-import java.lang.reflect.{
-  Method => jMethod, Constructor => jConstructor, Field => jField,
-  Member => jMember, Type => jType, TypeVariable => jTypeVariable,
-  GenericDeclaration, GenericArrayType, ParameterizedType, WildcardType, AnnotatedElement }
+import java.lang.reflect.{AnnotatedElement, GenericArrayType, GenericDeclaration, ParameterizedType, WildcardType, Constructor => jConstructor, Field => jField, Member => jMember, Method => jMethod, Type => jType, TypeVariable => jTypeVariable}
 import java.lang.annotation.{Annotation => jAnnotation}
 import java.io.IOException
-import scala.reflect.internal.{ MissingRequirementError, JavaAccFlags }
+
+import scala.reflect.internal.{JavaAccFlags, MissingRequirementError}
 import internal.pickling.ByteCodecs
 import internal.pickling.UnPickler
 import scala.collection.mutable.ListBuffer
 import internal.Flags._
 import ReflectionUtils._
-import scala.runtime.{ScalaRunTime, BoxesRunTime}
+import scala.runtime.{BoxesRunTime, ScalaRunTime}
+import scala.util.ref.WeakReference
 
 private[scala] trait JavaMirrors extends internal.SymbolTable with api.JavaUniverse with TwoWayCaches { thisUniverse: SymbolTable =>
 

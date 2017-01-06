@@ -6,15 +6,9 @@
 **                          |/                                          **
 \*                                                                      */
 
-package scala
-package util
+package scala.runtime
 
-
-
-
-
-
-package object hashing {
+object hashing {
 
   /** Fast multiplicative hash with a nice distribution.
    */

@@ -9,6 +9,8 @@
 package scala
 package collection
 
+import scala.runtime.MurmurHash3
+
 /** A template trait for indexed sequences of type `IndexedSeq[A]`.
  *
  *  $indexedSeqInfo
@@ -25,7 +27,6 @@ package collection
  *
  *  Indexed sequences do not add any new methods to `Seq`, but promise
  *  efficient implementations of random access patterns.
- *
  *  @tparam A    the element type of the $coll
  *  @tparam Repr the type of the actual $coll containing the elements.
  *  @author Martin Odersky
@@ -38,7 +39,7 @@ trait IndexedSeqLike[+A, +Repr] extends Any with SeqLike[A, Repr] {
   self =>
 
   def seq: IndexedSeq[A]
-  override def hashCode()= scala.util.hashing.MurmurHash3.seqHash(seq)  // TODO - can we get faster via "indexedSeqHash" ?
+  override def hashCode()= MurmurHash3.seqHash(seq)  // TODO - can we get faster via "indexedSeqHash" ?
 
   override protected[this] def thisCollection: IndexedSeq[A] = this.asInstanceOf[IndexedSeq[A]]
   override protected[this] def toCollection(repr: Repr): IndexedSeq[A] = repr.asInstanceOf[IndexedSeq[A]]

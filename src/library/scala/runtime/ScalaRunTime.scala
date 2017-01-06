@@ -9,14 +9,13 @@
 package scala
 package runtime
 
-import scala.collection.{ TraversableView, AbstractIterator, GenIterable }
+import scala.collection.{AbstractIterator, GenIterable, TraversableView}
 import scala.collection.mutable.WrappedArray
-import scala.collection.immutable.{ StringLike, NumericRange }
-import scala.collection.generic.{ Sorted, IsTraversableLike }
-import scala.reflect.{ ClassTag, classTag }
-import java.lang.{ Class => jClass }
-
-import java.lang.reflect.{ Method => JMethod }
+import scala.collection.immutable.{NumericRange, StringLike}
+import scala.collection.generic.{IsTraversableLike, Sorted}
+import scala.reflect.{ClassTag, classTag}
+import java.lang.{Class => jClass}
+import java.lang.reflect.{Method => JMethod}
 
 /** The object ScalaRunTime provides support methods required by
  *  the scala runtime.  All these methods should be considered
@@ -142,7 +141,7 @@ object ScalaRunTime {
   def _toString(x: Product): String =
     x.productIterator.mkString(x.productPrefix + "(", ",", ")")
 
-  def _hashCode(x: Product): Int = scala.util.hashing.MurmurHash3.productHash(x)
+  def _hashCode(x: Product): Int = MurmurHash3.productHash(x)
 
   /** A helper for case classes. */
   def typedProductIterator[T](x: Product): Iterator[T] = {

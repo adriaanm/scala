@@ -4,7 +4,7 @@ import org.junit.{Assert, Test}
 import org.junit.runner.RunWith
 import org.junit.runners.JUnit4
 
-import scala.ref.WeakReference
+import scala.util.ref.WeakReference
 
 @RunWith(classOf[JUnit4])
 class ListTest {

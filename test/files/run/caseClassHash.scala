@@ -1,3 +1,6 @@
+import scala.runtime
+import scala.runtime.MurmurHash3
+
 case class Foo[T](a: Boolean, b: Byte, c: Short, d: Char, e: Int, f: Long, g: Double, h: Float, i: AnyRef, j: T) { }
 
 object Test {
@@ -11,8 +14,8 @@ object Test {
 
     println("## method 1: " + foo1.##)
     println("## method 2: " + foo2.##)
-    println("   Murmur 1: " + scala.util.hashing.MurmurHash3.productHash(foo1))
-    println("   Murmur 2: " + scala.util.hashing.MurmurHash3.productHash(foo2))
+    println("   Murmur 1: " + MurmurHash3.productHash(foo1))
+    println("   Murmur 2: " + runtime.MurmurHash3.productHash(foo2))
   }
 }
 

@@ -3,8 +3,8 @@ package reflect
 package internal
 
 import scala.collection.mutable.WeakHashMap
-import scala.ref.WeakReference
 import scala.reflect.internal.Flags._
+import scala.util.ref.WeakReference
 
 // SI-6241: move importers to a mirror
 trait Importers { to: SymbolTable =>

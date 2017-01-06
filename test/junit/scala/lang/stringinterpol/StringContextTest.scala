@@ -9,6 +9,7 @@ import org.junit.runner.RunWith
 import org.junit.runners.JUnit4
 
 import scala.language.implicitConversions
+import scala.runtime.Platform
 import scala.tools.testing.AssertUtil._
 
 object StringContextTestUtils {
@@ -246,7 +247,7 @@ class StringContextTest {
       f" mind%n------%nmatter" ->
        """| mind
           |------
-          |matter""".stripMargin.lines.mkString(compat.Platform.EOL),
+          |matter""".stripMargin.lines.mkString(Platform.EOL),
       f"${i}%d %<d ${9}%d"   -> "42 42 9",
       f"${7}%d %<d ${9}%d"   -> "7 7 9",
       f"${7}%d %2$$d ${9}%d" -> "7 9 9",

@@ -7,13 +7,14 @@
 \*                                                                      */
 
 
-package scala.ref
+package scala.util.ref
 
 /**
  *  A wrapper class for java.lang.ref.WeakReference
  *  The new functionality is (1) results are Option values, instead of using null.
  *  (2) There is an extractor that maps the weak reference itself into an option.
- *  @author Sean McDirmid
+  *
+  *  @author Sean McDirmid
  */
 class WeakReference[+T <: AnyRef](value: T, queue: ReferenceQueue[T]) extends ReferenceWrapper[T] {
   def this(value: T) = this(value, null)

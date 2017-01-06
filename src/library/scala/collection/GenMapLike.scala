@@ -9,6 +9,8 @@
 package scala
 package collection
 
+import scala.runtime.MurmurHash3
+
 /** A trait for all maps upon which operations may be
  *  implemented in parallel.
  *
@@ -32,7 +34,7 @@ trait GenMapLike[K, +V, +Repr] extends GenIterableLike[(K, V), Repr] with Equals
 
   // This hash code must be symmetric in the contents but ought not
   // collide trivially.
-  override def hashCode()= scala.util.hashing.MurmurHash3.mapHash(seq)
+  override def hashCode()= MurmurHash3.mapHash(seq)
 
   /**  Returns the value associated with a key, or a default value if the key is not contained in the map.
    *   @param   key      the key.

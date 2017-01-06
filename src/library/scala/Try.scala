@@ -7,7 +7,6 @@
 \*                                                                      */
 
 package scala
-package util
 
 import scala.util.control.NonFatal
 
@@ -210,6 +209,8 @@ object Try {
       case NonFatal(e) => Failure(e)
     }
 }
+
+
 
 final case class Failure[+T](exception: Throwable) extends Try[T] {
   override def isFailure: Boolean = true

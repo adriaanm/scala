@@ -9,6 +9,8 @@
 package scala
 package collection
 
+import scala.runtime.MurmurHash3
+
 
 /** A template trait for sets which may possibly
  *  have their operations implemented in parallel.
@@ -127,5 +129,5 @@ extends GenIterableLike[A, Repr]
   // Calling map on a set drops duplicates: any hashcode collisions would
   // then be dropped before they can be added.
   // Hash should be symmetric in set entries, but without trivial collisions.
-  override def hashCode()= scala.util.hashing.MurmurHash3.setHash(seq)
+  override def hashCode()= MurmurHash3.setHash(seq)
 }
