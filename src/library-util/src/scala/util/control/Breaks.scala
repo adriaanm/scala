@@ -90,4 +90,4 @@ class Breaks {
  */
 object Breaks extends Breaks
 
-private class BreakControl extends ControlThrowable
+private class BreakControl extends scala.runtime.ControlThrowable

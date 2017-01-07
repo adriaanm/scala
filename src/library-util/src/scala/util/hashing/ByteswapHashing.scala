@@ -8,6 +8,8 @@
 
 package scala.util.hashing
 
+import scala.math.Hashing
+import scala.runtime.hashing.byteswap32
 
 /** A fast multiplicative hash by Phil Bagwell.
  */

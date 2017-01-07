@@ -360,6 +360,27 @@ lazy val library = configureAsSubproject(project)
                                            regexFileFilter(".*/runtime/StringAdd\\.scala"))))
   .settings(MiMa.settings)
 
+lazy val libraryUtil = configureAsSubproject(Project("library-util", file(".") / "src" / "library-util"))
+  .settings(generatePropertiesFileSettings)
+  .settings(Osgi.settings)
+  .settings(
+    name := "scala-library-util",
+    description := "Scala Util Library",
+    // macros in library+reflect are hard-wired to implementations with `FastTrack`.
+    incOptions := incOptions.value.withRecompileOnMacroDef(false),
+    Osgi.bundleName := "Scala Util Library",
+    Osgi.headers +=
+      "Import-Package" -> ("scala.*;version=\"${range;[==,=+);${ver}}\","+
+                           "*"),
+    fixPom(
+      "/project/name" -> <name>Scala Library Util</name>,
+      "/project/description" -> <description>Library for the Scala Programming Language</description>,
+      "/project/packaging" -> <packaging>jar</packaging>
+    )
+  )
+  .settings(MiMa.settings)
+  .dependsOn(library)
+
 lazy val reflect = configureAsSubproject(project)
   .settings(generatePropertiesFileSettings)
   .settings(Osgi.settings)

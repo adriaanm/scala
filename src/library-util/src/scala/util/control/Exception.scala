@@ -8,6 +8,10 @@
 
 package scala.util.control
 
+import scala.reflect.ClassTag
+import scala.reflect.classTag
+import scala.runtime.ControlThrowable
+
 /** Classes representing the components of exception handling.
  *
  *  Each class is independently composable.

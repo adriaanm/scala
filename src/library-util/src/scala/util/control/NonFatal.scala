@@ -8,6 +8,8 @@
 
 package scala.util.control
 
+import scala.runtime.ControlThrowable
+
 /**
  * Extractor of non-fatal Throwables. Will not match fatal errors like `VirtualMachineError`
  * (for example, `OutOfMemoryError` and `StackOverflowError`, subclasses of `VirtualMachineError`), `ThreadDeath`,
