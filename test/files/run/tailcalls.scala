@@ -415,8 +415,6 @@ object Test {
 
   // testing explicit tailcalls.
 
-  import scala.util.control.TailCalls._
-
   def isEven(xs: List[Int]): TailRec[Boolean] =
     if (xs.isEmpty) done(true) else tailcall(isOdd(xs.tail))
 

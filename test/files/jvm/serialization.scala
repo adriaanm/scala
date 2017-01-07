@@ -551,7 +551,6 @@ object Test {
 // Test classes in package scala.util
 
 object Test10_util {
-  import scala.util.Random
   def rep[A](n: Int)(f: => A) { if (n > 0) { f; rep(n-1)(f) } }
 
   {

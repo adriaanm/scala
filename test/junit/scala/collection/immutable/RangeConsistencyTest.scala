@@ -4,7 +4,6 @@ import org.junit.runner.RunWith
 import org.junit.runners.JUnit4
 import org.junit.Test
 import scala.math._
-import scala.util._
 
 /* Tests various ranges by making sure they all agree on the same answers. */
 @RunWith(classOf[JUnit4])

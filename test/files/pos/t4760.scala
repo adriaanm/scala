@@ -16,7 +16,6 @@ class Test {
   }
   def f(): Unit = {
     locally {
-      import scala.util.Properties.lineSeparator
     }
   }
 
@@ -26,7 +25,6 @@ class Test {
     5
   }
   locally { (x: Int) =>
-    import scala.util._
   }
   1 match {
     case 1 => import scala.concurrent._

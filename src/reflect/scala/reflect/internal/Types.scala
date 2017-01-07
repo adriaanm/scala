@@ -10,14 +10,13 @@ package internal
 import scala.collection.{immutable, mutable}
 import mutable.ListBuffer
 import Flags._
-import scala.util.control.ControlThrowable
 import scala.annotation.tailrec
 import util.Statistics
 import util.ThreeValues._
 import Variance._
 import Depth._
 import TypeConstants._
-import scala.util.ref.WeakReference
+import scala.runtime.ControlThrowable
 
 /* A standard type pattern match:
   case ErrorType =>

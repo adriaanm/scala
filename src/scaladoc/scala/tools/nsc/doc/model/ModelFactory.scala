@@ -10,7 +10,6 @@ import diagram._
 
 import scala.collection._
 import scala.tools.nsc.doc.html.page.diagram.{DotRunner}
-import scala.util.matching.Regex
 import scala.reflect.macros.internal.macroImpl
 import symtab.Flags
 

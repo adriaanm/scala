@@ -1,5 +1,4 @@
 import scala.tools.partest.Util.trace
-import scala.util.control.Exception.allCatch
 
 
 object Test extends App {

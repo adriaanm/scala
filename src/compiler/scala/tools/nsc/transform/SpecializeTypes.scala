@@ -8,8 +8,9 @@ package tools.nsc
 package transform
 
 import scala.tools.nsc.symtab.Flags
-import scala.collection.{ mutable, immutable }
+import scala.collection.{immutable, mutable}
 import scala.annotation.tailrec
+import scala.runtime.ControlThrowable
 
 /** Specialize code on types.
  *
@@ -1123,7 +1124,7 @@ abstract class SpecializeTypes extends InfoTransform with TypingTransformers {
     }).toList
   }
 
-  case object UnifyError extends scala.util.control.ControlThrowable
+  case object UnifyError extends ControlThrowable
   private[this] def unifyError(tp1: Any, tp2: Any): Nothing = {
     log("unifyError" + ((tp1, tp2)))
     throw UnifyError

@@ -6,8 +6,7 @@
 **                          |/                                          **
 \*                                                                      */
 
-package scala
-package util.control
+package scala.util.control
 
 /** Methods exported by this object implement tail calls via trampolining.
  *  Tail calling methods have to return their result using `done` or call the

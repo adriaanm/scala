@@ -6,8 +6,7 @@
 **                          |/                                          **
 \*                                                                      */
 
-package scala
-package util.control
+package scala.util.control
 
 /** A class that can be instantiated for the break control abstraction.
  *  Example usage:

@@ -7,8 +7,8 @@ package scala.tools.nsc
 package doc
 
 import reporters.Reporter
-import scala.util.control.ControlThrowable
 import scala.reflect.internal.util.BatchSourceFile
+import scala.runtime.ControlThrowable
 
 /** A documentation processor controls the process of generating Scala
   * documentation, which is as follows.

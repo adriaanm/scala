@@ -51,7 +51,7 @@ trait App extends DelayedInit {
 
   /** The init hook. This saves all initialization code for execution within `main`.
    *  This method is normally never called directly from user code.
-   *  Instead it is called as compiler-generated code for those classes and objects
+   *  Instead it is called as comptiler-generated code for those classes and objects
    *  (but not traits) that inherit from the `DelayedInit` trait and that do not
    *  themselves define a `delayedInit` method.
    *  @param body the initialization code to be stored for later execution
@@ -70,7 +70,7 @@ trait App extends DelayedInit {
   final def main(args: Array[String]) = {
     this._args = args
     for (proc <- initCode) proc()
-    if (util.Properties.propIsSet("scala.time")) {
+    if (System.getProperty("scala.time") != null) {
       val total = currentTime - executionStart
       Console.println("[total " + total + "ms]")
     }

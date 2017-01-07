@@ -19,7 +19,6 @@ import scala.reflect.internal.pickling.{ByteCodecs, PickleBuffer}
 import scala.reflect.io.NoAbstractFile
 import scala.tools.nsc.util.ClassPath
 import scala.tools.nsc.io.AbstractFile
-import scala.util.control.NonFatal
 
 /** This abstract class implements a class file parser.
  *

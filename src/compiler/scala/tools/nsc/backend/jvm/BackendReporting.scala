@@ -4,8 +4,8 @@ package backend.jvm
 import scala.tools.asm.tree.{AbstractInsnNode, MethodNode}
 import scala.tools.nsc.backend.jvm.BTypes.InternalName
 import scala.reflect.internal.util.Position
+import scala.runtime.ControlThrowable
 import scala.tools.nsc.settings.ScalaSettings
-import scala.util.control.ControlThrowable
 
 /**
  * Interface for emitting inline warnings. The interface is required because the implementation

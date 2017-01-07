@@ -264,7 +264,6 @@ class Scripted(@BeanProperty val factory: ScriptEngineFactory, settings: Setting
 object Scripted {
   import IMain.{ defaultSettings, defaultOut }
   import java.util.Arrays.asList
-  import scala.util.Properties.versionString
 
   class Factory extends ScriptEngineFactory {
     @BeanProperty val engineName      = "Scala REPL"

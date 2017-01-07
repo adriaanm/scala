@@ -1,4 +1,4 @@
-import scala.util.Random
+
 
 // Only y1 (val/val) should actually compile.
 object Test {

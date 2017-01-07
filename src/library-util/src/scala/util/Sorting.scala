@@ -6,8 +6,7 @@
 **                          |/                                          **
 \*                                                                      */
 
-package scala
-package util
+package scala.util
 
 import scala.reflect.ClassTag
 import scala.math.Ordering

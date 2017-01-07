@@ -6,7 +6,7 @@
 package scala.tools.nsc
 package interpreter
 
-import scala.util.control.ControlThrowable
+import scala.runtime.ControlThrowable
 import util.Exceptional.unwrap
 import util.stackTraceString
 

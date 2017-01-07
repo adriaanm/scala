@@ -1,13 +1,4 @@
-/*                     __                                               *\
-**     ________ ___   / /  ___     Scala API                            **
-**    / __/ __// _ | / /  / _ |    (c) 2003-2013, LAMP/EPFL             **
-**  __\ \/ /__/ __ |/ /__/ __ |    http://scala-lang.org/               **
-** /____/\___/_/ |_/____/_/ | |                                         **
-**                          |/                                          **
-\*                                                                      */
-
-package scala
-package util.control
+package scala.runtime
 
 /** A marker trait indicating that the `Throwable` it is mixed into is
  *  intended for flow control.
@@ -32,4 +23,6 @@ package util.control
  *
  *  @author Miles Sabin
  */
-trait ControlThrowable extends Throwable with NoStackTrace
+trait ControlThrowable extends Throwable {
+  override def fillInStackTrace(): Throwable = this
+}

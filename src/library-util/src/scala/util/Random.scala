@@ -6,8 +6,7 @@
 **                          |/                                          **
 \*                                                                      */
 
-package scala
-package util
+package scala.util
 
 import scala.collection.mutable.ArrayBuffer
 import scala.collection.generic.CanBuildFrom

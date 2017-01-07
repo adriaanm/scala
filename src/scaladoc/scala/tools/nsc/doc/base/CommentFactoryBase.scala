@@ -9,7 +9,6 @@ package base
 
 import base.comment._
 import scala.collection._
-import scala.util.matching.Regex
 import scala.reflect.internal.util.Position
 import scala.language.postfixOps
 

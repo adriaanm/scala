@@ -24,7 +24,6 @@ abstract class Pasted(prompt: String) {
   val ContinuePrompt  = replProps.continuePrompt
   val ContinueString  = replProps.continueText     // "     | "
   val anyPrompt = {
-    import scala.util.matching.Regex.quote
     s"""\\s*(?:${quote(PromptString.trim)}|${quote(AltPromptString.trim)})\\s*""".r
   }
 

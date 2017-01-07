@@ -15,7 +15,6 @@ package typechecker
 import scala.annotation.tailrec
 import scala.collection.mutable
 import mutable.{ LinkedHashMap, ListBuffer }
-import scala.util.matching.Regex
 import symtab.Flags._
 import scala.reflect.internal.util.{TriState, Statistics}
 import scala.language.implicitConversions

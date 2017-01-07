@@ -4,7 +4,6 @@ package diagram
 
 import model._
 import java.util.regex.Pattern
-import scala.util.matching.Regex
 
 /**
  *  This trait takes care of parsing @{inheritance, content}Diagram annotations

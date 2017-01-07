@@ -380,8 +380,8 @@ private[collection] object FlatHashTable {
    *
    *  See SI-5293.
    */
-  final def seedGenerator = new ThreadLocal[scala.util.Random] {
-    override def initialValue = new scala.util.Random
+  final def seedGenerator = new ThreadLocal[java.util.Random] {
+    override def initialValue = new java.util.Random
   }
 
   private object NullSentinel {

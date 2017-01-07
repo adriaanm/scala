@@ -15,8 +15,6 @@ import org.junit.Assert._
 
 import scala.collection.mutable.ListBuffer
 
-import scala.util.control.Exception._
-
 @RunWith(classOf[JUnit4])
 class ExceptionTest {
 

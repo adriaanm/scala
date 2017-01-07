@@ -9,7 +9,6 @@ import scala.concurrent.{
   Await
 }
 import scala.concurrent.blocking
-import scala.util.{ Try, Success, Failure }
 import scala.concurrent.duration.Duration
 import scala.reflect.{ classTag, ClassTag }
 import scala.tools.partest.TestUtil.intercept
@@ -114,7 +113,7 @@ trait FutureCallbacks extends TestBase {
   testOnSuccessWhenFailed()
   testOnFailure()
   testOnFailureWhenSpecialThrowable(5, new Error)
-  // testOnFailureWhenSpecialThrowable(6, new scala.util.control.ControlThrowable { })
+  // testOnFailureWhenSpecialThrowable(6, new scala.runtime.ControlThrowable { })
   //TODO: this test is currently problematic, because NonFatal does not match InterruptedException
   //testOnFailureWhenSpecialThrowable(7, new InterruptedException)
   testThatNestedCallbacksDoNotYieldStackOverflow()

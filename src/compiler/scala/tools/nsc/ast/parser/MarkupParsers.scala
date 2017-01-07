@@ -8,11 +8,11 @@ package ast.parser
 
 import scala.annotation.tailrec
 import scala.collection.mutable
-import mutable.{ Buffer, ArrayBuffer, ListBuffer }
-import scala.util.control.ControlThrowable
+import mutable.{ArrayBuffer, Buffer, ListBuffer}
 import scala.tools.nsc.util.CharArrayReader
 import scala.tools.nsc.ast.parser.xml.{MarkupParserCommon, Utility}
 import scala.reflect.internal.Chars.SU
+import scala.runtime.ControlThrowable
 
 // XXX/Note: many/most of the functions in here are almost direct cut and pastes
 // from another file - scala.xml.parsing.MarkupParser, it looks like.

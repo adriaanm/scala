@@ -1,3 +1,5 @@
+import scala.runtime.ControlThrowable
+
 object Test {
   def main(args: Array[String]) {
     try {
@@ -12,7 +14,7 @@ object Test {
           println("...")
         }
         catch {
-          case ct: scala.util.control.ControlThrowable => throw(ct)
+          case ct: ControlThrowable => throw(ct)
           case t: Throwable => t.printStackTrace()
         }
       }

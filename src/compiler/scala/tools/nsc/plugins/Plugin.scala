@@ -12,7 +12,6 @@ import scala.reflect.io.{ Directory, File, Path }
 import java.io.InputStream
 
 import scala.collection.mutable
-import scala.util.{ Try, Success, Failure }
 
 /** Information about a plugin loaded from a jar file.
  *
@@ -114,7 +113,6 @@ object Plugin {
   /** Use a class loader to load the plugin class.
    */
   def load(classname: String, loader: ClassLoader): Try[AnyClass] = {
-    import scala.util.control.NonFatal
     try {
       Success[AnyClass](loader loadClass classname)
     } catch {

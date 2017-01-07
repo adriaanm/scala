@@ -6,7 +6,6 @@ import org.junit.runner.RunWith
 import org.junit.runners.JUnit4
 
 import scala.tools.testing.AssertUtil
-import scala.util.Random
 
 /* Test for SI-8988 */
 @RunWith(classOf[JUnit4])

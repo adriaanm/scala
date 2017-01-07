@@ -6,8 +6,9 @@
 package scala.tools.nsc
 
 import java.io.PrintStream
+
 import io.Directory
-import scala.tools.nsc.reporters.{Reporter, ConsoleReporter}
+import scala.tools.nsc.reporters.{ConsoleReporter, Reporter}
 import scala.reflect.internal.util.FakePos
 import scala.tools.util.SocketServer
 import settings.FscSettings
@@ -192,7 +193,7 @@ object CompileServer {
 
     val i = args.indexOf("-p")
     if (i >= 0 && args.length > i + 1) {
-    	scala.util.control.Exception.ignoring(classOf[NumberFormatException]) {
+    	Exception.ignoring(classOf[NumberFormatException]) {
 		port = args(i + 1).toInt
     	}
     }

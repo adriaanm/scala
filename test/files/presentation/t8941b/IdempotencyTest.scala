@@ -5,6 +5,7 @@ package tests.core
 import reporters.{Reporter => CompilerReporter}
 import scala.tools.nsc.interactive.InteractiveReporter
 import scala.reflect.internal.util.SourceFile
+import scala.runtime.ControlThrowable
 
 /** Deterministically interrupts typechecking of `code` when a definition named
   * `MagicInterruptionMarker` is typechecked, and then performs a targeted
@@ -14,7 +15,7 @@ abstract class IdempotencyTest { self =>
   private val settings = new Settings
   settings.usejavacp.value = true
 
-  private object Break extends scala.util.control.ControlThrowable
+  private object Break extends ControlThrowable
 
   private val compilerReporter: CompilerReporter = new InteractiveReporter {
     override def compiler = self.compiler

@@ -62,14 +62,14 @@ object BigInt {
   /** Constructs a randomly generated positive BigInt that is probably prime,
    *  with the specified bitLength.
    */
-  def apply(bitlength: Int, certainty: Int, rnd: scala.util.Random): BigInt =
-    new BigInt(new BigInteger(bitlength, certainty, rnd.self))
+  def apply(bitlength: Int, certainty: Int, rnd: java.util.Random): BigInt =
+    new BigInt(new BigInteger(bitlength, certainty, rnd))
 
   /** Constructs a randomly generated BigInt, uniformly distributed over the
    *  range `0` to `(2 ^ numBits - 1)`, inclusive.
    */
-  def apply(numbits: Int, rnd: scala.util.Random): BigInt =
-    new BigInt(new BigInteger(numbits, rnd.self))
+  def apply(numbits: Int, rnd: java.util.Random): BigInt =
+    new BigInt(new BigInteger(numbits, rnd))
 
   /** Translates the decimal String representation of a BigInt into a BigInt.
    */
@@ -89,8 +89,8 @@ object BigInt {
 
   /** Returns a positive BigInt that is probably prime, with the specified bitLength.
    */
-  def probablePrime(bitLength: Int, rnd: scala.util.Random): BigInt =
-    new BigInt(BigInteger.probablePrime(bitLength, rnd.self))
+  def probablePrime(bitLength: Int, rnd: java.util.Random): BigInt =
+    new BigInt(BigInteger.probablePrime(bitLength, rnd))
 
   /** Implicit conversion from `Int` to `BigInt`.
    */

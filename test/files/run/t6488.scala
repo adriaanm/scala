@@ -1,6 +1,4 @@
 import scala.sys.process._
-import scala.util.Try
-import scala.util.Properties.{ javaHome, javaClassPath }
 import java.io.{ File, IOException }
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit._

@@ -6,7 +6,6 @@
 package scala.tools
 package reflect
 
-import scala.util.PropertiesTrait
 import java.security.AccessControlException
 
 /** For placing a wrapper function around property functions.

@@ -3,8 +3,6 @@ import scala.concurrent.duration._
 import scala.concurrent.duration.Duration.Inf
 import scala.collection._
 import scala.runtime.NonLocalReturnControl
-import scala.util.{Try,Success,Failure}
-
 
 
 class FutureTests extends MinimalScalaTest {

@@ -6,12 +6,7 @@
 **                          |/                                          **
 \*                                                                      */
 
-package scala
-package util
-package control
-
-import scala.reflect.{ ClassTag, classTag }
-import scala.language.implicitConversions
+package scala.util.control
 
 /** Classes representing the components of exception handling.
  *

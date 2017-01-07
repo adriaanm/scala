@@ -16,7 +16,6 @@ import scala.collection.mutable.ListBuffer
 import internal.Flags._
 import ReflectionUtils._
 import scala.runtime.{BoxesRunTime, ScalaRunTime}
-import scala.util.ref.WeakReference
 
 private[scala] trait JavaMirrors extends internal.SymbolTable with api.JavaUniverse with TwoWayCaches { thisUniverse: SymbolTable =>
 

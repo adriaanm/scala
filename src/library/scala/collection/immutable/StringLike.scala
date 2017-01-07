@@ -11,7 +11,6 @@ package collection
 package immutable
 
 import mutable.Builder
-import scala.util.matching.Regex
 import scala.math.ScalaNumber
 import scala.reflect.ClassTag
 

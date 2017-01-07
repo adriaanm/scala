@@ -144,7 +144,6 @@ object Jar {
     def underlying = manifest
     def attrs = manifest.getMainAttributes().asInstanceOf[AttributeMap].asScala withDefaultValue null
     def initialMainAttrs: Map[Attributes.Name, String] = {
-      import scala.util.Properties._
       Map(
         Name.MANIFEST_VERSION -> "1.0",
         ScalaCompilerVersion  -> versionNumberString

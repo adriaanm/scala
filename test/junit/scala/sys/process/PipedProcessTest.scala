@@ -8,7 +8,6 @@ import java.io.{InputStream, OutputStream, PipedInputStream, PipedOutputStream, 
 import java.lang.reflect.InvocationTargetException
 import scala.concurrent.{Await, Future}
 import scala.concurrent.ExecutionContext.Implicits.global
-import scala.util.control.Exception.ignoring
 
 // Each test normally ends in a moment, but for failure cases, waits two seconds.
 // SI-7350, SI-8768

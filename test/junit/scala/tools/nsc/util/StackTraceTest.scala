@@ -2,7 +2,6 @@
 package scala.tools.nsc.util
 
 import scala.language.reflectiveCalls
-import scala.util._
 import PartialFunction.cond
 import Properties.isJavaAtLeast
 

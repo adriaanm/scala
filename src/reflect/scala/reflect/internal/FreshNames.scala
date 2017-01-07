@@ -7,7 +7,6 @@ package reflect
 package internal
 
 import scala.reflect.internal.util.FreshNameCreator
-import scala.util.matching.Regex
 
 trait FreshNames { self: Names with StdNames =>
   // SI-6879 Keeps track of counters that are supposed to be globally unique

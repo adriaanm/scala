@@ -5,23 +5,24 @@
 package scala.tools.nsc
 package interactive
 
-import java.io.{ FileReader, FileWriter }
+import java.io.{FileReader, FileWriter}
+
 import scala.collection.mutable
-import mutable.{LinkedHashMap, HashSet, SynchronizedSet}
-import scala.util.control.ControlThrowable
+import mutable.{HashSet, LinkedHashMap, SynchronizedSet}
 import scala.tools.nsc.io.AbstractFile
 import scala.reflect.internal.util.SourceFile
 import scala.tools.nsc.reporters._
 import scala.tools.nsc.symtab._
 import scala.tools.nsc.typechecker.Analyzer
 import symtab.Flags.{ACCESSOR, PARAMACCESSOR}
-import scala.annotation.{ elidable, tailrec }
+import scala.annotation.{elidable, tailrec}
 import scala.language.implicitConversions
 import scala.tools.nsc.typechecker.Typers
-import scala.util.control.Breaks._
 import java.util.concurrent.ConcurrentHashMap
+
 import scala.collection.JavaConverters.mapAsScalaMapConverter
 import scala.reflect.internal.Chars.isIdentifierStart
+import scala.runtime.ControlThrowable
 
 /**
  * This trait allows the IDE to have an instance of the PC that

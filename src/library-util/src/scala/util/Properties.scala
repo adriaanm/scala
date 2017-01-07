@@ -7,8 +7,7 @@
 \*                                                                      */
 
 
-package scala
-package util
+package scala.util
 
 import java.io.{ IOException, PrintWriter }
 import java.util.jar.Attributes.{ Name => AttributeName }

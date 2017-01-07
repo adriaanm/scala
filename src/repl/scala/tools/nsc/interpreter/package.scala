@@ -10,8 +10,6 @@ import scala.reflect.{ classTag, ClassTag }
 import scala.reflect.runtime.{ universe => ru }
 import scala.reflect.{ClassTag, classTag}
 import scala.reflect.api.{Mirror, TypeCreator, Universe => ApiUniverse}
-import scala.util.control.Exception.catching
-import scala.util.Try
 
 /** The main REPL related classes and values are as follows.
  *  In addition to standard compiler classes Global and Settings, there are:

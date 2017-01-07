@@ -16,7 +16,6 @@ import scala.collection.mutable.WrappedArray
 import scala.collection.immutable.{::, List, Nil, NumericRange, Stream, StringLike}
 import scala.collection.generic.Sorted
 import scala.reflect.{ClassTag, classTag}
-import scala.util.control.ControlThrowable
 import scala.xml.{MetaData, Node}
 import java.lang.{Class => jClass}
 import java.lang.Double.doubleToLongBits

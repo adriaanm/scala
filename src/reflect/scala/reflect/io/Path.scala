@@ -11,7 +11,6 @@ import scala.language.implicitConversions
 
 import java.io.{ RandomAccessFile, File => JFile }
 import java.net.{ URI, URL }
-import scala.util.Random.alphanumeric
 import scala.reflect.internal.util.Statistics
 
 /** An abstraction for filesystem paths.  The differences between

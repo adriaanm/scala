@@ -6,7 +6,6 @@ package scala.tools.nsc.interpreter
 
 import scala.reflect.internal.util.StringOps
 import scala.tools.nsc.interpreter.Completion.Candidates
-import scala.util.control.NonFatal
 
 class PresentationCompilerCompleter(intp: IMain) extends Completion {
   import PresentationCompilerCompleter._

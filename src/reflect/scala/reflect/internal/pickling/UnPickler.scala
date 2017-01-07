@@ -17,7 +17,6 @@ import PickleFormat._
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
 import scala.annotation.switch
-import scala.util.control.NonFatal
 
 /** @author Martin Odersky
  *  @version 1.0

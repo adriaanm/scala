@@ -1,4 +1,4 @@
-import scala.util.matching.Regex
+
 
 object Test extends App {
   val input = "CURRENCY 5.80"

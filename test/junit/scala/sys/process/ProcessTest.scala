@@ -3,7 +3,6 @@ package scala.sys.process
 import java.io.ByteArrayInputStream
 // should test from outside the package to ensure implicits work
 //import scala.sys.process._
-import scala.util.Properties._
 
 import org.junit.runner.RunWith
 import org.junit.runners.JUnit4

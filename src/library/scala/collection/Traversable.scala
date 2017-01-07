@@ -11,7 +11,7 @@ package collection
 
 import generic._
 import mutable.Builder
-import scala.util.control.Breaks
+import scala.runtime.ControlThrowable
 
 /** A trait for traversable collections.
  *  All operations are guaranteed to be performed in a single-threaded manner.
@@ -92,7 +92,58 @@ trait Traversable[+A] extends TraversableLike[A, Traversable[A]]
 object Traversable extends TraversableFactory[Traversable] { self =>
 
   /** Provides break functionality separate from client code */
-  private[collection] val breaks: Breaks = new Breaks
+  private[collection] object breaks {
+    class BreakControl extends ControlThrowable
+    private val breakException = new BreakControl
+
+    /**
+      * A block from which one can exit with a `break`. The `break` may be
+      * executed further down in the call stack provided that it is called on the
+      * exact same instance of `Breaks`.
+      */
+    def breakable(op: => Unit) {
+      try {
+        op
+      } catch {
+        case ex: BreakControl =>
+          if (ex ne breakException) throw ex
+      }
+    }
+
+    sealed trait TryBlock[T] {
+      def catchBreak(onBreak: =>T): T
+    }
+
+    /**
+      * This variant enables the execution of a code block in case of a `break()`:
+      * {{{
+      * tryBreakable {
+      *   for (...) {
+      *     if (...) break()
+      *   }
+      * } catchBreak {
+      *   doCleanup()
+      * }
+      * }}}
+      */
+    def tryBreakable[T](op: =>T) = new TryBlock[T] {
+      def catchBreak(onBreak: =>T) = try {
+        op
+      } catch {
+        case ex: BreakControl =>
+          if (ex ne breakException) throw ex
+          onBreak
+      }
+    }
+
+    /**
+      * Break from dynamically closest enclosing breakable block using this exact
+      * `Breaks` instance.
+      *
+      * @note This might be different than the statically closest enclosing block!
+      */
+    def break(): Nothing = { throw breakException }
+  }
 
   /** $genericCanBuildFromInfo */
   implicit def canBuildFrom[A]: CanBuildFrom[Coll, A, Traversable[A]] = ReusableCBF.asInstanceOf[GenericCanBuildFrom[A]]

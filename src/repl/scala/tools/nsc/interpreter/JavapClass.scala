@@ -18,8 +18,6 @@ import javax.tools.{ Diagnostic, DiagnosticListener,
                      SimpleJavaFileObject, StandardLocation }
 import scala.reflect.io.File
 import scala.io.Source
-import scala.util.{ Try, Success, Failure }
-import scala.util.Properties.{ lineSeparator => EOL }
 import scala.collection.JavaConverters._
 import scala.collection.generic.Clearable
 import java.net.URL

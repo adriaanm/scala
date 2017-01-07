@@ -1,4 +1,4 @@
-import scala.util.Random.nextInt
+
 import scala.sys.error
 
 object Test extends App {

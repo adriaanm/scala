@@ -6,11 +6,7 @@
 **                          |/                                          **
 \*                                                                      */
 
-package scala
-package util.hashing
-
-import scala.math.Hashing
-import scala.runtime.hashing.byteswap32
+package scala.util.hashing
 
 
 /** A fast multiplicative hash by Phil Bagwell.

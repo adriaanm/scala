@@ -1,5 +1,4 @@
 import scala.concurrent._
-import scala.util._
 
 
 class Test {

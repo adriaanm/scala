@@ -6,10 +6,10 @@
 package scala.tools.nsc
 package typechecker
 
-import scala.collection.{ mutable, immutable }
-import scala.util.control.ControlThrowable
+import scala.collection.{immutable, mutable}
 import symtab.Flags._
 import scala.reflect.internal.Depth
+import scala.runtime.ControlThrowable
 
 /** This trait contains methods related to type parameter inference.
  *

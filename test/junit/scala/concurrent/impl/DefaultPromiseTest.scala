@@ -9,8 +9,6 @@ import org.junit.runners.JUnit4
 import scala.annotation.tailrec
 import scala.concurrent.ExecutionContext
 import scala.concurrent.impl.Promise.DefaultPromise
-import scala.util.{ Failure, Success, Try }
-import scala.util.control.NonFatal
 
 /** Tests for the private class DefaultPromise */
 @RunWith(classOf[JUnit4])

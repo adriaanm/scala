@@ -29,7 +29,6 @@ object Resulting {
  */
 trait HangingRepl extends ReplTest {
   import scala.language.postfixOps
-  import scala.util._
   import scala.concurrent._
   import scala.concurrent.duration._
   import ExecutionContext.Implicits._

@@ -8,7 +8,6 @@ package typechecker
 
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
-import scala.util.control.Exception.ultimately
 import symtab.Flags._
 import PartialFunction._
 import scala.annotation.tailrec

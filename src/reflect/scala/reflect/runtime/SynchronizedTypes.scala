@@ -6,7 +6,6 @@ import scala.collection.mutable
 import java.lang.ref.{WeakReference => jWeakRef}
 
 import scala.reflect.internal.Depth
-import scala.util.ref.WeakReference
 
 /** This trait overrides methods in reflect.internal, bracketing
  *  them in synchronized { ... } to make them thread-safe

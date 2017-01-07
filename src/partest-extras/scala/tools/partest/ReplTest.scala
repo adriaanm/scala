@@ -7,7 +7,6 @@ package scala.tools.partest
 
 import scala.tools.nsc.Settings
 import scala.tools.nsc.interpreter.{ ILoop, replProps }
-import scala.util.matching.Regex.Match
 
 /** A class for testing repl code.
  *  It filters the line of output that mentions a version number.

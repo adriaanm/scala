@@ -4,7 +4,6 @@ import scala.reflect.macros.runtime.Context
 import scala.collection.mutable.{ ListBuffer, Stack }
 import scala.reflect.internal.util.Position
 import scala.PartialFunction.cond
-import scala.util.matching.Regex.Match
 
 import java.util.Formattable
 

@@ -1,6 +1,5 @@
 import java.io.File
 import scala.tools.partest.ReplTest
-import scala.util.Properties.propOrElse
 
 /**
 * filter out absolute path to java

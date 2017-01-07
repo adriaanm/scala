@@ -4,7 +4,6 @@ object L extends Enumeration {
 
 class Foo {
   def foo(xs: List[L.Value]) {
-    import scala.util.control.Breaks.{break, breakable}
     println("START for " + xs)
     breakable {
       for (x <- xs) {

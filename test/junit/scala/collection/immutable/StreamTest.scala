@@ -5,9 +5,6 @@ import org.junit.runners.JUnit4
 import org.junit.Test
 import org.junit.Assert._
 
-import scala.util.Try
-import scala.util.ref.WeakReference
-
 @RunWith(classOf[JUnit4])
 class StreamTest {
 

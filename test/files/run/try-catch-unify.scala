@@ -1,7 +1,5 @@
 import util._
 
-import control.Exception._
-
 object Test {
   def main(args: Array[String]): Unit = {
     println(catching(classOf[NumberFormatException]) withTry ("Hi".toDouble))

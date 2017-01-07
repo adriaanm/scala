@@ -5,8 +5,6 @@
 
 package scala.tools.nsc
 
-import scala.util.ref.WeakReference
-
 /** An nsc sub-component.
  *
  *  @author Martin Odersky

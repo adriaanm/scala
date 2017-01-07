@@ -15,7 +15,6 @@ import java.net.URL
 
 import scala.reflect.runtime.ReflectionUtils.{ show, unwrapHandler }
 import ScalaClassLoader._
-import scala.util.control.Exception.{ catching }
 import scala.reflect.{ ClassTag, classTag }
 
 trait HasClassPath {
