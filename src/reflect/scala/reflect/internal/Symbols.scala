@@ -2050,18 +2050,28 @@ trait Symbols extends api.Symbols { self: SymbolTable =>
       // fields are not renamed, but the caseaccessor for a private constructor param is a non-private method derived
       // from the accessor in SyntheticMethods.addSyntheticMethods's caseTemplateBody
       // (it's not an accessor, but we set the referenced symbol to the field so we can correlate)
-      val fieldToAccessor =
-        caseFieldAccessorsUnsorted.map(x => ( if (x.isAccessor) x.accessed else x.asTerm.referenced, x )).toMap
+      val fieldToAccessor = caseFieldAccessorsUnsorted.map(acc => (caseFieldAccessorToField(acc), acc)).toMap
 
+      println(s"caseFieldAccessors = ${constrParamAccessors.filter(_.hasFlag(CASEACCESSOR))} in $fieldToAccessor ")
       // map fields (sorted) to their accessors (not sorted, as public accessors for private params are added later)
       constrParamAccessors.filter(_.hasFlag(CASEACCESSOR)) map fieldToAccessor
     }
 
+    private def caseFieldAccessorToField(x: Symbol) = {
+      if (x.isAccessor) x.accessed
+      else {
+        val referenced = x.asTerm.referenced
+        // we only know the referenced symbol if we synthesized the accessor during this run
+        if (referenced != NoSymbol) referenced.accessed
+        else {
+          val suffixIdx = x.name.lastIndexOf('$')
+          if (suffixIdx > 0 && x.name.toString.substring(suffixIdx + 1, x.name.length).chars.allMatch()) x.name.subName(0, suffixIdx)
+        }
+      }
+    }
+
     final def caseFieldAccessorNamed(name: Name) =
-      caseFieldAccessorsUnsorted.find { x =>
-        val field = if (x.isAccessor) x.accessed else x.asTerm.referenced
-        field.name.getterName == name
-      } getOrElse NoSymbol
+      caseFieldAccessorsUnsorted.find { x => caseFieldAccessorToField(x).name.getterName == name } getOrElse NoSymbol
 
     private final def caseFieldAccessorsUnsorted: List[Symbol] =
       (info.decls filter (_.isCaseAccessorMethod)).toList

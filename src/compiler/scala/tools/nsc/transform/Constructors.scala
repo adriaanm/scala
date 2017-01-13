@@ -492,9 +492,11 @@ abstract class Constructors extends Statics with Transform with ast.TreeDSL {
 
     // Map constructor parameter fields to the constructor parameter whose value they store
     val constrParamForAccessor =
-      clazz.constrParamAccessors map ( field =>
-        (field, constrParams.find(_.name == field.name.getterName).getOrElse(NoSymbol))
-      ) toMap
+      clazz.constrParamAccessors map { field =>
+        val param = constrParams.find(_.name == field.name.getterName).getOrElse(NoSymbol)
+        println(s"$clazz . $field -> $param")
+        (field, param)
+      } toMap
 
     // The constructor parameter corresponding to an accessor
     def parameter(acc: Symbol): Symbol = constrParamForAccessor(acc)

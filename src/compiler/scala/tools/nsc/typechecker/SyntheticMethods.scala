@@ -380,7 +380,7 @@ trait SyntheticMethods extends ast.TreeDSL {
         val original = ddef.symbol
         val newAcc = deriveMethod(ddef.symbol, name => context.unit.freshTermName(name + "$")) { newAcc =>
           newAcc.makePublic
-          newAcc.asTerm.referenced = original.accessed // for caseFieldAccessorNamed and caseFieldAccessors
+          newAcc.asTerm.referenced = original // for caseFieldAccessorNamed and caseFieldAccessors
           newAcc resetFlag (ACCESSOR | PARAMACCESSOR | OVERRIDE)
           ddef.rhs.duplicate
         }
