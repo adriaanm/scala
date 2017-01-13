@@ -72,7 +72,7 @@ trait Unapplies extends ast.TreeDSL {
     def caseFieldAccessorValue(selector: ValDef): Tree = {
       // Selecting by name seems to be the most straight forward way here to
       // avoid forcing the symbol of the case class in order to list the accessors.
-      def selectByName = Ident(param) DOT caseAccessorName(caseclazz.symbol, selector.name)
+      def selectByName = Ident(param) DOT caseclazz.symbol.caseFieldAccessorNamed(selector.name)
       // But, that gives a misleading error message in neg/t1422.scala, where a case
       // class has an illegal private[this] parameter. We can detect this by checking
       // the modifiers on the param accessors.

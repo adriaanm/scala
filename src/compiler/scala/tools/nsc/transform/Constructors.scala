@@ -490,16 +490,18 @@ abstract class Constructors extends Statics with Transform with ast.TreeDSL {
     }
     import constrInfo._
 
-    // The parameter accessor fields which are members of the class
-    val paramAccessors = clazz.constrParamAccessors
+    // Map constructor parameter fields to the constructor parameter whose value they store
+    val constrParamForAccessor =
+      clazz.constrParamAccessors map ( field =>
+        (field, constrParams.find(_.name == field.name.getterName).getOrElse(NoSymbol))
+      ) toMap
 
     // The constructor parameter corresponding to an accessor
-    def parameter(acc: Symbol): Symbol = parameterNamed(acc.unexpandedName.getterName)
+    def parameter(acc: Symbol): Symbol = constrParamForAccessor(acc)
 
-    // The constructor parameter with given name. This means the parameter
-    // has given name, or starts with given name, and continues with a `$` afterwards.
+    // The constructor parameter with given name.
     def parameterNamed(name: Name): Symbol = {
-      def matchesName(param: Symbol) = param.name == name || param.name.startsWith(name + nme.NAME_JOIN_STRING)
+      def matchesName(param: Symbol) = param.name == name || param.name.startsWith(name) && param.name.endChar == '$'
 
       (constrParams filter matchesName) match {
         case Nil    => abort(name + " not in " + constrParams)
@@ -679,7 +681,7 @@ abstract class Constructors extends Statics with Transform with ast.TreeDSL {
     populateOmittables()
 
     // Initialize all parameters fields that must be kept.
-    val paramInits = paramAccessors filter mustBeKept map { acc =>
+    val paramInits = constrParamForAccessor.toList collect { case (acc, param) if mustBeKept(acc) =>
       // Check for conflicting symbol amongst parents: see bug #1960.
       // It would be better to mangle the constructor parameter name since
       // it can only be used internally, but I think we need more robust name
@@ -688,7 +690,7 @@ abstract class Constructors extends Statics with Transform with ast.TreeDSL {
       if (conflict ne NoSymbol)
         reporter.error(acc.pos, "parameter '%s' requires field but conflicts with %s".format(acc.name, conflict.fullLocationString))
 
-      copyParam(acc, parameter(acc))
+      copyParam(acc, param)
     }
 
     /* Return a pair consisting of (all statements up to and including superclass and trait constr calls, rest) */

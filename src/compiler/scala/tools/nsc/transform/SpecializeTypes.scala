@@ -741,7 +741,8 @@ abstract class SpecializeTypes extends InfoTransform with TypingTransformers {
             enterMember(origGetter)
             debuglog("specialize accessor in %s: %s -> %s".format(sClass.name.decode, origGetter.name.decode, specGetter.name.decode))
 
-            clazz.caseFieldAccessors.find(_.name.startsWith(m.name)) foreach { cfa =>
+            val cfa = clazz.caseFieldAccessorNamed(m.name.getterName)
+            if (cfa != NoSymbol) {
               val cfaGetter = overrideIn(sClass, cfa)
               info(cfaGetter) = SpecializedAccessor(specVal)
               enterMember(cfaGetter)

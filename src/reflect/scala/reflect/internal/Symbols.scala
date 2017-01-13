@@ -2043,23 +2043,30 @@ trait Symbols extends api.Symbols { self: SymbolTable =>
      */
     final def caseFieldAccessors: List[Symbol] = {
       // We can't rely on the ordering of the case field accessors within decls --
-      // handling of non-public parameters seems to change the order (see SI-7035.)
+      // handling of non-public parameters seems to change the order (despite claims to the contrary in SyntheticMethods; see SI-7035.)
       //
-      // Luckily, the constrParamAccessors are still sorted properly, so sort the field-accessors using them
-      // (need to undo name-mangling, including the sneaky trailing whitespace)
-      //
-      // The slightly more principled approach of using the paramss of the
-      // primary constructor leads to cycles in, for example, pos/t5084.scala.
-      val primaryNames = constrParamAccessors map (_.name.dropLocal)
-      caseFieldAccessorsUnsorted.sortBy { acc =>
-        primaryNames indexWhere { orig =>
-          (acc.name == orig) || (acc.name startsWith (orig append "$"))
-        }
-      }
+      // Can't use primary constructor's param symbols as it leads to cycles in, for example, pos/t5084.scala.
+
+      // fields are not renamed, but the caseaccessor for a private constructor param is a non-private method derived
+      // from the accessor in SyntheticMethods.addSyntheticMethods's caseTemplateBody
+      // (it's not an accessor, but we set the referenced symbol to the field so we can correlate)
+      val fieldToAccessor =
+        caseFieldAccessorsUnsorted.map(x => ( if (x.isAccessor) x.accessed else x.asTerm.referenced, x )).toMap
+
+      // map fields (sorted) to their accessors (not sorted, as public accessors for private params are added later)
+      constrParamAccessors.filter(_.hasFlag(CASEACCESSOR)) map fieldToAccessor
     }
+
+    final def caseFieldAccessorNamed(name: Name) =
+      caseFieldAccessorsUnsorted.find { x =>
+        val field = if (x.isAccessor) x.accessed else x.asTerm.referenced
+        field.name.getterName == name
+      } getOrElse NoSymbol
+
     private final def caseFieldAccessorsUnsorted: List[Symbol] =
       (info.decls filter (_.isCaseAccessorMethod)).toList
 
+    // this is a pretty bad name -- these are the fields that underly primary constructor parameters
     final def constrParamAccessors: List[Symbol] =
       info.decls.filter(sym => !sym.isMethod && sym.isParamAccessor).toList
 

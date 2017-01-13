@@ -50,13 +50,6 @@ trait SyntheticMethods extends ast.TreeDSL {
     else if (clazz.isDerivedValueClass) valueSymbols
     else Nil
   }
-  private lazy val renamedCaseAccessors = perRunCaches.newMap[Symbol, mutable.Map[TermName, TermName]]()
-  /** Does not force the info of `caseclazz` */
-  final def caseAccessorName(caseclazz: Symbol, paramName: TermName) =
-    (renamedCaseAccessors get caseclazz).fold(paramName)(_(paramName))
-  final def clearRenamedCaseAccessors(caseclazz: Symbol): Unit = {
-    renamedCaseAccessors -= caseclazz
-  }
 
   /** Add the synthetic methods to case classes.
    */
@@ -85,7 +78,7 @@ trait SyntheticMethods extends ast.TreeDSL {
       else templ
     }
 
-    def accessors = clazz.caseFieldAccessors
+    val accessors = clazz.caseFieldAccessors
     val arity = accessors.size
     // If this is ProductN[T1, T2, ...], accessorLub is the lub of T1, T2, ..., .
     // !!! Hidden behind -Xexperimental due to bummer type inference bugs.
@@ -375,6 +368,9 @@ trait SyntheticMethods extends ast.TreeDSL {
      * Note that this must be done before the other method synthesis
      * because synthesized methods need refer to the new symbols.
      * Care must also be taken to preserve the case accessor order.
+     *
+     * TODO: something has gone awry, because the ordering is not preserved...
+     * (Then again, why should we rely on ordering or names if we can directly point to the right symbol?)
      */
     def caseTemplateBody(): List[Tree] = {
       val lb = ListBuffer[Tree]()
@@ -384,14 +380,13 @@ trait SyntheticMethods extends ast.TreeDSL {
         val original = ddef.symbol
         val newAcc = deriveMethod(ddef.symbol, name => context.unit.freshTermName(name + "$")) { newAcc =>
           newAcc.makePublic
+          newAcc.asTerm.referenced = original.accessed // for caseFieldAccessorNamed and caseFieldAccessors
           newAcc resetFlag (ACCESSOR | PARAMACCESSOR | OVERRIDE)
           ddef.rhs.duplicate
         }
         // TODO: shouldn't the next line be: `original resetFlag CASEACCESSOR`?
         ddef.symbol resetFlag CASEACCESSOR
         lb += logResult("case accessor new")(newAcc)
-        val renamedInClassMap = renamedCaseAccessors.getOrElseUpdate(clazz, mutable.Map() withDefault(x => x))
-        renamedInClassMap(original.name.toTermName) = newAcc.symbol.name.toTermName
       }
 
       (lb ++= templ.body ++= synthesize()).toList
