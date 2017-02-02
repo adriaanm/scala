@@ -3086,8 +3086,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
           || (looker.hasAccessorFlag && !accessed.hasAccessorFlag && accessed.isPrivate)
         )
 
-      def checkNoDoubleDefs: Unit = {
-        val scope = if (inBlock) context.scope else context.owner.info.decls
+      def checkNoDoubleDefs(scope: Scope): Unit = {
         var e = scope.elems
         while ((e ne null) && e.owner == scope) {
           var e1 = scope.lookupNextEntry(e)
@@ -3121,8 +3120,14 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
                   ((sym.getClass, sym.info, sym.ownerChain)) + "\n  " +
                   ((sym1.getClass, sym1.info, sym1.ownerChain)))
 
-              DefDefinedTwiceError(sym, sym1)
-              scope.unlink(e1) // need to unlink to avoid later problems with lub; see #2779
+              if (sym.isSynthetic == sym1.isSynthetic || !(sym.name == nme.apply || sym.name == nme.unapply))
+                DefDefinedTwiceError(sym, sym1)
+
+              // Two separate motivations for unlinking:
+              // 1. to avoid later problems with lub; see #2779
+              // 2. In case the clash was benign (it turns out we shouldn't have added the synthetic apply/unapply,
+              // which we couldn't know originally because we have to defer computing the signature of the symbol until after type completion is done
+              scope.unlink(if (sym.isSynthetic) e else e1)
             }
             e1 = scope.lookupNextEntry(e1)
           }
@@ -3130,8 +3135,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
         }
       }
 
-      def addSynthetics(stats: List[Tree]): List[Tree] = {
-        val scope = if (inBlock) context.scope else context.owner.info.decls
+      def addSynthetics(stats: List[Tree], scope: Scope): List[Tree] = {
         var newStats = new ListBuffer[Tree]
         var moreToAdd = true
         while (moreToAdd) {
@@ -3206,11 +3210,14 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
       val stats1 = stats mapConserve typedStat
       if (phase.erasedTypes) stats1
       else {
+        val scope = if (inBlock) context.scope else context.owner.info.decls
+
         // As packages are open, it doesn't make sense to check double definitions here. Furthermore,
         // it is expensive if the package is large. Instead, such double definitions are checked in `Namers.enterInScope`
         if (!context.owner.isPackageClass)
-          checkNoDoubleDefs
-        addSynthetics(stats1)
+          checkNoDoubleDefs(scope)
+
+        addSynthetics(stats1, scope)
       }
     }
 

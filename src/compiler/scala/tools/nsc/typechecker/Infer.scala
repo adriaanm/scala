@@ -58,6 +58,7 @@ trait Infer extends Checkable {
     def improves(sym1: Symbol, sym2: Symbol) = (
          (sym2 eq NoSymbol)
       || sym2.isError
+      || sym2.isSynthetic
       || (sym2 hasAnnotation BridgeClass)
       || isBetter(sym1, sym2)
     )
