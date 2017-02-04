@@ -16,7 +16,7 @@ import mutable.ArrayOps
 import generic.CanBuildFrom
 import scala.annotation.{ elidable, implicitNotFound }
 import scala.annotation.elidable.ASSERTION
-import scala.io.StdIn
+
 
 /** The `Predef` object provides definitions that are accessible in all Scala
  *  compilation units without explicit qualification.
@@ -545,20 +545,6 @@ private[scala] trait DeprecatedPredef {
   @deprecated("use `SeqCharSequence`", "2.11.0") def seqToCharSequence(xs: scala.collection.IndexedSeq[Char]): CharSequence = new SeqCharSequence(xs)
   @deprecated("use `ArrayCharSequence`", "2.11.0") def arrayToCharSequence(xs: Array[Char]): CharSequence                   = new ArrayCharSequence(xs)
 
-  @deprecated("use the method in `scala.io.StdIn`", "2.11.0") def readLine(): String                 = StdIn.readLine()
-  @deprecated("use the method in `scala.io.StdIn`", "2.11.0") def readLine(text: String, args: Any*) = StdIn.readLine(text, args: _*)
-  @deprecated("use the method in `scala.io.StdIn`", "2.11.0") def readBoolean()                      = StdIn.readBoolean()
-  @deprecated("use the method in `scala.io.StdIn`", "2.11.0") def readByte()                         = StdIn.readByte()
-  @deprecated("use the method in `scala.io.StdIn`", "2.11.0") def readShort()                        = StdIn.readShort()
-  @deprecated("use the method in `scala.io.StdIn`", "2.11.0") def readChar()                         = StdIn.readChar()
-  @deprecated("use the method in `scala.io.StdIn`", "2.11.0") def readInt()                          = StdIn.readInt()
-  @deprecated("use the method in `scala.io.StdIn`", "2.11.0") def readLong()                         = StdIn.readLong()
-  @deprecated("use the method in `scala.io.StdIn`", "2.11.0") def readFloat()                        = StdIn.readFloat()
-  @deprecated("use the method in `scala.io.StdIn`", "2.11.0") def readDouble()                       = StdIn.readDouble()
-  @deprecated("use the method in `scala.io.StdIn`", "2.11.0") def readf(format: String)              = StdIn.readf(format)
-  @deprecated("use the method in `scala.io.StdIn`", "2.11.0") def readf1(format: String)             = StdIn.readf1(format)
-  @deprecated("use the method in `scala.io.StdIn`", "2.11.0") def readf2(format: String)             = StdIn.readf2(format)
-  @deprecated("use the method in `scala.io.StdIn`", "2.11.0") def readf3(format: String)             = StdIn.readf3(format)
 }
 
 /** The `LowPriorityImplicits` class provides implicit values that
