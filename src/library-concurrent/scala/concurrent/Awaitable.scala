@@ -59,6 +59,3 @@ trait Awaitable[+T] {
   @throws(classOf[Exception])
   def result(atMost: Duration)(implicit permit: CanAwait): T
 }
-
-
-

@@ -177,5 +177,3 @@ object ExecutionContext {
    */
   def defaultReporter: Throwable => Unit = _.printStackTrace()
 }
-
-

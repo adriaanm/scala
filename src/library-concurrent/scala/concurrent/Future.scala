@@ -875,4 +875,3 @@ object Future {
 trait OnCompleteRunnable {
   self: Runnable =>
 }
-
