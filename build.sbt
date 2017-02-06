@@ -346,6 +346,26 @@ lazy val library = configureAsSubproject(project)
       val base = (unmanagedResourceDirectories in Compile).value
       base ** "*.txt" pair relativeTo(base)
     },
+    // this a way to make sure that classes from the library subprojects
+    // end up in library jar. note that we need to use LocalProject references
+    // (with strings) to deal with mutual recursion
+    products in Compile in packageBin := (products in Compile in packageBin).value ++
+      (products in Compile in packageBin in LocalProject("library-compat")).value ++
+      (products in Compile in packageBin in LocalProject("library-concurrent")).value ++
+      (products in Compile in packageBin in LocalProject("library-io")).value ++
+      (products in Compile in packageBin in LocalProject("library-ref")).value ++
+      (products in Compile in packageBin in LocalProject("library-sys")).value,
+    // Include the additional projects in the scaladoc JAR:
+    sources in Compile in doc ++= {
+      val sourceDirs =
+        (unmanagedSourceDirectories in Compile in LocalProject("library-compat")).value ++
+        (unmanagedSourceDirectories in Compile in LocalProject("library-concurrent")).value ++
+        (unmanagedSourceDirectories in Compile in LocalProject("library-io")).value ++
+        (unmanagedSourceDirectories in Compile in LocalProject("library-ref")).value ++
+        (unmanagedSourceDirectories in Compile in LocalProject("library-sys")).value
+
+      ((sourceDirs ** ("*.scala" || "*.java"))).get
+    },
     Osgi.headers += "Import-Package" -> "sun.misc;resolution:=optional, *",
     Osgi.jarlist := true,
     fixPom(
@@ -360,6 +380,27 @@ lazy val library = configureAsSubproject(project)
                                            regexFileFilter(".*/runtime/ScalaRunTime\\.scala") ||
                                            regexFileFilter(".*/runtime/StringAdd\\.scala"))))
   .settings(MiMa.settings)
+
+
+
+def librarySubProject(shortName: String, friendly: String) = {
+  val projectName = s"library-$shortName"
+  configureAsSubproject(Project(projectName, file(".") / "src" / projectName))
+    .settings(disableDocs)
+    .settings(disablePublishing)
+    .settings(
+      name := s"scala-$projectName",
+      description := friendly
+    )
+    .dependsOn(library)
+}
+
+lazy val libraryCompat     = librarySubProject("compat", "Scala Library Compat")
+lazy val libraryConcurrent = librarySubProject("concurrent", "Scala Library Concurrent")
+lazy val libraryIO         = librarySubProject("io", "Scala Library IO")
+lazy val libraryRef        = librarySubProject("ref", "Scala Library Ref")
+lazy val librarySys        = librarySubProject("sys", "Scala Library Sys").dependsOn(libraryConcurrent)
+
 
 lazy val reflect = configureAsSubproject(project)
   .settings(generatePropertiesFileSettings)
@@ -385,6 +426,8 @@ lazy val reflect = configureAsSubproject(project)
   )
   .settings(MiMa.settings)
   .dependsOn(library)
+  .dependsOn(libraryIO)
+  .dependsOn(libraryRef)
 
 lazy val compiler = configureAsSubproject(project)
   .settings(generatePropertiesFileSettings)
@@ -453,7 +496,7 @@ lazy val compiler = configureAsSubproject(project)
     apiURL := None,
     pomDependencyExclusions ++= List(("org.apache.ant", "ant"), ("org.scala-lang.modules", "scala-asm"))
   )
-  .dependsOn(library, reflect)
+  .dependsOn(library, libraryConcurrent, reflect)
 
 lazy val interactive = configureAsSubproject(project)
   .settings(disableDocs)
@@ -471,7 +514,7 @@ lazy val repl = configureAsSubproject(project)
     connectInput in run := true,
     run := (run in Compile).partialInput(" -usejavacp").evaluated // Automatically add this so that `repl/run` works without additional arguments.
   )
-  .dependsOn(compiler, interactive)
+  .dependsOn(librarySys, compiler, interactive)
 
 lazy val replJline = configureAsSubproject(Project("repl-jline", file(".") / "src" / "repl-jline"))
   .settings(disableDocs)
@@ -529,7 +572,7 @@ lazy val scaladoc = configureAsSubproject(project)
     libraryDependencies ++= Seq(scalaXmlDep, partestDep),
     includeFilter in unmanagedResources in Compile := "*.html" | "*.css" | "*.gif" | "*.png" | "*.js" | "*.txt" | "*.svg" | "*.eot" | "*.woff" | "*.ttf"
   )
-  .dependsOn(compiler)
+  .dependsOn(compiler, librarySys /* for scala-xml... NoStackTrace.scala*/)
 
 lazy val scalap = configureAsSubproject(project)
   .settings(
