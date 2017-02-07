@@ -11,7 +11,7 @@ package reflect
 package internal
 package util
 
-import scala.compat.Platform.EOL
+import java.lang.System.{lineSeparator => EOL}
 
 /** This object provides utility methods to extract elements
  *  from Strings.
