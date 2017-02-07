@@ -61,7 +61,7 @@ class ClassPathFactory(settings: Settings) {
     else if (file.isDirectory)
       new DirectorySourcePath(file.file)
     else
-      sys.error(s"Unsupported sourcepath element: $file")
+      throw new IllegalArgumentException(s"Unsupported sourcepath element: $file")
 }
 
 object ClassPathFactory {
@@ -73,6 +73,6 @@ object ClassPathFactory {
       else if (file.isDirectory)
         new DirectoryClassPath(file.file)
       else
-        sys.error(s"Unsupported classpath element: $file")
+        throw new IllegalArgumentException(s"Unsupported classpath element: $file")
   }
 }
