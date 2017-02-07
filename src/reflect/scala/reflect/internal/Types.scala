@@ -96,8 +96,8 @@ trait Types
   /** In case anyone wants to turn on type parameter bounds being used
    *  to seed type constraints.
    */
-  private final val propagateParameterBoundsToTypeVars = sys.props contains "scalac.debug.prop-constraints"
-  private final val sharperSkolems = sys.props contains "scalac.experimental.sharper-skolems"
+  private final val propagateParameterBoundsToTypeVars = System.getProperty("scalac.debug.prop-constraints") != null
+  private final val sharperSkolems = System.getProperty("scalac.experimental.sharper-skolems") != null
 
   protected val enableTypeVarExperimentals = settings.Xexperimental.value
 
