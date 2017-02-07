@@ -76,7 +76,7 @@ class ConsoleReporter(val settings: Settings, reader: BufferedReader, writer: Pr
       if (response == 'a' || response == 's') {
         (new Exception).printStackTrace()
         if (response == 'a')
-          sys exit 1
+          System.exit(1)
 
         writer.print("\n")
         writer.flush()
