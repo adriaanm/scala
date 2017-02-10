@@ -1119,6 +1119,7 @@ abstract class ClassfileParser {
           for (i <- 0 until entries) {
             val innerIndex, outerIndex, nameIndex = u2
             val jflags = readInnerClassFlags()
+            println(s"inner: $innerIndex=${pool getClassName innerIndex}/$outerIndex=${pool getClassName outerIndex}/$nameIndex=${pool getName nameIndex}")
             if (innerIndex != 0 && outerIndex != 0 && nameIndex != 0)
               innerClasses add InnerClassEntry(innerIndex, outerIndex, nameIndex, jflags)
           }
