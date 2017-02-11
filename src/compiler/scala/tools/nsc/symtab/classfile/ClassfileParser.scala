@@ -439,6 +439,9 @@ abstract class ClassfileParser {
 
     addEnclosingTParams(clazz)
     parseInnerClasses() // also sets the isScala / isScalaRaw flags, see r15956
+
+    println(innerClasses.entries.map(ice => (ice.external, ice.outer, ice.name, ice.externalName, ice.outerName, ice.originalName, ice.enclosing)))
+
     // get the class file parser to reuse scopes.
     instanceScope = newScope
     staticScope = newScope
@@ -1119,7 +1122,6 @@ abstract class ClassfileParser {
           for (i <- 0 until entries) {
             val innerIndex, outerIndex, nameIndex = u2
             val jflags = readInnerClassFlags()
-            println(s"inner: $innerIndex=${pool getClassName innerIndex}/$outerIndex=${pool getClassName outerIndex}/$nameIndex=${pool getName nameIndex}")
             if (innerIndex != 0 && outerIndex != 0 && nameIndex != 0)
               innerClasses add InnerClassEntry(innerIndex, outerIndex, nameIndex, jflags)
           }
@@ -1130,20 +1132,28 @@ abstract class ClassfileParser {
     in.bp = oldbp
   }
 
-  /** An entry in the InnerClasses attribute of this class file. */
+  /**
+    * An entry in the InnerClasses attribute of this class file.
+    *
+    * See https://docs.oracle.com/javase/specs/jvms/se8/html/jvms-4.html#jvms-4.7.6
+    */
   case class InnerClassEntry(external: Int, outer: Int, name: Int, jflags: JavaAccFlags) {
     def externalName = pool getClassName external
     def outerName    = pool getClassName outer
     def originalName = pool getName name
     def isModule     = originalName.isTermName
     def scope        = if (jflags.isStatic) staticScope else instanceScope
-    def enclosing    = if (jflags.isStatic) enclModule else enclClass
+    def enclosing    = if (jflags.isStatic) enclClass.companionModule else enclClass
 
-    // The name of the outer class, without its trailing $ if it has one.
-    private def strippedOuter = outerName.dropModule
-    private def isInner       = innerClasses contains strippedOuter
-    private def enclClass     = if (isInner) innerClasses innerSymbol strippedOuter else classNameToSymbol(strippedOuter)
-    private def enclModule    = enclClass.companionModule
+    private lazy val enclClass = {
+      // The name of the outer class, without its trailing $ if it has one.
+      val strippedOuter = outerName.dropModule
+      val cls=
+        if (innerClasses contains strippedOuter) innerClasses innerSymbol strippedOuter
+        else classNameToSymbol(strippedOuter)
+      println(s"enclClass of $externalName: $cls ")
+      cls
+    }
   }
 
   /** Return the class symbol for the given name. It looks it up in its outer class.
