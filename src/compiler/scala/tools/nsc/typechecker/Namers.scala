@@ -629,6 +629,14 @@ trait Namers extends MethodSynthesis {
       }
     }
 
+    class CompleterWrapper(completer: TypeCompleter) extends TypeCompleter {
+      val tree = completer.tree
+
+      override def complete(sym: Symbol): Unit = {
+        completer.complete(sym)
+      }
+    }
+
     def enterValDef(tree: ValDef) {
       if (noEnterGetterSetter(tree))
         assignAndEnterFinishedSymbol(tree)
@@ -689,8 +697,34 @@ trait Namers extends MethodSynthesis {
                 (!hasCopy, copyMethodCompleter(tree))
               }
               else if (sym hasFlag CASE) {
-                val synthSig = completerOf(tree)
+                val synthSig =
+                  new CompleterWrapper(completerOf(tree)) {  // captures context
+                    override def complete(sym: Symbol): Unit = {
+                      super.complete(sym)
+                      val userDefined = context.owner.info.member(sym.name).filter(_ != sym)
+                      val suppress = userDefined.exists && {
+                        val synthSig = sym.info
+                        userDefined.info match {
+                          case OverloadedType(pre, alternatives) => // TODO: do we have something for this already? the synthetic symbol can't be overloaded, right?
+                            alternatives.exists(alt => pre.memberInfo(alt) matches synthSig)
+                          case tp =>
+                            tp.matches(synthSig)
+                        }
+                      }
 
+                      if (suppress) {
+                        sym setInfo ErrorType
+                        sym setFlag IS_ERROR
+                        context.scope.unlink(sym)
+                      }
+                    }
+                  }
+
+
+                // ideally, instead of `true`: `!(userDefined.exists && userDefined.info.matches(synthSig))`
+                // that's a no go because of cycles -- deferring until our symbol's info is completed,
+                // which should be late enough (outside of the scope in which the owner is locked)
+                // to look at its owner's info and the infos of other symbols...
                 (true, synthSig)
               }
               else (true, completerOf(tree))
