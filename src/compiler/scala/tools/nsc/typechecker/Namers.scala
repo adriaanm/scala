@@ -731,10 +731,8 @@ trait Namers extends MethodSynthesis {
             }
             else (true, completerOf(tree))
 
-          if (doEnter)
-            enterInScope(sym)
+          (if (doEnter) enterInScope(sym) else sym) setInfo completer
 
-          sym setInfo completer
       }
 
     def enterClassDef(tree: ClassDef) {
