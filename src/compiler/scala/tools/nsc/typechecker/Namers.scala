@@ -8,6 +8,7 @@ package typechecker
 
 import scala.collection.mutable
 import scala.annotation.tailrec
+import scala.collection.mutable.ListBuffer
 import symtab.Flags._
 import scala.language.postfixOps
 import scala.reflect.internal.util.ListOfNil
@@ -585,7 +586,7 @@ trait Namers extends MethodSynthesis {
       noDuplicates(selectors map (_.rename), AppearsTwice)
     }
 
-    def enterCopyMethod(copyDef: DefDef): Symbol = {
+    def copyMethodCompleter(copyDef: DefDef): TypeCompleter = {
       val sym      = copyDef.symbol
       val lazyType = completerOf(copyDef)
 
@@ -604,11 +605,9 @@ trait Namers extends MethodSynthesis {
         )
       }
 
-      sym setInfo {
-        mkTypeCompleter(copyDef) { sym =>
-          assignParamTypes()
-          lazyType complete sym
-        }
+      mkTypeCompleter(copyDef) { sym =>
+        assignParamTypes()
+        lazyType complete sym
       }
     }
 
@@ -672,18 +671,37 @@ trait Namers extends MethodSynthesis {
 
     def enterTypeDef(tree: TypeDef) = assignAndEnterFinishedSymbol(tree)
 
-    def enterDefDef(tree: DefDef): Unit = tree match {
-      case DefDef(_, nme.CONSTRUCTOR, _, _, _, _) =>
-        assignAndEnterFinishedSymbol(tree)
-      case DefDef(mods, name, _, _, _, _) =>
-        val bridgeFlag = if (mods hasAnnotationNamed tpnme.bridgeAnnot) BRIDGE | ARTIFACT else 0
-        val sym = enterInScope(assignMemberSymbol(tree)) setFlag bridgeFlag
+    def enterDefDef(tree: DefDef): Unit =
+      tree match {
+        case DefDef(_, nme.CONSTRUCTOR, _, _, _, _) =>
+          assignAndEnterFinishedSymbol(tree)
+        case DefDef(mods, name, _, _, _, _) =>
+          val bridgeFlag = if (mods hasAnnotationNamed tpnme.bridgeAnnot) BRIDGE | ARTIFACT else 0
+          val sym = assignMemberSymbol(tree) setFlag bridgeFlag
 
-        if (name == nme.copy && sym.isSynthetic)
-          enterCopyMethod(tree)
-        else
-          sym setInfo completerOf(tree)
-    }
+          val (doEnter, completer) =
+            // copy/apply/unapply synthetics are added using the addIfMissing mechanism,
+            // which ensures the owner has its preliminary info (we may add another decl here)
+            if (sym hasFlag SYNTHETIC) {
+              if (name == nme.copy) {
+                val hasCopy = context.owner.info.member(nme.copy).exists // don't allow overloading because of default arguments
+
+                (!hasCopy, copyMethodCompleter(tree))
+              }
+              else if (sym hasFlag CASE) {
+                val synthSig = completerOf(tree)
+
+                (true, synthSig)
+              }
+              else (true, completerOf(tree))
+            }
+            else (true, completerOf(tree))
+
+          if (doEnter)
+            enterInScope(sym)
+
+          sym setInfo completer
+      }
 
     def enterClassDef(tree: ClassDef) {
       val ClassDef(mods, _, _, impl) = tree
@@ -892,7 +910,7 @@ trait Namers extends MethodSynthesis {
       self.symbol = context.scope enter sym
     }
 
-    private def templateSig(templ: Template): Type = {
+    private def templateSig(templ: Template): (Type, List[DefDef], Namer) = {
       val clazz = context.owner
 
       val parentTrees = typer.typedParentTypes(templ)
@@ -928,48 +946,63 @@ trait Namers extends MethodSynthesis {
       val templateNamer = newNamer(context.make(templ, clazz, decls))
       templateNamer enterSyms templ.body
 
-      // add apply and unapply methods to companion objects of case classes,
-      // unless they exist already; here, "clazz" is the module class
-      if (clazz.isModuleClass) {
+      val addIfMissing = ListBuffer.empty[DefDef]
+
+      // (1) if "clazz" is a module class that represents the companion object of a definition `case class C[Ts] (ps: Us)`
+      // (the case class definitions is identified by `clazz`'s `ClassForCaseCompanionAttachment`),
+      // enter the following unless a matching method exists:
+      //
+      //  1. if case class is not abstract, add
+      //   <synthetic> <case> def apply[Ts](ps: Us): C[Ts] = new C[Ts](ps)
+      //  2. add a method
+      //   <synthetic> <case> def unapply[Ts](x: C[Ts]) = <ret-val>
+      //  where <ret-val> is the caseClassUnapplyReturnValue of class C (see UnApplies.scala)
+      //
+      // This last condition requires special care, as we need to detect overloading without forcing too
+      //
+      // (2) if "clazz" is a case class (but not a module, excluding as well case objects, since we're in (1)'s else),
+      // add the copy method; this needs to be done here, not in SyntheticMethods, because
+      // the namer phase must traverse this copy method to create default getters for its parameters.
+      if (clazz hasFlag MODULE) { // (1)
+        // note that a user-defined companion object to a case class does not have the CASE flag
         clazz.attachments.get[ClassForCaseCompanionAttachment] foreach { cma =>
           val cdef = cma.caseClass
-          assert(cdef.mods.isCase, "expected case class: "+ cdef)
-          addApplyUnapply(cdef, templateNamer)
-        }
-      }
+          assert(cdef.mods.isCase, "expected case class: " + cdef)
 
-      // add the copy method to case classes; this needs to be done here, not in SyntheticMethods, because
-      // the namer phase must traverse this copy method to create default getters for its parameters.
-      // here, clazz is the ClassSymbol of the case class (not the module). (!clazz.hasModuleFlag) excludes
-      // the moduleClass symbol of the companion object when the companion is a "case object".
-      if (clazz.isCaseClass && !clazz.hasModuleFlag) {
+          if (!cdef.symbol.hasAbstractFlag)
+            addIfMissing += caseModuleApplyMeth(cdef)
+
+          val primaryConstructorArity = treeInfo.firstConstructorArgs(cdef.impl.body).size
+          if (primaryConstructorArity <= MaxTupleArity)
+            addIfMissing += caseModuleUnapplyMeth(cdef)
+
+        }
+
+        // if default getters (for constructor defaults) need to be added to that module, here's the namer
+        // to use. clazz is the ModuleClass. sourceModule works also for classes defined in methods.
+        clazz.sourceModule.attachments.get[ConstructorDefaultsAttachment] foreach { cda =>
+//          debuglog(s"Storing the template namer in the ConstructorDefaultsAttachment of ${clazz.sourceModule.debugLocationString}.")
+          cda.companionModuleClassNamer = templateNamer
+        }
+      } else if (clazz hasFlag CASE) { // (2)
         val modClass = companionSymbolOf(clazz, context).moduleClass
         modClass.attachments.get[ClassForCaseCompanionAttachment] foreach { cma =>
           val cdef = cma.caseClass
-          def hasCopy = (decls containsName nme.copy) || parents.exists(_ member nme.copy exists)
 
           // SI-5956 needs (cdef.symbol == clazz): there can be multiple class symbols with the same name
-          if (cdef.symbol == clazz && !hasCopy)
-            addCopyMethod(cdef, templateNamer)
+          if (cdef.symbol == clazz)
+            caseClassCopyMeth(cdef) foreach { addIfMissing += _ }
         }
       }
 
-      // if default getters (for constructor defaults) need to be added to that module, here's the namer
-      // to use. clazz is the ModuleClass. sourceModule works also for classes defined in methods.
-      val module = clazz.sourceModule
-      for (cda <- module.attachments.get[ConstructorDefaultsAttachment]) {
-        debuglog(s"Storing the template namer in the ConstructorDefaultsAttachment of ${module.debugLocationString}.")
-        cda.companionModuleClassNamer = templateNamer
-      }
-      val classTp = ClassInfoType(parents, decls, clazz)
-      pluginsTypeSig(classTp, templateNamer.typer, templ, WildcardType)
+      (pluginsTypeSig(ClassInfoType(parents, decls, clazz), templateNamer.typer, templ, WildcardType), addIfMissing.toList, templateNamer)
     }
 
     private def classSig(cdef: ClassDef): Type = {
       val clazz = cdef.symbol
       val ClassDef(_, _, tparams, impl) = cdef
       val tparams0   = typer.reenterTypeParams(tparams)
-      val resultType = templateSig(impl)
+      val (resultType, toAdd, templNamer) = templateSig(impl)
 
       val res = GenPolyType(tparams0, resultType)
       val pluginsTp = pluginsTypeSig(res, typer, cdef, WildcardType)
@@ -983,6 +1016,10 @@ trait Namers extends MethodSynthesis {
         // Don't force the owner's info lest we create cycles as in SI-6357.
         enclosingNamerWithScope(clazz.owner.rawInfo.decls).ensureCompanionObject(cdef)
       }
+
+      // we've already completed clazz with the preliminary info, now add some more, depending on what clazz.info looks like
+      toAdd foreach templNamer.enterSyntheticSym
+
       pluginsTp
     }
 
@@ -990,11 +1027,15 @@ trait Namers extends MethodSynthesis {
       val moduleSym = mdef.symbol
       // The info of both the module and the moduleClass symbols need to be assigned. monoTypeCompleter assigns
       // the result of typeSig to the module symbol. The module class info is assigned here as a side-effect.
-      val result = templateSig(mdef.impl)
+      val (result, toAdd, templNamer) = templateSig(mdef.impl)
       val pluginsTp = pluginsTypeSig(result, typer, mdef, WildcardType)
       // Assign the moduleClass info (templateSig returns a ClassInfoType)
       val clazz = moduleSym.moduleClass
       clazz setInfo pluginsTp
+
+      // we've already completed clazz with the preliminary info, now add some more, depending on what clazz.info looks like
+      toAdd foreach templNamer.enterSyntheticSym
+
       // clazz.tpe_* returns a `ModuleTypeRef(clazz)`, a typeRef that links to the module class `clazz`
       // (clazz.info would the ClassInfoType, which is not what should be assigned to the module symbol)
       clazz.tpe_*
@@ -1452,32 +1493,6 @@ trait Namers extends MethodSynthesis {
         expr setSymbol expr1.symbol setType expr1.tpe
         ImportType(expr1)
       }
-    }
-
-
-    /** Given a case class
-     *   case class C[Ts] (ps: Us)
-     *  Add the following methods to toScope:
-     *  1. if case class is not abstract, add
-     *   <synthetic> <case> def apply[Ts](ps: Us): C[Ts] = new C[Ts](ps)
-     *  2. add a method
-     *   <synthetic> <case> def unapply[Ts](x: C[Ts]) = <ret-val>
-     *  where <ret-val> is the caseClassUnapplyReturnValue of class C (see UnApplies.scala)
-     *
-     * @param cdef is the class definition of the case class
-     * @param namer is the namer of the module class (the comp. obj)
-     */
-    def addApplyUnapply(cdef: ClassDef, namer: Namer) {
-      if (!cdef.symbol.hasAbstractFlag)
-        namer.enterSyntheticSym(caseModuleApplyMeth(cdef))
-
-      val primaryConstructorArity = treeInfo.firstConstructorArgs(cdef.impl.body).size
-      if (primaryConstructorArity <= MaxTupleArity)
-        namer.enterSyntheticSym(caseModuleUnapplyMeth(cdef))
-    }
-
-    def addCopyMethod(cdef: ClassDef, namer: Namer) {
-      caseClassCopyMeth(cdef) foreach namer.enterSyntheticSym
     }
 
     /**
