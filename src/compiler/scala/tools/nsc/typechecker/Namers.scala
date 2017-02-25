@@ -271,26 +271,36 @@ trait Namers extends MethodSynthesis {
     /** Default implementation of `enterSym`.
      *  Can be overridden by analyzer plugins (see AnalyzerPlugins.pluginsEnterSym for more details)
      */
-    def standardEnterSym(tree: Tree): Context = {
-      def dispatch() = {
-        var returnContext = this.context
-        tree match {
-          case tree @ PackageDef(_, _)                       => enterPackage(tree)
-          case tree @ ClassDef(_, _, _, _)                   => enterClassDef(tree)
-          case tree @ ModuleDef(_, _, _)                     => enterModuleDef(tree)
-          case tree @ ValDef(_, _, _, _)                     => enterValDef(tree)
-          case tree @ DefDef(_, _, _, _, _, _)               => enterDefDef(tree)
-          case tree @ TypeDef(_, _, _, _)                    => enterTypeDef(tree)
-          case DocDef(_, defn)                               => enterSym(defn)
-          case tree @ Import(_, _)                           => enterImport(tree); returnContext = context.make(tree)
-          case _ =>
+    def standardEnterSym(tree: Tree): Context =
+      if (tree.symbol eq NoSymbol)
+        try
+          tree match {
+            case md: MemberDef    => enterMemberSym(md); context
+            case DocDef(_, defn)  => standardEnterSym(defn)
+            case tree: Import     =>
+              tree.symbol = createImportSymbol(tree)
+              context.make(tree)
+            case _ =>
+              context
+          }
+        catch {
+          case ex: TypeError =>
+            // H@ need to ensure that we handle only cyclic references
+            if (global.propagateCyclicReferences) throw ex
+            TypeSigError(tree, ex)
+            context
         }
-        returnContext
-      }
-      tree.symbol match {
-        case NoSymbol => try dispatch() catch typeErrorHandler(tree, this.context)
-        case sym      => enterExistingSym(sym, tree)
-      }
+      else
+        enterExistingSym(tree.symbol, tree)
+
+
+    private def enterMemberSym(tree: MemberDef): Unit = tree match {
+      case tree: PackageDef => enterPackage(tree)
+      case tree: ClassDef   => enterClassDef(tree)
+      case tree: ModuleDef  => enterModuleDef(tree)
+      case tree: ValDef     => enterValDef(tree)
+      case tree: DefDef     => enterDefDef(tree)
+      case tree: TypeDef    => assignAndEnterFinishedSymbol(tree)
     }
 
     def assignMemberSymbol(tree: MemberDef, mask: Long = -1L): Symbol = {
@@ -300,12 +310,9 @@ trait Namers extends MethodSynthesis {
       sym
     }
 
-    def assignAndEnterFinishedSymbol(tree: MemberDef): Symbol = {
-      val sym = enterInScope(assignMemberSymbol(tree))
-      sym setInfo completerOf(tree)
-      // log("[+info] " + sym.fullLocationString)
-      sym
-    }
+    // tree is either ValOrDefDef or TypeDef (NOT PackageDef)
+    def assignAndEnterFinishedSymbol(tree: MemberDef): Symbol =
+      enterInScope(assignMemberSymbol(tree)) setInfo completerOf(tree)
 
     def createMethod(accessQual: MemberDef, name: TermName, pos: Position, flags: Long): MethodSymbol = {
       val sym = owner.newMethod(name, pos, flags)
@@ -712,12 +719,6 @@ trait Namers extends MethodSynthesis {
       newNamer(context.make(tree, sym.moduleClass, sym.info.decls)) enterSyms tree.stats
     }
 
-    private def enterImport(tree: Import) = {
-      val sym = createImportSymbol(tree)
-      tree.symbol = sym
-    }
-
-    def enterTypeDef(tree: TypeDef) = assignAndEnterFinishedSymbol(tree)
 
     def enterDefDef(tree: DefDef): Unit =
       tree match {
