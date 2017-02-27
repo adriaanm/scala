@@ -3070,20 +3070,34 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
         while ((e ne null) && e.owner == scope) {
           var e1 = scope.lookupNextEntry(e)
           while ((e1 ne null) && e1.owner == scope) {
-            if (!accesses(e.sym, e1.sym) && !accesses(e1.sym, e.sym) &&
-                (e.sym.isType || inBlock || (e.sym.tpe matches e1.sym.tpe)))
-              // default getters are defined twice when multiple overloads have defaults. an
-              // error for this is issued in RefChecks.checkDefaultsInOverloaded
-              if (!e.sym.isErroneous && !e1.sym.isErroneous && !e.sym.hasDefault &&
-                  !e.sym.hasAnnotation(BridgeClass) && !e1.sym.hasAnnotation(BridgeClass)) {
-                log("Double definition detected:\n  " +
-                    ((e.sym.getClass, e.sym.info, e.sym.ownerChain)) + "\n  " +
-                    ((e1.sym.getClass, e1.sym.info, e1.sym.ownerChain)))
+            val sym = e.sym
+            val sym1 = e1.sym
+            def matchingMethods = {
+              // try to complete the synthetic one first
+              val (tp1, tp2) =
+                if (sym.isSynthetic) (sym.info, sym1.info)
+                else (sym1.info, sym.info)
 
-                DefDefinedTwiceError(e.sym, e1.sym)
+              // the info completer may have set the IS_ERROR flag
+              !(sym.isErroneous || sym1.isErroneous) && (tp1 matches tp2)
+            }
+            if (!(sym.isErroneous || sym1.isErroneous) &&
+                !accesses(sym, sym1) && !accesses(sym1, sym) &&
+                // note: matchingMethods forces the symbol's info, which means the next conjuncts may need to be checked after this
+                (sym.isType || inBlock || matchingMethods) &&
+                // default getters are defined twice when multiple overloads have defaults. an
+                // error for this is issued in RefChecks.checkDefaultsInOverloaded
+                !sym.hasDefault &&
+                !sym.hasAnnotation(BridgeClass) && !sym1.hasAnnotation(BridgeClass)) {
+                log("Double definition detected:\n  " +
+                    ((sym.getClass, sym.info, sym.ownerChain)) + "\n  " +
+                    ((sym1.getClass, sym1.info, sym1.ownerChain)))
+
+                DefDefinedTwiceError(sym, sym1)
                 scope.unlink(e1) // need to unlink to avoid later problems with lub; see #2779
               }
-              e1 = scope.lookupNextEntry(e1)
+
+            e1 = scope.lookupNextEntry(e1)
           }
           e = e.next
         }

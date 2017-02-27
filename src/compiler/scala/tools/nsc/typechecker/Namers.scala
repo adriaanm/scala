@@ -648,6 +648,9 @@ trait Namers extends MethodSynthesis {
       new CompleterWrapper(completerOf(un_applyDef)) {
         override def complete(sym: Symbol): Unit = {
           super.complete(sym)
+          if (!companionContext.owner.isInitialized)
+            println(s"completing info for owner ${companionContext.owner} of $sym")
+
           val userDefined = companionContext.owner.info.member(sym.name).filter(_ != sym)
           val suppress = userDefined.exists && {
             val synthSig = sym.info
