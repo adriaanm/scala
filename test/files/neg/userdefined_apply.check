@@ -1,0 +1,17 @@
+userdefined_apply.scala:8: error: overloaded method apply needs result type
+  private def apply(x: Int) = if (x > 0) new ClashOverloadNoSig(x) else apply("")
+                                                                             ^
+userdefined_apply.scala:13: error: method apply is defined twice
+  conflicting symbols both originated in file 'userdefined_apply.scala'
+case class ClashOverloadNoSig private (x: Int)
+           ^
+userdefined_apply.scala:18: error: overloaded method apply needs result type
+  private def apply(x: Int) = if (x > 0) ClashSigRec(1) else ???
+                                         ^
+userdefined_apply.scala:24: error: overloaded method apply needs result type
+ private def apply(x: Boolean) = if (x) NoClashNoSig(1) else ???
+                                        ^
+userdefined_apply.scala:30: error: overloaded method apply needs result type
+  private def apply(x: Boolean) = if (x) NoClashOverload(1) else apply("")
+                                         ^
+5 errors found

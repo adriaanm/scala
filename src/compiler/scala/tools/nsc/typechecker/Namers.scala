@@ -610,7 +610,15 @@ trait Namers extends MethodSynthesis {
       noDuplicates(selectors map (_.rename), AppearsTwice)
     }
 
-    def enterCopyMethod(copyDef: DefDef): Symbol = {
+    class CompleterWrapper(completer: TypeCompleter) extends TypeCompleter {
+      val tree = completer.tree
+
+      override def complete(sym: Symbol): Unit = {
+        completer.complete(sym)
+      }
+    }
+
+    def copyMethodCompleter(copyDef: DefDef): TypeCompleter = {
       val sym      = copyDef.symbol
       val lazyType = completerOf(copyDef)
 
@@ -629,13 +637,34 @@ trait Namers extends MethodSynthesis {
         )
       }
 
-      sym setInfo {
-        mkTypeCompleter(copyDef) { sym =>
-          assignParamTypes()
-          lazyType complete sym
-        }
+      mkTypeCompleter(copyDef) { sym =>
+        assignParamTypes()
+        lazyType complete sym
       }
     }
+
+    // for apply/unapply, which may need to disappear when they clash with a user-defined method of matching signature
+    def applyUnapplyMethodCompleter(un_applyDef: DefDef, companionContext: Context): TypeCompleter =
+      new CompleterWrapper(completerOf(un_applyDef)) {
+        override def complete(sym: Symbol): Unit = {
+          super.complete(sym)
+          val userDefined = companionContext.owner.info.member(sym.name).filter(_ != sym)
+          val suppress = userDefined.exists && {
+            val synthSig = sym.info
+            userDefined.info match {
+              // TODO: do we have something for this already? the synthetic symbol can't be overloaded, right?
+              case OverloadedType(pre, alternatives) => alternatives.exists(alt => pre.memberInfo(alt) matches synthSig)
+              case tp => tp.matches(synthSig)
+            }
+          }
+
+          if (suppress) {
+            sym setInfo ErrorType
+            sym setFlag IS_ERROR
+            companionContext.scope.unlink(sym)
+          }
+        }
+      }
 
     def completerOf(tree: Tree): TypeCompleter = {
       val mono = namerOf(tree.symbol) monoTypeCompleter tree
@@ -697,11 +726,17 @@ trait Namers extends MethodSynthesis {
         val bridgeFlag = if (mods hasAnnotationNamed tpnme.bridgeAnnot) BRIDGE | ARTIFACT else 0
         val sym = assignAndEnterSymbol(tree) setFlag bridgeFlag
 
-        if (name == nme.copy && sym.isSynthetic)
-          enterCopyMethod(tree)
-        else
-          sym setInfo completerOf(tree)
-    }
+        // copy/apply/unapply synthetics are added using the addIfMissing mechanism,
+        // which ensures the owner has its preliminary info (we may add another decl here)
+        val completer =
+          if (sym hasFlag SYNTHETIC) {
+            if (name == nme.copy) copyMethodCompleter(tree)
+            else if (sym hasFlag CASE) applyUnapplyMethodCompleter(tree, context)
+            else completerOf(tree)
+          } else completerOf(tree)
+
+        sym setInfo completer
+      }
 
     def enterClassDef(tree: ClassDef) {
       val ClassDef(mods, _, _, impl) = tree
@@ -1351,7 +1386,7 @@ trait Namers extends MethodSynthesis {
 
             val defTpt =
               // don't mess with tpt's of case copy default getters, because assigning something other than TypeTree()
-              // will break the carefully orchestrated naming/typing logic that involves enterCopyMethod and caseClassCopyMeth
+              // will break the carefully orchestrated naming/typing logic that involves copyMethodCompleter and caseClassCopyMeth
               if (meth.isCaseCopy) TypeTree()
               else {
                 // If the parameter type mentions any type parameter of the method, let the compiler infer the
