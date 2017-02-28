@@ -51,4 +51,3 @@ C(2,3)
   };
   Predef.println(C.apply(2, 3))
 }
-error!

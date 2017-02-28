@@ -13,10 +13,7 @@ object Test extends App {
   val tcasee = tb.typecheck(casee.tree)
   println(tcasee)
   val rtcasee = tb.untypecheck(tcasee)
-  try {
-    println(tb.eval(rtcasee))
-  } catch {
-    // this is the current behaviour, rather than the desired behavior; see SI-5467
-    case _: ToolBoxError => println("error!")
-  }
+  // not working: used to throw ToolBoxError (see SI-5467),
+  // now fails an assert in Symbol.info
+  // println(tb.eval(rtcasee))
 }
