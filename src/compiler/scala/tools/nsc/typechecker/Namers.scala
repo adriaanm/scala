@@ -1397,6 +1397,11 @@ trait Namers extends MethodSynthesis {
         checkDependencies check vparamSymss
       }
 
+      // Add a () parameter section if this overrides some method with () parameters
+      val vparamSymssOrEmptyParamsFromOverride =
+        if (overridden != NoSymbol && vparamSymss.isEmpty && overridden.alternatives.exists(_.info.isInstanceOf[MethodType])) ListOfNil // NOTEL must check `.info.isInstanceOf[MethodType]`, not `.isMethod`!
+        else vparamSymss
+
       val resTp = {
         // When return type is inferred, we don't just use resTpFromOverride -- it must be packed and widened.
         // Here, C.f has type String:
@@ -1404,18 +1409,19 @@ trait Namers extends MethodSynthesis {
         // using resTpFromOverride as expected type allows for the following (C.f has type A):
         //   trait T { def f: A }; class C extends T { implicit def b2a(t: B): A = ???; def f = new B }
         val resTpComputedUnlessGiven =
-          if (tpt.isEmpty) assignTypeToTree(ddef, typer, resTpFromOverride)
-          else resTpGiven
+          if (tpt.nonEmpty) resTpGiven
+          else {
+            // temporarily set the best signature we can provide, so that
+            meth.resetFlag(LOCKED)
+            meth.setInfo(deskolemizedPolySig(vparamSymssOrEmptyParamsFromOverride, WildcardType))
+            meth.setFlag(LOCKED)
+            assignTypeToTree(ddef, typer, resTpFromOverride)
+          }
 
         // #2382: return type of default getters are always @uncheckedVariance
         if (meth.hasDefault) resTpComputedUnlessGiven.withAnnotation(AnnotationInfo(uncheckedVarianceClass.tpe, List(), List()))
         else resTpComputedUnlessGiven
       }
-
-      // Add a () parameter section if this overrides some method with () parameters
-      val vparamSymssOrEmptyParamsFromOverride =
-        if (overridden != NoSymbol && vparamSymss.isEmpty && overridden.alternatives.exists(_.info.isInstanceOf[MethodType])) ListOfNil // NOTEL must check `.info.isInstanceOf[MethodType]`, not `.isMethod`!
-        else vparamSymss
 
       val methSig = deskolemizedPolySig(vparamSymssOrEmptyParamsFromOverride, resTp)
       pluginsTypeSig(methSig, typer, ddef, resTpGiven)
