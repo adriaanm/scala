@@ -1063,16 +1063,17 @@ trait Contexts { self: Analyzer =>
           found1
         }
         // we have a winner: record the symbol depth
-        def setDepthAt(se: ScopeEntry): Unit = symbolDepth = (cx.depth - cx.scope.nestingLevel) + se.depth
+        def setDepthAt(se: ScopeEntry): Unit =
+          symbolDepth = (cx.depth - cx.scope.nestingLevel) + se.depth
 
         // search enclosing scopes
         // cx.scope eq null arises during FixInvalidSyms in Duplicators
         while (defSym == NoSymbol && (cx ne NoContext) && (cx.scope ne null)) {
           pre    = cx.enclClass.prefix
           defSym = lookupInScope(cx.scope) match {
-            case Nil                  => searchPrefix
-            case se :: Nil            => setDepthAt(se) ; se.sym
-            case entries @ (hd :: tl) => setDepthAt(hd) ; newOverloaded(cx.owner, pre, entries)
+            case Nil       => searchPrefix
+            case se :: Nil => setDepthAt(se) ; se.sym
+            case entries   => setDepthAt(entries.head) ; newOverloaded(cx.owner, pre, entries)
           }
           if (!defSym.exists) cx = cx.outer // push further outward
         }
@@ -1088,49 +1089,6 @@ trait Contexts { self: Analyzer =>
 
         def lookupImport(imp: ImportInfo, requireExplicit: Boolean): Symbol =
           importedAccessibleSymbol(imp, name, requireExplicit, record = true) filter qualifies
-
-        def checkUpstreamImports(): Unit = {
-          // We continue walking down the imports as long as the tail is non-empty, which gives us:
-          //   imports  ==  imp1 :: imp2 :: _
-          // And at least one of the following is true:
-          //   - imp1 and imp2 are at the same depth
-          //   - imp1 is a wildcard import, so all explicit imports from outer scopes must be checked
-          def keepLooking = (
-               lookupError == null
-            && imports.tail.nonEmpty
-            && (sameDepth || !imp1Explicit)
-          )
-          // If we find a competitor imp2 which imports the same name, possible outcomes are:
-          //
-          //  - same depth, imp1 wild, imp2 explicit:        imp2 wins, drop imp1
-          //  - same depth, imp1 wild, imp2 wild:            ambiguity check
-          //  - same depth, imp1 explicit, imp2 explicit:    ambiguity check
-          //  - differing depth, imp1 wild, imp2 explicit:   ambiguity check
-          //  - all others:                                  imp1 wins, drop imp2
-          //
-          // The ambiguity check is: if we can verify that both imports refer to the same
-          // symbol (e.g. import foo.X followed by import foo._) then we discard imp2
-          // and proceed. If we cannot, issue an ambiguity error.
-          while (keepLooking) {
-            // If not at the same depth, limit the lookup to explicit imports.
-            // This is desirable from a performance standpoint (compare to
-            // filtering after the fact) but also necessary to keep the unused
-            // import check from being misled by symbol lookups which are not
-            // actually used.
-            val other = lookupImport(imp2, requireExplicit = !sameDepth)
-            def imp1wins() = { imports = imp1 :: imports.tail.tail }
-            def imp2wins() = { impSym = other ; imports = imports.tail }
-
-            if (!other.exists) // imp1 wins; drop imp2 and continue.
-              imp1wins()
-            else if (sameDepth && !imp1Explicit && imp2Explicit) // imp2 wins; drop imp1 and continue.
-              imp2wins()
-            else resolveAmbiguousImport(name, imp1, imp2) match {
-              case Some(imp) => if (imp eq imp1) imp1wins() else imp2wins()
-              case _         => lookupError = ambiguousImports(imp1, imp2)
-            }
-          }
-        }
 
         // Java: A single-type-import declaration d in a compilation unit c of package p
         // that imports a type named n shadows, throughout c, the declarations of:
@@ -1173,6 +1131,48 @@ trait Contexts { self: Analyzer =>
         if (defSym.exists)
           finishDefSym(defSym, pre)
         else if (impSym.exists) {
+          def checkUpstreamImports(): Unit = {
+            // We continue walking down the imports as long as the tail is non-empty, which gives us:
+            //   imports  ==  imp1 :: imp2 :: _
+            // And at least one of the following is true:
+            //   - imp1 and imp2 are at the same depth
+            //   - imp1 is a wildcard import, so all explicit imports from outer scopes must be checked
+            def keepLooking = (
+              lookupError == null
+                && imports.tail.nonEmpty
+                && (sameDepth || !imp1Explicit)
+              )
+            // If we find a competitor imp2 which imports the same name, possible outcomes are:
+            //
+            //  - same depth, imp1 wild, imp2 explicit:        imp2 wins, drop imp1
+            //  - same depth, imp1 wild, imp2 wild:            ambiguity check
+            //  - same depth, imp1 explicit, imp2 explicit:    ambiguity check
+            //  - differing depth, imp1 wild, imp2 explicit:   ambiguity check
+            //  - all others:                                  imp1 wins, drop imp2
+            //
+            // The ambiguity check is: if we can verify that both imports refer to the same
+            // symbol (e.g. import foo.X followed by import foo._) then we discard imp2
+            // and proceed. If we cannot, issue an ambiguity error.
+            while (keepLooking) {
+              // If not at the same depth, limit the lookup to explicit imports.
+              // This is desirable from a performance standpoint (compare to
+              // filtering after the fact) but also necessary to keep the unused
+              // import check from being misled by symbol lookups which are not
+              // actually used.
+              val other = lookupImport(imp2, requireExplicit = !sameDepth)
+              def imp1wins() = { imports = imp1 :: imports.tail.tail }
+              def imp2wins() = { impSym = other ; imports = imports.tail }
+
+              if (!other.exists) // imp1 wins; drop imp2 and continue.
+                imp1wins()
+              else if (sameDepth && !imp1Explicit && imp2Explicit) // imp2 wins; drop imp1 and continue.
+                imp2wins()
+              else resolveAmbiguousImport(name, imp1, imp2) match {
+                case Some(imp) => if (imp eq imp1) imp1wins() else imp2wins()
+                case _         => lookupError = ambiguousImports(imp1, imp2)
+              }
+            }
+          }
           checkUpstreamImports()
           // optimization: don't write out package prefixes
           finish(resetPos(imp1.qual.duplicate), impSym)
