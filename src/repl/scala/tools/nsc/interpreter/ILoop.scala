@@ -869,39 +869,22 @@ class ILoop(in0: Option[BufferedReader], protected val out: JPrintWriter)
    *  The constructor of the InteractiveReader must take a Completion strategy,
    *  supplied as a `() => Completion`; the Completion object provides a concrete Completer.
    */
-  def chooseReader(settings: Settings): InteractiveReader = {
-    if (settings.Xnojline || Properties.isEmacsShell) SimpleReader()
-    else {
-      type Completer = () => Completion
-      type ReaderMaker = Completer => InteractiveReader
+  def chooseReader(settings: Settings): InteractiveReader =
+    (if (settings.Xnojline || Properties.isEmacsShell) Failure(new NoSuchElementException("User requested simple reader."))
+    else Try {
+      val className =
+        System.getProperty("scala.repl.reader", "scala.tools.nsc.interpreter.jline.InteractiveReader")
 
-      def instantiater(className: String): ReaderMaker = completer => {
-        if (settings.debug) Console.println(s"Trying to instantiate an InteractiveReader from $className")
-        Class.forName(className).getConstructor(classOf[Completer]).
-          newInstance(completer).
-          asInstanceOf[InteractiveReader]
-      }
+      if (settings.debug) Console.println(s"Trying to instantiate an InteractiveReader from $className")
 
-      def mkReader(maker: ReaderMaker) = maker { () =>
-        if (settings.noCompletion) NoCompletion else new ReplCompletion(intp)
-      }
+      val readerConstructor =
+        Class.forName(className).getConstructor(classOf[() => Completion])
 
-      def internalClass(kind: String) = s"scala.tools.nsc.interpreter.$kind.InteractiveReader"
-      val readerClasses = sys.props.get("scala.repl.reader").toStream ++ Stream(internalClass("jline"), internalClass("jline_embedded"))
-      val readers = readerClasses map (cls => Try { mkReader(instantiater(cls)) })
+      readerConstructor.newInstance(
+        if (settings.noCompletion) () => NoCompletion else () => new ReplCompletion(intp)
+      ).asInstanceOf[InteractiveReader]
+    }) getOrElse SimpleReader()
 
-      val reader = (readers collect { case Success(reader) => reader } headOption) getOrElse SimpleReader()
-
-      if (settings.debug) {
-        val readerDiags = (readerClasses, readers).zipped map {
-          case (cls, Failure(e)) => s"  - $cls --> \n\t" + scala.tools.nsc.util.stackTraceString(e) + "\n"
-          case (cls, Success(_)) => s"  - $cls OK"
-        }
-        Console.println(s"All InteractiveReaders tried: ${readerDiags.mkString("\n","\n","\n")}")
-      }
-      reader
-    }
-  }
 
   /** Start an interpreter with the given settings.
    *  @return true if successful
