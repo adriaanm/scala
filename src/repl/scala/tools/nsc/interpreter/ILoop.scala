@@ -2,8 +2,7 @@
  * Copyright 2005-2016 LAMP/EPFL
  * @author Alexander Spoon
  */
-package scala
-package tools.nsc
+package scala.tools.nsc
 package interpreter
 
 import scala.language.{ implicitConversions, existentials }
@@ -48,9 +47,6 @@ class ILoop(in0: Option[BufferedReader], protected val out: JPrintWriter)
   def this(in0: BufferedReader, out: JPrintWriter) = this(Some(in0), out)
   def this() = this(None, new JPrintWriter(Console.out, true))
 
-  @deprecated("use `intp` instead.", "2.9.0") def interpreter = intp
-  @deprecated("use `intp` instead.", "2.9.0") def interpreter_= (i: Interpreter): Unit = intp = i
-
   var in: InteractiveReader = _   // the input stream from which commands come
   var settings: Settings = _
   var intp: IMain = _
@@ -74,10 +70,6 @@ class ILoop(in0: Option[BufferedReader], protected val out: JPrintWriter)
 
   lazy val power = new Power(intp, new StdReplVals(this))(tagOfStdReplVals, classTag[StdReplVals])
   def history = in.history
-
-  // classpath entries added via :cp
-  @deprecated("use reset, replay or require to update class path", since = "2.11.0")
-  var addedClasspath: String = ""
 
   /** A reverse list of commands to replay if the user requests a :replay */
   var replayCommandStack: List[String] = Nil
@@ -116,9 +108,6 @@ class ILoop(in0: Option[BufferedReader], protected val out: JPrintWriter)
 
   /** Create a new interpreter. */
   def createInterpreter() {
-    if (addedClasspath != "")
-      settings.classpath append addedClasspath
-
     intp = new ILoopInterpreter
   }
 
@@ -608,18 +597,6 @@ class ILoop(in0: Option[BufferedReader], protected val out: JPrintWriter)
     else File(filename).printlnAll(replayCommands: _*)
   )
 
-  @deprecated("use reset, replay or require to update class path", since = "2.11.0")
-  def addClasspath(arg: String): Unit = {
-    val f = File(arg).normalize
-    if (f.exists) {
-      addedClasspath = ClassPath.join(addedClasspath, f.path)
-      intp.addUrlsToClassPath(f.toURI.toURL)
-      echo("Added '%s' to classpath.".format(f.path, intp.global.classPath.asClassPathString))
-      repldbg("Added '%s'.  Your new classpath is:\n\"%s\"".format(f.path, intp.global.classPath.asClassPathString))
-    }
-    else echo("The path '" + f + "' doesn't seem to exist.")
-  }
-
   /** Adds jar file to the current classpath. Jar will only be added if it
    *  does not contain classes that already exist on the current classpath.
    *
@@ -658,7 +635,6 @@ class ILoop(in0: Option[BufferedReader], protected val out: JPrintWriter)
     if (!f.exists) echo(s"The path '$f' doesn't seem to exist.")
     else if (existingClass.nonEmpty) echo(s"The path '$f' cannot be loaded, it contains a classfile that already exists on the classpath: ${existingClass.get}")
     else {
-      addedClasspath = ClassPath.join(addedClasspath, f.path)
       intp.addUrlsToClassPath(f.toURI.toURL)
       echo("Added '%s' to classpath.".format(f.path, intp.global.classPath.asClassPathString))
       repldbg("Added '%s'.  Your new classpath is:\n\"%s\"".format(f.path, intp.global.classPath.asClassPathString))
@@ -1002,8 +978,6 @@ class ILoop(in0: Option[BufferedReader], protected val out: JPrintWriter)
     }
   }
 
-  @deprecated("use `process` instead", "2.9.0")
-  def main(settings: Settings): Unit = process(settings) //used by sbt
 }
 
 object ILoop {
