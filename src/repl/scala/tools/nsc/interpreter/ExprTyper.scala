@@ -10,7 +10,7 @@ trait ExprTyper {
   val repl: IMain
 
   import repl._
-  import global.{ reporter => _, Import => _, _ }
+  import global.{ phase, Symbol, Type, exitingTyper, NoSymbol, NoType, NoPrefix }
   import naming.freshInternalVarName
 
   private def doInterpret(code: String): IR.Result = {

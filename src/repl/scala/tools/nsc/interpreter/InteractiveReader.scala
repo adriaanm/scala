@@ -3,13 +3,13 @@
  * @author Stepan Koltsov
  */
 
-package scala.tools.nsc
-package interpreter
+package scala.tools.nsc.interpreter
 
 import java.io.IOException
-import session.History
+
+import scala.tools.nsc.Properties.isMac
 import InteractiveReader._
-import Properties.isMac
+import session.History
 
 /** Reads lines from an input stream */
 trait InteractiveReader {
@@ -54,8 +54,8 @@ object InteractiveReader {
  *  The user can enter text or a `:paste` command.
  */
 class SplashLoop(reader: InteractiveReader, prompt: String) extends Runnable {
-  import java.util.concurrent.SynchronousQueue
   import java.lang.System.{lineSeparator => EOL}
+  import java.util.concurrent.SynchronousQueue
 
   private val result = new SynchronousQueue[Option[String]]
   @volatile private var running: Boolean = _

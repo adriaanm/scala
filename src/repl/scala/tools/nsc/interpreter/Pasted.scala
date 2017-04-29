@@ -3,8 +3,7 @@
  * @author Paul Phillips
  */
 
-package scala.tools.nsc
-package interpreter
+package scala.tools.nsc.interpreter
 
 /** If it looks like they're pasting in a scala interpreter
  *  transcript, remove all the formatting we inserted so we

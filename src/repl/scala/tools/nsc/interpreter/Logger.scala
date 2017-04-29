@@ -6,9 +6,11 @@
 package scala.tools.nsc
 package interpreter
 
+import java.io.PrintWriter
+
 trait Logger {
   def isInfo: Boolean
   def isDebug: Boolean
   def isTrace: Boolean
-  def out: JPrintWriter
+  def out: PrintWriter
 }

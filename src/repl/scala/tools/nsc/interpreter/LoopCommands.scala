@@ -3,10 +3,7 @@
  * @author  Paul Phillips
  */
 
-package scala
-package tools
-package nsc
-package interpreter
+package scala.tools.nsc.interpreter
 
 import scala.language.implicitConversions
 

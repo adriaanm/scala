@@ -8,14 +8,14 @@ package interpreter
 
 import util.returning
 
-trait Delimited {
-  self: Parsed =>
-
-  def delimited: Char => Boolean
-  def escapeChars: List[Char] = List('\\')
-
+/** One instance of a command buffer.
+ */
+class Parsed private (
+  val buffer: String,
+  val cursor: Int,
+  val delimited: Char => Boolean) {
   /** Break String into args based on delimiting function.
-   */
+    */
   protected def toArgs(s: String): List[String] =
     if (s == "") Nil
     else (s indexWhere isDelimiterChar) match {
@@ -24,16 +24,8 @@ trait Delimited {
     }
 
   def isDelimiterChar(ch: Char) = delimited(ch)
-  def isEscapeChar(ch: Char): Boolean = escapeChars contains ch
-}
+  def isEscapeChar(ch: Char): Boolean = ch == '\\'
 
-/** One instance of a command buffer.
- */
-class Parsed private (
-  val buffer: String,
-  val cursor: Int,
-  val delimited: Char => Boolean
-) extends Delimited {
   def isEmpty       = args.isEmpty
   def isUnqualified = args.size == 1
   def isAtStart     = cursor <= 0

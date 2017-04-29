@@ -3,8 +3,7 @@
  * @author Paul Phillips
  */
 
-package scala.tools.nsc
-package interpreter
+package scala.tools.nsc.interpreter
 package session
 
 import scala.collection.mutable.{ Buffer, ListBuffer }

@@ -3,10 +3,9 @@
  * @author Paul Phillips
  */
 
-package scala.tools.nsc
-package interpreter
+package scala.tools.nsc.interpreter
 
-import util.stringFromWriter
+import scala.tools.nsc.util.stringFromWriter
 
 class Formatting(indent: Int) {
 

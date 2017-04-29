@@ -2,31 +2,28 @@
  * Copyright 2005-2016 LAMP/EPFL
  * @author Alexander Spoon
  */
-package scala.tools.nsc
-package interpreter
+package scala.tools.nsc.interpreter
 
-import scala.language.{ implicitConversions, existentials }
-import scala.annotation.tailrec
-import Predef.{ println => _, _ }
-import PartialFunction.{cond => when}
-import interpreter.session._
-import StdReplTags._
-import scala.tools.asm.ClassReader
-import scala.util.Properties.jdkHome
-import scala.tools.nsc.util.{ ClassPath, stringFromStream }
-import scala.reflect.classTag
-import scala.reflect.internal.util.{ BatchSourceFile, ScalaClassLoader, NoPosition }
-import ScalaClassLoader._
-import scala.reflect.io.{Directory, File, Path}
-import scala.tools.util._
-import io.AbstractFile
-import scala.concurrent.{ ExecutionContext, Await, Future }
-import ExecutionContext.Implicits._
 import java.io.BufferedReader
 
-import scala.util.{ Try, Success, Failure }
-
-import Completion._
+import scala.PartialFunction.{cond => when}
+import scala.Predef.{println => _, _}
+import scala.annotation.tailrec
+import scala.concurrent.{Await, Future}
+import scala.language.{existentials, implicitConversions}
+import scala.reflect.classTag
+import scala.reflect.internal.util.ScalaClassLoader._
+import scala.reflect.internal.util.{BatchSourceFile, NoPosition, ScalaClassLoader}
+import scala.reflect.io.{AbstractFile, Directory, File, Path}
+import scala.tools.asm.ClassReader
+import scala.tools.nsc.interpreter.Completion._
+import scala.tools.nsc.interpreter.StdReplTags._
+import scala.tools.nsc.interpreter.session._
+import scala.tools.nsc.util.stringFromStream
+import scala.tools.nsc.{GenericRunnerSettings, Properties, Settings}
+import scala.tools.util._
+import scala.util.Properties.jdkHome
+import scala.util.{Failure, Try}
 
 /** The Scala interactive shell.  It provides a read-eval-print loop
  *  around the Interpreter class.
@@ -163,7 +160,7 @@ class ILoop(in0: Option[BufferedReader], protected val out: JPrintWriter)
   /** Prompt to print when awaiting input */
   def prompt = replProps.prompt
 
-  import LoopCommand.{ cmd, nullary }
+  import LoopCommand.{cmd, nullary}
 
   /** Standard commands **/
   lazy val standardCommands = List(
@@ -987,7 +984,7 @@ object ILoop {
   // bunch of code, and prints out a transcript of what it would look
   // like if you'd just typed it into the repl.
   def runForTranscript(code: String, settings: Settings, inSession: Boolean = false): String = {
-    import java.io.{ BufferedReader, StringReader, OutputStreamWriter }
+    import java.io.{BufferedReader, OutputStreamWriter, StringReader}
     import java.lang.System.{lineSeparator => EOL}
 
     stringFromStream { ostream =>
@@ -1026,7 +1023,7 @@ object ILoop {
    *  the given code to it as input.
    */
   def run(code: String, sets: Settings = new Settings): String = {
-    import java.io.{ BufferedReader, StringReader, OutputStreamWriter }
+    import java.io.{BufferedReader, OutputStreamWriter, StringReader}
 
     stringFromStream { ostream =>
       Console.withOut(ostream) {
