@@ -3,9 +3,9 @@
  * @author  Martin Odersky
  */
 
-package scala
-package tools.nsc
-package interpreter
+package scala.tools.nsc.interpreter
+
+import java.net.URL
 
 import PartialFunction.cond
 import scala.language.implicitConversions
@@ -15,12 +15,11 @@ import scala.concurrent.{ExecutionContext, Future}
 import scala.reflect.runtime.{universe => ru}
 import scala.reflect.{ClassTag, classTag}
 import scala.reflect.internal.util.{BatchSourceFile, SourceFile}
+
 import scala.tools.nsc.io.AbstractFile
 import scala.tools.nsc.typechecker.{StructuredTypeStrings, TypeStrings}
-import scala.tools.nsc.util._
-import ScalaClassLoader.URLClassLoader
+import scala.tools.nsc.util.ScalaClassLoader.URLClassLoader
 import scala.tools.nsc.util.Exceptional.unwrap
-import java.net.URL
 import scala.tools.util.PathResolver
 
 /** An interpreter for Scala code.
@@ -150,9 +149,23 @@ class IMain(initialSettings: Settings, protected val out: JPrintWriter) extends 
   }
   def isInitializeComplete = _initializeComplete
 
-  lazy val global: Global = {
-    if (!isInitializeComplete) _initialize()
-    _compiler
+  object global {
+    trait Name {
+
+    }
+    trait Symbol {
+      def defString: String = ???
+
+      def toOption: Option[Symbol] = ???
+    }
+    type Type
+    type Phase
+
+    var phase: Phase = ???
+    def exitingTyper[T](f: T => Unit ): Unit = ???
+    def NoSymbol: Symbol = ???
+    def NoType: Type = ???
+    def NoPrefix: Type = ???
   }
 
   import global._
@@ -319,7 +332,7 @@ class IMain(initialSettings: Settings, protected val out: JPrintWriter) extends 
   }
   def flatPath(sym: Symbol): String      = flatOp shift sym.javaClassName
 
-  def translatePath(path: String) = {
+  def translatePath(path: String): Option[String] = {
     val sym = if (path endsWith "$") symbolOfTerm(path.init) else symbolOfIdent(path)
     sym.toOption map flatPath
   }

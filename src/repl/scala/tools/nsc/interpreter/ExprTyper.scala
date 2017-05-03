@@ -3,8 +3,7 @@
  * @author  Paul Phillips
  */
 
-package scala.tools.nsc
-package interpreter
+package scala.tools.nsc.interpreter
 
 trait ExprTyper {
   val repl: IMain

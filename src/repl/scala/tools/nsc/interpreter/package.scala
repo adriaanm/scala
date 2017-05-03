@@ -5,13 +5,42 @@
 
 package scala.tools.nsc
 
+import java.io.{ByteArrayOutputStream, OutputStream, PrintStream, PrintWriter, StringWriter, Writer}
+
 import scala.language.implicitConversions
-import scala.reflect.{ classTag, ClassTag }
-import scala.reflect.runtime.{ universe => ru }
+import scala.reflect.{ClassTag, classTag}
+import scala.reflect.runtime.{universe => ru}
 import scala.reflect.{ClassTag, classTag}
 import scala.reflect.api.{Mirror, TypeCreator, Universe => ApiUniverse}
+import scala.tools.nsc.util.stringFromWriter
 import scala.util.control.Exception.catching
 import scala.util.Try
+
+trait Util {
+  class NewLinePrintWriter(out: Writer, autoFlush: Boolean)
+    extends PrintWriter(out, autoFlush) {
+    def this(out: Writer) = this(out, false)
+    override def println() { print("\n"); flush() }
+  }
+
+  def stringFromWriter(writer: PrintWriter => Unit): String = {
+    val stringWriter = new StringWriter()
+    val stream = new NewLinePrintWriter(stringWriter)
+    writer(stream)
+    stream.close()
+    stringWriter.toString
+  }
+  def stringFromStream(stream: OutputStream => Unit): String = {
+    val bs = new ByteArrayOutputStream()
+    val ps = new PrintStream(bs)
+    stream(ps)
+    ps.close()
+    bs.toString()
+  }
+  def stackTraceString(ex: Throwable): String = stringFromWriter(ex printStackTrace _)
+
+  def isMac: Boolean = ???
+}
 
 /** The main REPL related classes and values are as follows.
  *  In addition to standard compiler classes Global and Settings, there are:
@@ -30,7 +59,7 @@ import scala.util.Try
  *  InteractiveReader contains { history: History, completion: Completion }
  *  IMain contains { global: Global }
  */
-package object interpreter extends ReplConfig with ReplStrings {
+package object interpreter extends ReplConfig with ReplStrings with Util {
   type JFile          = java.io.File
   type JClass         = java.lang.Class[_]
   type JList[T]       = java.util.List[T]

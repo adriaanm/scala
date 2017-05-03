@@ -5,8 +5,6 @@
 
 package scala.tools.nsc.interpreter
 
-import scala.tools.nsc.util.stringFromWriter
-
 class Formatting(indent: Int) {
 
   private val indentation = " " * indent

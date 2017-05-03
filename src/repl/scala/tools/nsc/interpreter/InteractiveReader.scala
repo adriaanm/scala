@@ -7,7 +7,6 @@ package scala.tools.nsc.interpreter
 
 import java.io.IOException
 
-import scala.tools.nsc.Properties.isMac
 import InteractiveReader._
 import session.History
 

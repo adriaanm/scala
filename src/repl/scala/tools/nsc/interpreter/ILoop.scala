@@ -6,6 +6,8 @@ package scala.tools.nsc.interpreter
 
 import java.io.BufferedReader
 
+import com.sun.scenario.Settings
+
 import scala.PartialFunction.{cond => when}
 import scala.Predef.{println => _, _}
 import scala.annotation.tailrec
@@ -19,9 +21,7 @@ import scala.tools.asm.ClassReader
 import scala.tools.nsc.interpreter.Completion._
 import scala.tools.nsc.interpreter.StdReplTags._
 import scala.tools.nsc.interpreter.session._
-import scala.tools.nsc.util.stringFromStream
 import scala.tools.nsc.{GenericRunnerSettings, Properties, Settings}
-import scala.tools.util._
 import scala.util.Properties.jdkHome
 import scala.util.{Failure, Try}
 
@@ -366,7 +366,7 @@ class ILoop(in0: Option[BufferedReader], protected val out: JPrintWriter)
     case ex: Throwable =>
       val (err, explain) = (
         if (intp.isInitializeComplete)
-          (intp.global.throwableAsString(ex), "")
+          (stackTraceString(ex), "")
         else
           (ex.getMessage, "The compiler did not initialize.\n")
       )
