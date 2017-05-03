@@ -7,6 +7,7 @@ import org.junit.Test
 
 import scala.reflect.internal.util.BatchSourceFile
 import scala.tools.nsc.Settings
+import scala.tools.nsc.interpreter.shell.PresentationCompilerCompleter
 
 class CompletionTest {
   val EmptyString = "" // def string results include the empty string so that JLine won't insert "def ..." at the cursor

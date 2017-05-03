@@ -21,6 +21,7 @@ import scala.tools.asm.ClassReader
 import scala.tools.nsc.interpreter.Completion._
 import scala.tools.nsc.interpreter.StdReplTags._
 import scala.tools.nsc.interpreter.session._
+import scala.tools.nsc.interpreter.shell.{NoHistory, Pasted}
 import scala.tools.nsc.{GenericRunnerSettings, Properties, Settings}
 import scala.util.Properties.jdkHome
 import scala.util.{Failure, Try}
@@ -48,6 +49,8 @@ class ILoop(in0: Option[BufferedReader], protected val out: JPrintWriter)
   var settings: Settings = _
   var intp: IMain = _
 
+  var partialInput: String                    = ""          // code accumulated in multi-line REPL input
+
   private var globalFuture: Future[Boolean] = _
 
   /** Print a welcome message! */
@@ -65,7 +68,6 @@ class ILoop(in0: Option[BufferedReader], protected val out: JPrintWriter)
     intp.reporter printUntruncatedMessage msg
   }
 
-  lazy val power = new Power(intp, new StdReplVals(this))(tagOfStdReplVals, classTag[StdReplVals])
   def history = in.history
 
   /** A reverse list of commands to replay if the user requests a :replay */
@@ -324,7 +326,7 @@ class ILoop(in0: Option[BufferedReader], protected val out: JPrintWriter)
   private def pathToPhaseWrapper = intp.originalPath("$r") + ".phased.atCurrent"
 
   private def phaseCommand(name: String): Result = {
-    val phased: Phased = power.phased
+    val phased: Phased = intp.power.phased
     import phased.NoPhaseName
 
     if (name == "clear") {
@@ -645,10 +647,10 @@ class ILoop(in0: Option[BufferedReader], protected val out: JPrintWriter)
   def enablePowerMode(isDuringInit: Boolean) = {
     replProps.power setValue true
     unleashAndSetPhase()
-    asyncEcho(isDuringInit, power.banner)
+    asyncEcho(isDuringInit, intp.power.banner)
   }
   private def unleashAndSetPhase() = if (isReplPower) {
-    power.unleash()
+    intp.power.unleash()
     intp beSilentDuring phaseCommand("typer") // Set the phase to "typer"
   }
 
@@ -768,7 +770,15 @@ class ILoop(in0: Option[BufferedReader], protected val out: JPrintWriter)
   }
 
   private object invocation {
-    def unapply(line: String): Boolean = Completion.looksLikeInvocation(line)
+    // a leading dot plus something, but not ".." or "./", ignoring leading whitespace
+    private val dotlike = """\s*\.[^./].*""".r
+    def looksLikeInvocation(code: String) = code match {
+      case null      => false   // insurance
+      case dotlike() => true
+      case _         => false
+    }
+
+    def unapply(line: String): Boolean = looksLikeInvocation(line)
   }
 
   private val lineComment = """\s*//.*""".r   // all comment
@@ -807,8 +817,8 @@ class ILoop(in0: Option[BufferedReader], protected val out: JPrintWriter)
           echo("You typed two blank lines.  Starting a new command.")
           None
         case IR.Incomplete =>
-          val saved = intp.partialInput
-          intp.partialInput = code + "\n"
+          val saved = partialInput
+          partialInput = code + "\n"
           try {
             in.readLine(paste.ContinuePrompt) match {
               case null =>
@@ -820,7 +830,7 @@ class ILoop(in0: Option[BufferedReader], protected val out: JPrintWriter)
                 None
               case line => interpretStartingWith(s"$code\n$line")
             }
-          } finally intp.partialInput = saved
+          } finally partialInput = saved
       }
     }
   }
@@ -892,7 +902,7 @@ class ILoop(in0: Option[BufferedReader], protected val out: JPrintWriter)
       if (isReplPower) {
         replProps.power setValue true
         unleashAndSetPhase()
-        asyncMessage(power.banner)
+        asyncMessage(intp.power.banner)
       }
       loadInitFiles()
       // scala/bug#7418 Now, and only now, can we enable TAB completion.

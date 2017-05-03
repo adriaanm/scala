@@ -2,15 +2,16 @@
  * Copyright 2005-2013 LAMP/EPFL
  * @author Martin Odersky
  */
-package scala.tools.nsc.interpreter
+package scala.tools.nsc.interpreter.shell
 
 import scala.reflect.internal.util.StringOps
 import scala.tools.nsc.interpreter.Completion.Candidates
 import scala.util.control.NonFatal
 
 class PresentationCompilerCompleter(intp: IMain) extends Completion {
-  import PresentationCompilerCompleter._
   import intp.{PresentationCompileResult => Result}
+
+  import PresentationCompilerCompleter._
 
   private type Handler = Result => Candidates
 
@@ -39,7 +40,6 @@ class PresentationCompilerCompleter(intp: IMain) extends Completion {
     def print(result: Result) = {
       val offset = result.preambleLength
       val pos1 = result.unit.source.position(offset).withEnd(offset + buf.length)
-      import result.compiler._
       val tree = new Locator(pos1) locateIn result.unit.body match {
         case Template(_, _, constructor :: (rest :+ last)) => if (rest.isEmpty) last else Block(rest, last)
         case t => t
@@ -52,8 +52,6 @@ class PresentationCompilerCompleter(intp: IMain) extends Completion {
       Candidates(cursor, "" :: tpString :: Nil)
     }
     def candidates(result: Result): Candidates = {
-      import result.compiler._
-      import CompletionResult._
       def defStringCandidates(matching: List[Member], name: Name): Candidates = {
         val defStrings = for {
           member <- matching
@@ -114,6 +112,14 @@ class PresentationCompilerCompleter(intp: IMain) extends Completion {
     }
     val buf1 = buf.patch(cursor, Cursor, 0)
     try {
+      // special case for:
+      //
+      // scala> 1
+      // scala> .toInt
+      //
+      // and for multi-line input.
+      val line1 = partialInput + (if (Completion.looksLikeInvocation(line)) { self.mostRecentVar + line } else line)
+
       intp.presentationCompile(buf1) match {
         case Left(_) => Completion.NoCandidates
         case Right(result) => try {

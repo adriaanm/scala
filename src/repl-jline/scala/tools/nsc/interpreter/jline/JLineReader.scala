@@ -17,7 +17,7 @@ import jconsole.history.{History => JHistory}
 import scala.tools.nsc.interpreter
 import scala.tools.nsc.interpreter.{Completion, NoCompletion}
 import scala.tools.nsc.interpreter.Completion.Candidates
-import scala.tools.nsc.interpreter.session.History
+import scala.tools.nsc.interpreter.shell.History
 
 /**
  * Reads from the console using JLine.

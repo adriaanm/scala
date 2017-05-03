@@ -3,10 +3,9 @@
  * @author Paul Phillips
  */
 
-package scala.tools.nsc.interpreter
-package session
+package scala.tools.nsc.interpreter.shell
 
-import scala.collection.mutable.{ Buffer, ListBuffer }
+import scala.collection.mutable.{Buffer, ListBuffer}
 
 class SimpleHistory extends History {
   private var _index: Int = 0

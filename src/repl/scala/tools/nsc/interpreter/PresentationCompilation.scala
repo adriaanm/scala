@@ -21,16 +21,9 @@ trait PresentationCompilation {
     *
     * The caller is responsible for calling [[PresentationCompileResult#cleanup]] to dispose of the compiler instance.
     */
-  private[scala] def presentationCompile(line: String): Either[IR.Result, PresentationCompileResult] = {
+  private[scala] def presentationCompile(line1: String): Either[IR.Result, PresentationCompileResult] = {
     if (global == null) Left(IR.Error)
     else {
-      // special case for:
-      //
-      // scala> 1
-      // scala> .toInt
-      //
-      // and for multi-line input.
-      val line1 = partialInput + (if (Completion.looksLikeInvocation(line)) { self.mostRecentVar + line } else line)
       val compiler = newPresentationCompiler()
       val trees = compiler.newUnitParser(line1).parseStats()
       val importer = global.mkImporter(compiler)

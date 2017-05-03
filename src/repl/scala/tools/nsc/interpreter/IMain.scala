@@ -12,11 +12,14 @@ import scala.language.implicitConversions
 import scala.beans.BeanProperty
 import scala.collection.mutable
 import scala.concurrent.{ExecutionContext, Future}
+import scala.reflect.internal.{FatalError, NoPhase}
 import scala.reflect.runtime.{universe => ru}
 import scala.reflect.{ClassTag, classTag}
-import scala.reflect.internal.util.{BatchSourceFile, SourceFile}
-
+import scala.reflect.internal.util.{AbstractFileClassLoader, BatchSourceFile, SourceFile}
+import scala.tools.nsc.{ConsoleWriter, Global, Settings}
+import scala.tools.nsc.interpreter.StdReplTags.tagOfStdReplVals
 import scala.tools.nsc.io.AbstractFile
+import scala.tools.nsc.reporters.Reporter
 import scala.tools.nsc.typechecker.{StructuredTypeStrings, TypeStrings}
 import scala.tools.nsc.util.ScalaClassLoader.URLClassLoader
 import scala.tools.nsc.util.Exceptional.unwrap
@@ -72,7 +75,6 @@ class IMain(initialSettings: Settings, protected val out: JPrintWriter) extends 
   private var _isInitialized: Future[Boolean] = null        // set up initialization future
   private var bindExceptions                  = true        // whether to bind the lastException variable
   private var _executionWrapper               = ""          // code to be wrapped around all lines
-  var partialInput: String                    = ""          // code accumulated in multi-line REPL input
   private var label                           = "<console>" // compilation unit name for reporting
 
   /** We're going to go to some trouble to initialize the compiler asynchronously.
@@ -82,7 +84,7 @@ class IMain(initialSettings: Settings, protected val out: JPrintWriter) extends 
    *  use a lazy val to ensure that any attempt to use the compiler object waits
    *  on the future.
    */
-  private var _classLoader: util.AbstractFileClassLoader = null                              // active classloader
+  private var _classLoader: AbstractFileClassLoader = null                              // active classloader
   private val _compiler: ReplGlobal                 = newCompiler(settings, reporter)   // our private compiler
 
   private var _runtimeClassLoader: URLClassLoader = null              // wrapper exposing addURL
@@ -109,10 +111,9 @@ class IMain(initialSettings: Settings, protected val out: JPrintWriter) extends 
   }
 
   // the expanded prompt but without color escapes and without leading newline, for purposes of indenting
-  lazy val formatting = Formatting.forPrompt(replProps.promptText)
   lazy val reporter: ReplReporter = new ReplReporter(this)
 
-  import formatting.indentCode
+  def indentCode(str: String) = str // TODO: move into shell
   import reporter.{ printMessage, printUntruncatedMessage }
 
   // This exists mostly because using the reporter too early leads to deadlock.
@@ -149,23 +150,10 @@ class IMain(initialSettings: Settings, protected val out: JPrintWriter) extends 
   }
   def isInitializeComplete = _initializeComplete
 
-  object global {
-    trait Name {
 
-    }
-    trait Symbol {
-      def defString: String = ???
-
-      def toOption: Option[Symbol] = ???
-    }
-    type Type
-    type Phase
-
-    var phase: Phase = ???
-    def exitingTyper[T](f: T => Unit ): Unit = ???
-    def NoSymbol: Symbol = ???
-    def NoType: Type = ???
-    def NoPrefix: Type = ???
+  lazy val global: Global = {
+    if (!isInitializeComplete) _initialize()
+    _compiler
   }
 
   import global._
@@ -247,7 +235,7 @@ class IMain(initialSettings: Settings, protected val out: JPrintWriter) extends 
   lazy val isettings = new ISettings(this)
 
   /** Instantiate a compiler.  Overridable. */
-  protected def newCompiler(settings: Settings, reporter: reporters.Reporter): ReplGlobal = {
+  protected def newCompiler(settings: Settings, reporter: Reporter): ReplGlobal = {
     settings.outputDirs setSingleOutput replOutput.dir
     settings.exposeEmptyPackage.value = true
     new Global(settings, reporter) with ReplGlobal { override def toString: String = "<global>" }
@@ -293,7 +281,7 @@ class IMain(initialSettings: Settings, protected val out: JPrintWriter) extends 
     if (_classLoader == null)
       _classLoader = makeClassLoader()
   }
-  def classLoader: util.AbstractFileClassLoader = {
+  def classLoader: AbstractFileClassLoader = {
     ensureClassLoader()
     _classLoader
   }
@@ -358,13 +346,13 @@ class IMain(initialSettings: Settings, protected val out: JPrintWriter) extends 
    *
    *  $intp.classLoader classBytes "Bippy" or $intp.classLoader getResource "Bippy.class" just work.
    */
-  private class TranslatingClassLoader(parent: ClassLoader) extends util.AbstractFileClassLoader(replOutput.dir, parent) {
+  private class TranslatingClassLoader(parent: ClassLoader) extends AbstractFileClassLoader(replOutput.dir, parent) {
     override protected def findAbstractFile(name: String): AbstractFile = super.findAbstractFile(name) match {
       case null if _initializeComplete => translateSimpleResource(name) map super.findAbstractFile orNull
       case file => file
     }
   }
-  private def makeClassLoader(): util.AbstractFileClassLoader =
+  private def makeClassLoader(): AbstractFileClassLoader =
     new TranslatingClassLoader({
       _runtimeClassLoader = new URLClassLoader(compilerClasspath, parentClassLoader)
       _runtimeClassLoader
@@ -641,7 +629,7 @@ class IMain(initialSettings: Settings, protected val out: JPrintWriter) extends 
     bindRep.callEither("set", value) match {
       case Left(ex) =>
         repldbg("Set failed in bind(%s, %s, %s)".format(name, boundType, value))
-        repldbg(util.stackTraceString(ex))
+        repldbg(stackTraceString(ex))
         IR.Error
       case Right(_) =>
         val mods = if (modifiers.isEmpty) "" else modifiers.mkString("", " ", " ")
@@ -688,6 +676,8 @@ class IMain(initialSettings: Settings, protected val out: JPrintWriter) extends 
     reporter.flush()
   }
 
+  lazy val power = new Power(this, new StdReplVals(this))(tagOfStdReplVals, classTag[StdReplVals])
+
   /** Here is where we:
    *
    *  1) Read some source code, and put it in the "read" object.
@@ -706,6 +696,8 @@ class IMain(initialSettings: Settings, protected val out: JPrintWriter) extends 
     val resultName  = sessionNames.result
 
     def bindError(t: Throwable) = {
+      import scala.tools.nsc.util._
+
       if (!bindExceptions) // avoid looping if already binding
         throw t
 
