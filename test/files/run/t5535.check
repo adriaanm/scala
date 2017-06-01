@@ -1,6 +1,6 @@
 
 scala> def h()(i: Int) = 1 + i
-h: ()(i: Int)Int
+defined def h()(i: Int): Int
 
 scala> println(h()(5))
 6

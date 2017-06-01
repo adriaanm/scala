@@ -9,7 +9,7 @@ scala> def gcd(x: Int, y: Int): Int = {
           else if (y == 0) x
           else gcd(y%x, x)
 }
-gcd: (x: Int, y: Int)Int
+defined def gcd(x: Int,y: Int): Int
 
 scala> val five = gcd(15,35)
 five: Int = 5
@@ -24,7 +24,7 @@ scala> val three = x+1
 three: Int = 3
 
 scala> type anotherint = Int
-defined type alias anotherint
+defined type anotherint
 
 scala> val four: anotherint = 4
 four: anotherint = 4
@@ -93,7 +93,7 @@ defined class Bar
 
 scala> implicit def foo2bar(foo: Foo) = Bar(foo.n)
 warning: there was one feature warning; for details, enable `:setting -feature' or `:replay -feature'
-foo2bar: (foo: Foo)Bar
+defined def foo2bar(foo: Foo): Bar
 
 scala> val bar: Bar = Foo(3)
 bar: Bar = Bar(3)
@@ -334,7 +334,7 @@ You typed two blank lines.  Starting a new command.
 scala> // defining and using quoted names should work (ticket #323)
 
 scala> def `match` = 1
-match: Int
+defined def match: Int
 
 scala> val x = `match`
 x: Int = 1
@@ -354,10 +354,10 @@ scala> def f(e: Exp) = e match {  // non-exhaustive warning here
                        ^
        warning: match may not be exhaustive.
        It would fail on the following inputs: Exp(), Term()
-f: (e: Exp)Int
+defined def f(e: Exp): Int
 
 scala> :quit
-plusOne: (x: Int)Int
+defined def plusOne(x: Int): Int
 res0: Int = 6
 res0: String = after reset
        ^

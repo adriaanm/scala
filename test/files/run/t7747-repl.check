@@ -38,7 +38,7 @@ scala> 5 ; 10 ; case object Cow ; 20 ; class Moo { override def toString = "Mooo
        warning: a pure expression does nothing in statement position; multiline expressions may require enclosing parentheses
 defined object Cow
 defined class Moo
-bippy: Int
+defined def bippy: Int
 res2: Int = 105
 
 scala> 
@@ -120,7 +120,7 @@ res19: () => AnyRef = <function0>
 scala> 
 
 scala> def foo(x: Int)(y: Int)(z: Int) = x+y+z
-foo: (x: Int)(y: Int)(z: Int)Int
+defined def foo(x: Int)(y: Int)(z: Int): Int
 
 scala> foo(5)(10)(15)+foo(5)(10)(15)
 res20: Int = 60
@@ -289,7 +289,7 @@ scala> val a = Sum("A", "B")
 a: Sum = Sum(A,B)
 
 scala> def b(a: Sum): String = a match { case Sum(_, _) => "Found Sum" }
-b: (a: Sum)String
+defined def b(a: Sum): String
 
 scala> b(a)
 res4: String = Found Sum

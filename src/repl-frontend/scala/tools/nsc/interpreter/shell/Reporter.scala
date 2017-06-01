@@ -45,13 +45,19 @@ class ReplReporterImpl(val config: ShellConfig, val settings: Settings = new Set
     finally printResults = saved
   }
 
+  private def printResult(result: String): Unit = {
+    val trimmed = StringOps.trimAllTrailingSpace(result)
+//    val highlit = if (colorOk) SyntaxHighlighting(trimmed) else trimmed
+    out.println(trimmed)
+    flush()
+  }
+
   override def printResult(result: Either[String, String]): Unit =
     result match {
       case Right(success) =>
-        if (!success.isEmpty && printResults)
-          printMessage(success stripSuffix "\n") // TODO: can we avoid having to strip the trailing "\n"?
-        else if (isDebug) // show quiet-mode activity
-          printMessage(success.trim.lines map ("[quiet] " + _) mkString "\n")
+        if (!success.isEmpty && printResults && !totalSilence) printResult(success)
+        else if (isTrace) printlnAndFlush("[silent] " + success)
+        else if (isDebug) printlnAndFlush(success.trim.lines map ("[quiet] " + _) mkString "\n")
 
       case Left(error) =>
         // don't truncate stack traces

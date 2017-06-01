@@ -63,7 +63,7 @@ res14: () => AnyRef = <function0>
 scala> 
 
 scala> def foo(x: Int)(y: Int)(z: Int) = x+y+z
-foo: (x: Int)(y: Int)(z: Int)Int
+defined def foo(x: Int)(y: Int)(z: Int): Int
 
 scala> foo(5)(10)(15)+foo(5)(10)(15)
 res15: Int = 60

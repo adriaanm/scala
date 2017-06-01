@@ -55,7 +55,7 @@ scala> val y = b.y  // should keep the annotation
 y: Int @Annot(Stuff.x) = 10
 
 scala> def m(x: String): String @Annot(x) = x
-m: (x: String)String @Annot(x)
+defined def m(x: String): String @Annot(x)
 
 scala> 
 
@@ -97,7 +97,7 @@ scala> def m = {
   y
 } // x should not escape the local scope with a narrow type
 warning: there was one feature warning; for details, enable `:setting -feature' or `:replay -feature'
-m: String @Annot(x) forSome { val x: String }
+defined def m: String @Annot(x) forSome { val x: String }
 
 scala> 
 
@@ -111,7 +111,7 @@ scala> def n(y: String) = {
   m("stuff".stripMargin)
 } // x should be existentially bound
 warning: there was one feature warning; for details, enable `:setting -feature' or `:replay -feature'
-n: (y: String)String @Annot(x) forSome { val x: String }
+defined def n(y: String): String @Annot(x) forSome { val x: String }
 
 scala> 
 

@@ -10,6 +10,6 @@ defined class Red
 scala> 
 
 scala> def f(c: Any) = c match { case Red(_) => () }
-f: (c: Any)Unit
+defined def f(c: Any): Unit
 
 scala> :quit

@@ -96,7 +96,7 @@ bippy = {
        warning: a pure expression does nothing in statement position; multiline expressions may require enclosing parentheses
 defined object Cow
 defined class Moo
-bippy: Int
+defined def bippy: Int
 res16: Int = 105
 
 scala> 
@@ -178,7 +178,7 @@ res33: () => AnyRef = <function0>
 scala> 
 
 scala> def foo(x: scala.Int)(y: scala.Int)(z: scala.Int) = x+y+z
-foo: (x: Int)(y: Int)(z: Int)Int
+defined def foo(x: Int)(y: Int)(z: Int): Int
 
 scala> foo(5)(10)(15)+foo(5)(10)(15)
 res34: Int = 60

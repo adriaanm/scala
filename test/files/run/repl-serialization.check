@@ -2,7 +2,7 @@
 extract: AnyRef => Unit = <function1>
   evaluating x
 x: Int = 0
-getX: ()Int
+defined def getX(): Int
 defined class U
 y: Int = <lazy>
   evaluating z
@@ -12,7 +12,7 @@ z: Int = 0
 zz: Int = 0
 defined object O
 defined class A
-defined type alias AA
+defined type AA
 constructing U
 u: U = U
 == evaluating lambda

@@ -30,7 +30,7 @@ scala> class D
 defined class D
 
 scala> def D = 0 // no warn
-D: Int
+defined def D: Int
 
 scala> val D = 0 // no warn
 D: Int = 0
@@ -45,7 +45,7 @@ scala> object F
 defined object F
 
 scala> type F = Int // no warn
-defined type alias F
+defined type F
 
 scala> :power
 Power mode enabled. :phase is at typer.

@@ -33,7 +33,7 @@ fTpe: u.Type = O.F[Int]
 
 scala> def memType(sub: Type, scrut: Type): Type =
   nestedMemberType(sub.typeSymbol, scrut.prefix, scrut.typeSymbol.owner)
-memType: (sub: u.Type, scrut: u.Type)u.Type
+defined def memType(sub: u.Type,scrut: u.Type): u.Type
 
 scala> 
 

@@ -23,7 +23,7 @@ scala> 5 ; 10 ; case object Cow ; 20 ; class Moo { override def toString = "Mooo
        warning: a pure expression does nothing in statement position; multiline expressions may require enclosing parentheses
 defined object Cow
 defined class Moo
-bippy: Int
+defined def bippy: Int
 res2: Int = 105
 
 scala> 

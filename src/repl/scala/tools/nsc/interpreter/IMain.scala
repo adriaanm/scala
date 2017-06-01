@@ -937,6 +937,10 @@ class IMain(val settings: Settings, parentClassLoaderOverride: Option[ClassLoade
     /** String representations of same. */
     lazy val typeOf         = typeMap[String](tp => exitingTyper(tp.toString))
 
+    def sigOf(name: Name) = exitingTyper { val sym = resultSymbol.info.nonPrivateDecl(name)
+      s"${sym.nameString}${sym.signatureString}" // not using defString because we don't need all the details
+    }
+
     lazy val definedSymbols = (
       termNames.map(x => x -> applyToResultMember(x, x => x)) ++
         typeNames.map(x => x -> compilerTypeOf(x).typeSymbolDirect)

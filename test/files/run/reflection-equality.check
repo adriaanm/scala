@@ -13,7 +13,7 @@ scala> import scala.reflect.runtime.{ currentMirror => cm }
 import scala.reflect.runtime.{currentMirror=>cm}
 
 scala> def im: InstanceMirror = cm.reflect(new X)
-im: reflect.runtime.universe.InstanceMirror
+defined def im: reflect.runtime.universe.InstanceMirror
 
 scala> val cs: ClassSymbol = im.symbol
 cs: reflect.runtime.universe.ClassSymbol = class X

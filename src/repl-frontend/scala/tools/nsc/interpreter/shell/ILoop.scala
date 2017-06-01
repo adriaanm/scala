@@ -912,7 +912,7 @@ class ILoop(config: ShellConfig, inOverride: BufferedReader = null,
 
     in = defaultIn
 
-    // let them start typing, using the splash reader (which avoids tab completion)
+    // let them start typing, using the splash reader
     val firstLine =
       SplashLoop.readLine(in, prompt) {
         if (intp eq null) createInterpreter(interpreterSettings)

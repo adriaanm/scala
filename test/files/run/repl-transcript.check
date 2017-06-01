@@ -21,7 +21,7 @@ scala> class Bippity
 defined class Bippity
 
 scala> def f = new Bippity
-f: Bippity
+defined def f: Bippity
 
 scala> val res5 = { 123 }
 res5: Int = 123

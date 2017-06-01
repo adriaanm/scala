@@ -12,9 +12,6 @@ import scala.collection.mutable
 trait MemberHandlers {
   val intp: IMain
 
-  // show identity hashcode of objects in vals
-  final val showObjIds = false
-
   import intp.{ Request, global, naming }
   import global._
   import naming._
@@ -124,14 +121,15 @@ trait MemberHandlers {
       val isInternal = isUserVarName(name) && req.lookupTypeOf(name) == "Unit"
       if (!mods.isPublic || isInternal) ""
       else {
+        // TODO: why does a string literal not print with quotes?
+        // (entering `"a"` in the repl, should output `res0: String = "a"`)
         // if this is a lazy val we avoid evaluating it here
         val resultString =
           if (mods.isLazy) codegenln(false, "<lazy>")
           else any2stringOf(path, maxStringElements)
 
-        val nameString = string2code(prettyName) + (if (showObjIds) s"""" + f"@$${System.identityHashCode($path)}%8x" + """" else "")
-        val typeString = string2code(req typeOf name)
-        s""" + "$nameString: $typeString = " + $resultString"""
+        val sigString = string2code(req sigOf name)
+        s""" + "$sigString = " + $resultString"""
       }
     }
   }
@@ -139,9 +137,8 @@ trait MemberHandlers {
   class DefHandler(member: DefDef) extends MemberDefHandler(member) {
     override def definesValue = flattensToEmpty(member.vparamss) // true if 0-arity
     override def resultExtractionCode(req: Request) = {
-      val nameString = string2code(name)
-      val typeString = string2code(req typeOf name)
-      if (mods.isPublic) s""" + "$nameString: $typeString\\n"""" else ""
+      val sigString = string2code(req sigOf name)
+      if (mods.isPublic) s""" + "defined def $sigString\\n"""" else ""
     }
   }
 
@@ -184,7 +181,7 @@ trait MemberHandlers {
     override def definesType = Some(name.toTypeName) filter (_ => isAlias)
 
     override def resultExtractionCode(req: Request) =
-      codegenln("defined type alias ", name) + "\n"
+      codegenln("defined type ", name) + "\n"
   }
 
   class ImportHandler(imp: Import) extends MemberHandler(imp) {

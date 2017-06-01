@@ -1,6 +1,6 @@
 
 scala> def f(x: => Int): Int = x
-f: (x: => Int)Int
+defined def f(x: => Int): Int
 
 scala> f _
 res0: (=> Int) => Int = <function1>
