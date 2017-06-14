@@ -6,15 +6,17 @@ scala> import x._
 import x._
 
 scala> x
+       x
        ^
-       error: reference to x is ambiguous;
+On line 2: error: reference to x is ambiguous;
        it is imported twice in the same scope by
        import x._
        and import x
 
 scala> x
+       x
        ^
-       error: reference to x is ambiguous;
+On line 2: error: reference to x is ambiguous;
        it is imported twice in the same scope by
        import x._
        and import x

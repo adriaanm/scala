@@ -9,8 +9,9 @@ a: String
 scala> :settings -deprecation
 
 scala> def b = depp
+       def b = depp
                ^
-       warning: method depp is deprecated (since Time began.): Please don't do that.
+On line 1: warning: method depp is deprecated (since Time began.): Please don't do that.
 b: String
 
 scala> :quit

@@ -107,7 +107,6 @@ class ReplReporterImpl(val config: ShellConfig, val settings: Settings = new Set
   def unmangleInterpreterOutput(str: String): String = truncate(unwrap(str))
 
   var currentRequest: ReplRequest = _
-  def lastInputSingleLine: Boolean = currentRequest.originalLine.indexOf('\n') == -1
   def preambleLastLine: Int = currentRequest.preambleEndPos.line
 
   def printUntruncatedMessage(msg: String): Unit = withoutTruncating(printMessage(msg))
@@ -153,35 +152,30 @@ class ReplReporterImpl(val config: ShellConfig, val settings: Settings = new Set
   def printMessage(posIn: Position, msg: String): Unit = {
     if ((posIn eq null) || (posIn.source eq NoSourceFile)) printMessage(msg)
     else {
-      val consoleLinePrefix = "On line "
+      val lineInUserInput =
+        if (posIn.line > preambleLastLine) (posIn.line - preambleLastLine).toString
+        else s"${posIn.line} (synthetic)"
+
+      // note the side-effect -- don't move this around
       val locationPrefix =
-        posIn.source.file.name match { case  "<console>" => consoleLinePrefix case n => s"$n:" }
+        posIn.source.file.name match {
+          case "<console>" => s"On line $lineInUserInput: "
+          case n =>
+            // add newline to get away from prompt when we're reporting on a script/paste
+            printMessage("")
+            s"$n:$lineInUserInput: "
+        }
 
-      // If there's only one line of input, and it's already printed on the console (as indicated by the position's source file name),
-      // reuse that line in our error output, and suppress the line number (since we know it's `1`)
-      // TODO: this is not perfect, see e.g. test/files/run/repl-colon-type.scala,
-      // where the error refers to a line that's not on the screen
-      if (locationPrefix == consoleLinePrefix &&
-        lastInputSingleLine &&
-        posIn.line > preambleLastLine) { // line won't be printed if it was part of the preamble
-        printMessage(indentation + posIn.lineCaret)
-        printMessage(indented(msg))
-      }
-      else {
-        val (msgFirstLine, msgRest) =
-          msg.indexOf('\n') match {
-            case -1 => (msg, "")
-            case n => (msg.substring(0, n), msg.substring((n + 1) min msg.length))
-          }
+      printMessage(indentation + posIn.lineContent)
+      printMessage(indentation + posIn.lineCaret)
 
-        // add newline to get away from prompt when we're reporting on a script/paste
-        if (locationPrefix != consoleLinePrefix) printMessage("")
-
-        printMessage(indentation + posIn.lineContent)
-        printMessage(indentation + posIn.lineCaret)
-        val correctedLine = if (posIn.line > preambleLastLine) (posIn.line - preambleLastLine).toString else s"${posIn.line} (in preamble)"
-        printMessage(s"$locationPrefix$correctedLine: $msgFirstLine")
-        if (!msgRest.isEmpty) printMessage(indented(msgRest))
+      msg.indexOf('\n') match {
+        case -1 => printMessage(s"$locationPrefix$msg")
+        case n =>
+          val msgFirstLine = msg.substring(0, n)
+          val msgRest = msg.substring((n + 1) min msg.length)
+          printMessage(s"$locationPrefix$msgFirstLine")
+          printMessage(indented(msgRest))
       }
     }
   }

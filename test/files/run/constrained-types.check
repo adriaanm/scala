@@ -133,13 +133,17 @@ y: String = hello
 scala> 
 
 scala> val x = 3 : Int @Annot(e+f+g+h) // should have a graceful error message
+       val x = 3 : Int @Annot(e+f+g+h) // should have a graceful error message
                               ^
-       error: not found: value e
+On line 1: error: not found: value e
+       val x = 3 : Int @Annot(e+f+g+h) // should have a graceful error message
                                 ^
-       error: not found: value f
+On line 1: error: not found: value f
+       val x = 3 : Int @Annot(e+f+g+h) // should have a graceful error message
                                   ^
-       error: not found: value g
+On line 1: error: not found: value g
+       val x = 3 : Int @Annot(e+f+g+h) // should have a graceful error message
                                     ^
-       error: not found: value h
+On line 1: error: not found: value h
 
 scala> :quit
