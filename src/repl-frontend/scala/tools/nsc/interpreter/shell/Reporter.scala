@@ -107,7 +107,10 @@ class ReplReporterImpl(val config: ShellConfig, val settings: Settings = new Set
   def unmangleInterpreterOutput(str: String): String = truncate(unwrap(str))
 
   var currentRequest: ReplRequest = _
-  def preambleLastLine: Int = currentRequest.preambleEndPos.line
+
+  // TODO: scrap this approach
+  // Sometimes need to add to account for the `val resN = {\n` prefix added by `resValDef` in `requestFromLine`...
+  def preambleLastLine: Int = currentRequest.preambleEndPos.line + 1
 
   def printUntruncatedMessage(msg: String): Unit = withoutTruncating(printMessage(msg))
 

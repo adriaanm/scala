@@ -459,85 +459,63 @@ class IMain(val settings: Settings, parentClassLoaderOverride: Option[ClassLoade
     prevRequestList collectFirst { case r if r.defines contains sym => r }
   }
 
-  private[interpreter] def requestFromLine(line: String, synthetic: Boolean = false): Either[Result, Request] = {
-    val content = line
+  private[interpreter] def requestFromLine(input: String, synthetic: Boolean = false): Either[Result, Request] =
+    parse(input) match {
+      case parse.Incomplete(_)  => Left(Incomplete)
+      case parse.Error(_)       => Left(Error)
+      case parse.Success(trees) =>
+        def buildReq = Right(buildRequest(input, trees))
 
-    val trees: List[global.Tree] = parse(content) match {
-      case parse.Incomplete(_)     => return Left(Incomplete)
-      case parse.Error(_)          => return Left(Error)
-      case parse.Success(trees) => trees
-    }
-    reporter.trace(
-      trees map (t => {
-        // [Eugene to Paul] previously it just said `t map ...`
-        // because there was an implicit conversion from Tree to a list of Trees
-        // however Martin and I have removed the conversion
-        // (it was conflicting with the new reflection API),
-        // so I had to rewrite this a bit
-        val subs = t collect { case sub => sub }
-        subs map (t0 =>
-          "  " + safePos(t0, -1) + ": " + t0.shortClass + "\n"
-          ) mkString ""
-      }) mkString "\n"
-    )
-    // If the last tree is a bare expression, pinpoint where it begins using the
-    // AST node position and snap the line off there.  Rewrite the code embodied
-    // by the last tree as a ValDef instead, so we can access the value.
-    val last = trees.lastOption.getOrElse(EmptyTree)
-    last match {
-      case _:Assign                        => // we don't want to include assignments
-      case _:TermTree | _:Ident | _:Select => // ... but do want other unnamed terms.
-        val varName  = if (synthetic) freshInternalVarName() else freshUserVarName()
-        val rewrittenLine = (
-          // In theory this would come out the same without the 1-specific test, but
-          // it's a cushion against any more sneaky parse-tree position vs. code mismatches:
-          // this way such issues will only arise on multiple-statement repl input lines,
-          // which most people don't use.
-          if (trees.size == 1) "val " + varName + " =\n" + content
-          else {
-            // The position of the last tree
-            val lastpos0 = earliestPosition(last)
-            // Oh boy, the parser throws away parens so "(2+2)" is mispositioned,
-            // with increasingly hard to decipher positions as we move on to "() => 5",
-            // (x: Int) => x + 1, and more.  So I abandon attempts to finesse and just
-            // look for semicolons and newlines, which I'm sure is also buggy.
-            val (raw1, raw2) = content splitAt lastpos0
-            repldbg("[raw] " + raw1 + "   <--->   " + raw2)
+        // we can't just wrap all of input in {} since that would hide definitions in input from subsequent input
+        // TODO: abandon wrapping approach and add direct support to typer
+        trees.lastOption match {
+          case Some(last@(_: Assign)) => buildReq
+          case Some(last@(_: TermTree | _: RefTree)) =>
+            val varName = if (synthetic) freshInternalVarName() else freshUserVarName()
 
-            val adjustment = (raw1.reverse takeWhile (ch => (ch != ';') && (ch != '\n'))).size
-            val lastpos = lastpos0 - adjustment
+            def resValDef(rhs: String) = "val " + varName + " =\n" + rhs
 
-            // the source code split at the laboriously determined position.
-            val (l1, l2) = content splitAt lastpos
-            repldbg("[adj] " + l1 + "   <--->   " + l2)
+            // In theory this would come out the same without the 1-specific test, but
+            // it's a cushion against any more sneaky parse-tree position vs. code mismatches:
+            // this way such issues will only arise on multiple-statement repl input lines,
+            // which most people don't use.
+            val rewrittenLine =
+              if (trees.size == 1) resValDef(input)
+              else {
+                // If the last tree is a bare expression, pinpoint where it begins using the
+                // AST node position and snap the line off there.  Rewrite the code embodied
+                // by the last tree as a ValDef instead, so we can access the value.
+                // The position of the last tree
+                val lastpos0 = earliestPosition(last)
+                // Oh boy, the parser throws away parens so "(2+2)" is mispositioned,
+                // with increasingly hard to decipher positions as we move on to "() => 5",
+                // (x: Int) => x + 1, and more.  So I abandon attempts to finesse and just
+                // look for semicolons and newlines, which I'm sure is also buggy.
+                val (raw1, raw2) = input splitAt lastpos0
+                repldbg("[raw] " + raw1 + "   <--->   " + raw2)
 
-            val prefix   = if (l1.trim == "") "" else l1 + ";\n"
-            // Note to self: val source needs to have this precise structure so that
-            // error messages print the user-submitted part without the "val res0 = " part.
-            val combined   = prefix + "val " + varName + " =\n" + l2
+                val adjustment = (raw1.reverse takeWhile (ch => (ch != ';') && (ch != '\n'))).size
+                val lastpos = lastpos0 - adjustment
 
-            repldbg(List(
-              "    line" -> line,
-              " content" -> content,
-              "     was" -> l2,
-              "combined" -> combined) map {
-              case (label, s) => label + ": '" + s + "'"
-            } mkString "\n"
-            )
-            combined
-          }
-          )
-        // Rewriting    "foo ; bar ; 123"
-        // to           "foo ; bar ; val resXX = 123"
-        requestFromLine(rewrittenLine, synthetic) match {
-          case Right(null) => Left(Error)       // disallowed statement type TODO???
-          case Right(req)  => return Right(req withOriginalLine line)
-          case x           => return x
+                // the source code split at the laboriously determined position.
+                val (l1, l2) = input splitAt lastpos
+                repldbg("[adj] " + l1 + "   <--->   " + l2)
+
+                // Note to self: val source needs to have this precise structure so that
+                // error messages print the user-submitted part without the "val res0 = " part.
+                (if (l1.trim == "") "" else l1 + ";\n") + resValDef(l2)
+              }
+
+            // Rewriting    "foo ; bar ; 123"
+            // to           "foo ; bar ; val resXX = 123"
+            requestFromLine(rewrittenLine, synthetic) match {
+              case Right(null) => buildReq
+              case Right(req)  => Right(req withOriginalLine input)
+              case x           => x
+            }
+          case _ => buildReq
         }
-      case _ =>
     }
-    Right(buildRequest(line, trees))
-  }
 
   // dealias non-public types so we don't see protected aliases like Self
   def dealiasNonPublic(tp: Type) = tp match {
