@@ -71,7 +71,7 @@ trait MemberHandlers {
     case member: ClassDef                      => new ClassHandler(member)
     case member: TypeDef                       => new TypeAliasHandler(member)
     case member: Assign                        => new AssignHandler(member)
-    case member: Import                        => new ImportHandler(member)
+    case member: Import                        => new ImportHandler(member.duplicate) // duplicate because the same tree will be type checked (which loses info)
     case DocDef(_, documented)                 => chooseHandler(documented)
     case member                                => new GenericHandler(member)
   }

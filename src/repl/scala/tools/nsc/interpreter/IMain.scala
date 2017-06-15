@@ -854,24 +854,29 @@ class IMain(val settings: Settings, parentClassLoaderOverride: Option[ClassLoade
       // The symbol defined by the last member handler
       val resValSym = value
 
-      stringFromWriter { code =>
-        // first line evaluates object to make sure constructor is run
-        // initial "" so later code can uniformly be: + etc
-        code println s"""
-           |object ${lineRep.evalName} {
-           |  ${if (resValSym != NoSymbol) s"lazy val ${lineRep.resultName} = ${originalPath(resValSym)}" else ""}
-           |  lazy val ${lineRep.printName}: _root_.java.lang.String = $executionWrapper {
-           |    $fullAccessPath
-           |    ( "" """.stripMargin // the result extraction code will emit code to append strings to this initial ""
+      val extractionCode =
+        stringFromWriter { code =>
+          // first line evaluates object to make sure constructor is run
+          // initial "" so later code can uniformly be: + etc
+          code.println(s"""
+             |object ${lineRep.evalName} {
+             |  ${if (resValSym != NoSymbol) s"lazy val ${lineRep.resultName} = ${originalPath(resValSym)}" else ""}
+             |  lazy val ${lineRep.printName}: _root_.java.lang.String = $executionWrapper {
+             |    $fullAccessPath
+             |    ( "" """.stripMargin) // the result extraction code will emit code to append strings to this initial ""
 
-        contributors map (_.resultExtractionCode(this)) foreach code.println
+          contributors map (_.resultExtractionCode(this)) foreach code.println
 
-        code println """
-           |    )
-           |  }
-           |}
-           """.stripMargin
-      }
+          code.println("""
+             |    )
+             |  }
+             |}
+             """.stripMargin)
+        }
+
+      showCode(extractionCode)
+
+      extractionCode
     }
 
 
