@@ -743,10 +743,10 @@ class IMain(val settings: Settings, parentClassLoaderOverride: Option[ClassLoade
 
     // Wrap last tree in a valdef to give user a nice handle for it (`resN`)
     val trees: List[Tree] =
-      origTrees.init ++ (origTrees.last match {
-        case tree@(Assign(lhs, rhs)) => tree :: storeInVal(lhs) :: Nil
-        case tree@(_: RefTree | _: TermTree) => storeInVal(tree) :: Nil
-        case tree => tree :: Nil
+      origTrees.init :+ (origTrees.last match {
+        case tree@(_: Assign) => tree
+        case tree@(_: RefTree | _: TermTree) => storeInVal(tree)
+        case tree => tree
       })
 
     /** handlers for each tree in this request */

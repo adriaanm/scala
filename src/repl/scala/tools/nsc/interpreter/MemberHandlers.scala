@@ -70,6 +70,7 @@ trait MemberHandlers {
     case member: ModuleDef                     => new ModuleHandler(member)
     case member: ClassDef                      => new ClassHandler(member)
     case member: TypeDef                       => new TypeAliasHandler(member)
+    case member: Assign                        => new AssignHandler(member)
     case member: Import                        => new ImportHandler(member)
     case DocDef(_, documented)                 => chooseHandler(documented)
     case member                                => new GenericHandler(member)
@@ -157,6 +158,10 @@ trait MemberHandlers {
     def notification(req: Request) = s"defined term macro $name: ${req.typeOf(name)}"
   }
 
+  class AssignHandler(member: Assign) extends MemberHandler(member) {
+    override def resultExtractionCode(req: Request) =
+      codegenln(s"mutated ${member.lhs}")
+  }
 
   class ModuleHandler(module: ModuleDef) extends MemberDefHandler(module) {
     override def definesTerm = Some(name.toTermName)

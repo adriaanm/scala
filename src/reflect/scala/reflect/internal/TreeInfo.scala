@@ -224,7 +224,6 @@ abstract class TreeInfo {
       (    !tree.isErrorTyped
         && (isExprSafeToInline(tree) || isWarnableRefTree)
         && isWarnableSymbol
-        && tree.pos.source.file.name != "<console>" // exclude repl input
       )
   }
 
