@@ -12,7 +12,7 @@ import scala.collection.mutable.ListBuffer
 import scala.reflect.internal.{FatalError, Flags, MissingRequirementError, NoPhase}
 import scala.reflect.runtime.{universe => ru}
 import scala.reflect.{ClassTag, classTag}
-import scala.reflect.internal.util.{AbstractFileClassLoader, BatchSourceFile, Position, SourceFile}
+import scala.reflect.internal.util.{AbstractFileClassLoader, BatchSourceFile, ListOfNil, Position, SourceFile}
 import scala.tools.nsc.{ConsoleWriter, Global, NewLinePrintWriter, Settings}
 import scala.tools.nsc.interpreter.StdReplTags.tagOfStdReplVals
 import scala.tools.nsc.io.AbstractFile
@@ -698,7 +698,6 @@ class IMain(val settings: Settings, parentClassLoaderOverride: Option[ClassLoade
       case xs            => throw new IllegalStateException(s"Internal error: eval object $evalClass, ${xs.mkString("\n", "\n", "")}")
     }
 
-    // showCodeIfDebugging(code)
     def mkUnit(code: String) =
       new CompilationUnit(new BatchSourceFile(label, packaged(code)))
 
@@ -813,7 +812,10 @@ class IMain(val settings: Settings, parentClassLoaderOverride: Option[ClassLoade
       syntheticStats.foreach(_.foreach(_.setPos(wholeUnit)))
 
       val parents = if (isClassBased) List(gen.rootScalaDot(tpnme.Serializable)) else Nil
-      val wrapperTempl = atSynthPos(Template(parents, noSelfType, spliceUserCode.transformTrees(syntheticStats)))
+
+      val templStats = spliceUserCode.transformTrees(syntheticStats)
+
+      val wrapperTempl = atSynthPos(gen.mkTemplate(parents, noSelfType, NoMods, ListOfNil, templStats))
 
       stats += atSynthPos(
         if (isClassBased) ClassDef(Modifiers(Flags.SEALED), readName.toTypeName, Nil, wrapperTempl)
@@ -823,10 +825,18 @@ class IMain(val settings: Settings, parentClassLoaderOverride: Option[ClassLoade
         stats += q"""object $readName { val INSTANCE = new ${tq"""${readName.toTypeName}"""} }"""
 
       unit.body = atSynthPos(PackageDef(Ident(lineRep.packageName), stats.toList))
-//        settings.Xprintpos.value = true
-//        println(unit.body)
+
+      showCode(asCompactString(unit.body))
+
       unit
     }
+
+    // Secret bookcase entrance for repl debuggers: end the line
+    // with "// show" and see what's going on.
+    private def showCode(code: => String) =
+      if (reporter.isDebug || (label == "<console>" && line.contains("// show")))
+        reporter.withoutUnwrapping(reporter.withoutTruncating(reporter.echo(code)))
+
 
     // used for import wrapping (this will go away entirely when we use the more direct approach)
     def wrapperDef(iw: String) =
@@ -1272,19 +1282,6 @@ class IMain(val settings: Settings, parentClassLoaderOverride: Option[ClassLoade
       sym.owner.fullName + "."
     )
   }
-
-  /** Secret bookcase entrance for repl debuggers: end the line
-    *  with "// show" and see what's going on.
-    */
-  def showCodeIfDebugging(code: String): Unit = {
-    if (reporter.isDebug || code.lines.exists(_.trim endsWith "// show"))
-      reporter.suppressOutput(parse(code)) foreach {
-        _ foreach { t =>
-          reporter.withoutUnwrapping(reporter.withoutTruncating(reporter.echo(asCompactString(t))))
-        }
-      }
-  }
-
 
   // debugging
   def debugging[T](msg: String)(res: T) = {
