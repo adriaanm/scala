@@ -167,7 +167,12 @@ class ReplReporterImpl(val config: ShellConfig, val settings: Settings = new Set
             s"$n:${posIn.line}: "
         }
 
-      printMessage(indentation + posIn.lineContent)
+      val isSynthetic = posIn.source.file.name == "<synthetic>"
+
+      // for errors in synthetic code, don't remove wrapping so we can see what's really going on
+      def printLineContent = printMessage(indentation + posIn.lineContent)
+      if (isSynthetic) withoutUnwrapping(printLineContent) else printLineContent
+
       printMessage(indentation + posIn.lineCaret)
 
       msg.indexOf('\n') match {
@@ -178,6 +183,8 @@ class ReplReporterImpl(val config: ShellConfig, val settings: Settings = new Set
           printMessage(s"$locationPrefix$msgFirstLine")
           printMessage(indented(msgRest))
       }
+
+      if (isSynthetic) printMessage("\n(To diagnose errors in synthetic code, try adding `// show` to the end of your input.)")
     }
   }
 

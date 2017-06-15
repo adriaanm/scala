@@ -698,10 +698,8 @@ class IMain(val settings: Settings, parentClassLoaderOverride: Option[ClassLoade
       case xs            => throw new IllegalStateException(s"Internal error: eval object $evalClass, ${xs.mkString("\n", "\n", "")}")
     }
 
-    def mkUnit(code: String) =
-      new CompilationUnit(new BatchSourceFile(label, packaged(code)))
-
-    def compile(code: String): Boolean = compile(mkUnit(code))
+    def compile(code: String): Boolean =
+      compile(new CompilationUnit(new BatchSourceFile(label, packaged(code))))
 
     def compile(unit: CompilationUnit): Boolean = {
       val run = new Run()
@@ -730,7 +728,7 @@ class IMain(val settings: Settings, parentClassLoaderOverride: Option[ClassLoade
     // The source file contents only has the code originally input by the user,
     // with unit's body holding the synthetic trees.
     // When emitting errors, be careful not to refer to the synthetic code
-    private val unit = new CompilationUnit(new BatchSourceFile(label, line))
+    private val unit = new CompilationUnit(new BatchSourceFile(if (synthetic) "<synthetic>" else label, line))
     // a dummy position used for synthetic trees (needed for pres compiler to locate the trees for user input)
     private val wholeUnit = Position.range(unit.source, 0, 0, line.length).makeTransparent
     private def atSynthPos[T <: Tree](t: T): T = atPos(wholeUnit)(t)
@@ -850,12 +848,12 @@ class IMain(val settings: Settings, parentClassLoaderOverride: Option[ClassLoade
       else ""
 
 
-    private def genResultObjectSourceCode(contributors: List[MemberHandler]): String = {
+    private def mkResultUnit(contributors: List[MemberHandler]): CompilationUnit = {
       // The symbol defined by the last member handler
       val resValSym = value
 
       val extractionCode =
-        stringFromWriter { code =>
+        lineRep.packaged(stringFromWriter { code =>
           // first line evaluates object to make sure constructor is run
           // initial "" so later code can uniformly be: + etc
           code.println(s"""
@@ -872,11 +870,11 @@ class IMain(val settings: Settings, parentClassLoaderOverride: Option[ClassLoade
              |  }
              |}
              """.stripMargin)
-        }
+        })
 
       showCode(extractionCode)
 
-      extractionCode
+      new CompilationUnit(new BatchSourceFile("<synthetic>", extractionCode))
     }
 
 
@@ -905,7 +903,7 @@ class IMain(val settings: Settings, parentClassLoaderOverride: Option[ClassLoade
         // compile the result-extraction object
         // TODO: can we remove dependency on reporter's printResults state?
         val handls = if (reporter.printResults) handlers else Nil
-        withoutWarnings(lineRep compile genResultObjectSourceCode(handls))
+        withoutWarnings(lineRep compile mkResultUnit(handls))
       }
     }
 
