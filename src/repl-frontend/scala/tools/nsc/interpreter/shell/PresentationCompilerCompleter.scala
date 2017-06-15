@@ -30,14 +30,14 @@ class PresentationCompilerCompleter(intp: Repl) extends Completion {
     }
 
     // secret handshakes
-    val slashPrint  = """.*// *print *""".r
+    val slashPrint  = """(.*)// *print *""".r
     val slashTypeAt = """.*// *typeAt *(\d+) *(\d+) *""".r
     try {
       intp.presentationCompile(cursor, buf) match {
         case Left(_) => Completion.NoCandidates
         case Right(result) => try {
           buf match {
-            case slashPrint() if cursor == buf.length => Candidates(cursor, "" :: result.print :: Nil)
+            case slashPrint(input) if cursor == buf.length => Candidates(cursor, "" :: result.print(0, input.length - 1) :: Nil)
             case slashTypeAt(start, end) if cursor == buf.length => Candidates(cursor, "" :: result.typeAt(start.toInt, end.toInt)  :: Nil)
             case _ => val (c, r) = result.candidates(tabCount); Candidates(c, r)
           }

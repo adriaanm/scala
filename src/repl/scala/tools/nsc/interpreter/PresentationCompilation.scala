@@ -92,12 +92,15 @@ trait PresentationCompilation { self: IMain =>
     def typedTreeAt(code: String, selectionStart: Int, selectionEnd: Int): compiler.Tree =
       compiler.typedTreeAt(new RangePosition(unit.source, selectionStart, selectionStart, selectionEnd))
 
-    def tree: compiler.Tree = {
+    // offsets are 0-based
+    def treeAt(start: Int, end: Int): compiler.Tree = {
       import compiler.{Locator, Template, Block}
-      val pos1 = unit.source.position(0).withEnd(buf.length)
-      new Locator(pos1) locateIn unit.body match {
-        case Template(_, _, constructor :: (rest :+ last)) => if (rest.isEmpty) last else Block(rest, last)
-        case t => t
+      new Locator(unit.source.position(start).withEnd(end)) locateIn unit.body match {
+        case t@Template(_, _, constructor :: (rest :+ last)) =>
+          if (rest.isEmpty) last
+          else Block(rest, last)
+        case t =>
+          t
       }
     }
 
@@ -107,15 +110,14 @@ trait PresentationCompilation { self: IMain =>
     def treeString(tree: compiler.Tree): String =
       compiler.showCode(tree)
 
-    override def print = {
-      val tree1 = tree
-      treeString(tree1) + " // : " + tree1.tpe.safeToString
+    override def print(start: Int, end: Int) = {
+      val tree = treeAt(start, end)
+      treeString(tree) + " // : " + tree.tpe.safeToString
     }
 
 
-    override def typeAt(start: Int, end: Int) = {
+    override def typeAt(start: Int, end: Int) =
       typeString(typedTreeAt(buf, start, end))
-    }
 
     val NoCandidates = (-1, Nil)
     type Candidates = (Int, List[String])

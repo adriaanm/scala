@@ -278,7 +278,7 @@ trait PresentationCompilationResult {
 
   def cleanup(): Unit
 
-  def print: String
+  def print(start: Int, end: Int): String
 
   def typeAt(start: Int, end: Int): String
 
