@@ -61,7 +61,8 @@ trait ReplCore {
   * in a separate process from the compiler. It should also be possible to write
   * a new REPL frontend using this interface, and be compatible across minor compiler releases.
   *
-  * (The first iteration of this interface is restricted to Strings, but we could loosen that.)
+  * (The first iteration of this interface is only uses Positions and
+  *  standard JVM types, but we could loosen that.)
   *
   */
 trait Repl extends ReplCore {
@@ -110,7 +111,7 @@ trait Repl extends ReplCore {
 
   def translateEnclosingClass(n: String): Option[String]
 
-  def packaged(line: String): Boolean
+  def isPackaged(line: String): Boolean
 
   /** Compile an nsc SourceFile.  Returns true if there are
     * no compilation errors, or false otherwise.
@@ -263,8 +264,6 @@ trait ReplReporter extends Reporter {
 
 trait ReplRequest {
   def line: String
-  def originalLine: String
-  def preambleEndPos: Position
 
   def eval: Either[Throwable, AnyRef]
 }

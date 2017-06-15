@@ -70,7 +70,6 @@ trait MemberHandlers {
     case member: ModuleDef                     => new ModuleHandler(member)
     case member: ClassDef                      => new ClassHandler(member)
     case member: TypeDef                       => new TypeAliasHandler(member)
-    case member: Assign                        => new AssignHandler(member)
     case member: Import                        => new ImportHandler(member)
     case DocDef(_, documented)                 => chooseHandler(documented)
     case member                                => new GenericHandler(member)
@@ -107,7 +106,6 @@ trait MemberHandlers {
     def definedNames    = definesTerm.toList ++ definesType.toList
     def definedSymbols  = List[Symbol]()
 
-    def extraCodeToEvaluate(req: Request): String = ""
     def resultExtractionCode(req: Request): String = ""
 
     private def shortName = this.getClass.toString split '.' last
@@ -159,22 +157,6 @@ trait MemberHandlers {
     def notification(req: Request) = s"defined term macro $name: ${req.typeOf(name)}"
   }
 
-  class AssignHandler(member: Assign) extends MemberHandler(member) {
-    val Assign(lhs, rhs) = member
-    override lazy val name = newTermName(freshInternalVarName())
-
-    override def definesTerm = Some(name)
-    override def definesValue = true
-    override def extraCodeToEvaluate(req: Request) =
-      """val %s = %s""".format(name, lhs)
-
-    /** Print out lhs instead of the generated varName */
-    override def resultExtractionCode(req: Request) = {
-      val lhsType = string2code(req lookupTypeOf name)
-      val res     = string2code(req fullPath name)
-      """ + "%s: %s = " + %s + "\n" """.format(string2code(lhs.toString), lhsType, res) + "\n"
-    }
-  }
 
   class ModuleHandler(module: ModuleDef) extends MemberDefHandler(module) {
     override def definesTerm = Some(name.toTermName)
