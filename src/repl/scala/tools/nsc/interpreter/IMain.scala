@@ -5,7 +5,6 @@ package scala.tools.nsc.interpreter
 import java.io.{PrintStream, PrintWriter, StringWriter}
 import java.net.URL
 
-import PartialFunction.cond
 import scala.language.implicitConversions
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
@@ -298,12 +297,11 @@ class IMain(val settings: Settings, parentClassLoaderOverride: Option[ClassLoade
   override def originalPath(name: String): String = originalPath(TermName(name))
   def originalPath(name: Name): String   = translateOriginalPath(typerOp path name)
   def originalPath(sym: Symbol): String  = translateOriginalPath(typerOp path sym)
-  /** For class based repl mode we use an .INSTANCE accessor. */
-  val readInstanceName = if (isClassBased) ".INSTANCE" else ""
-  def translateOriginalPath(p: String): String = {
-    val readName = java.util.regex.Matcher.quoteReplacement(sessionNames.read)
-    p.replaceFirst(readName, readName + readInstanceName)
-  }
+
+  /** For class based repl mode we use the .$read$INST accessor. */
+  val readInstanceName = if (isClassBased) s".${sessionNames.instance}" else ""
+  def translateOriginalPath(p: String): String =
+    if (isClassBased) p.replace(sessionNames.read, sessionNames.read + readInstanceName) else p
   def flatPath(sym: Symbol): String      = flatOp shift sym.javaClassName
 
   override def translatePath(path: String): Option[String] = {
@@ -313,7 +311,7 @@ class IMain(val settings: Settings, parentClassLoaderOverride: Option[ClassLoade
 
   /** If path represents a class resource in the default package,
     *  see if the corresponding symbol has a class file that is a REPL artifact
-    *  residing at a different resource path. Translate X.class to $line3/$read$$iw$$iw$X.class.
+    *  residing at a different resource path. Translate X.class to $line3/$read$X.class.
     */
   def translateSimpleResource(path: String): Option[String] = {
     if (!(path contains '/') && (path endsWith ".class")) {
@@ -589,11 +587,12 @@ class IMain(val settings: Settings, parentClassLoaderOverride: Option[ClassLoade
   class ReadEvalPrint(val lineId: Int) {
     def this() = this(freshLineId())
 
-    val packageName = sessionNames.line + lineId
-    val readName    = sessionNames.read
-    val evalName    = sessionNames.eval
-    val printName   = sessionNames.print
-    val resultName  = sessionNames.result
+    val packageName  = sessionNames.line + lineId
+    val readName     = sessionNames.read
+    val instanceName = sessionNames.instance
+    val evalName     = sessionNames.eval
+    val printName    = sessionNames.print
+    val resultName   = sessionNames.result
 
     def bindError(t: Throwable) = {
       import scala.tools.nsc.util.StackTraceOps
@@ -603,12 +602,10 @@ class IMain(val settings: Settings, parentClassLoaderOverride: Option[ClassLoade
 
       val unwrapped = rootCause(t)
 
-      // Example input: $line3.$read$$iw$$iw$
-      val classNameRegex = (lineRegex + ".*").r
-      def isWrapperInit(x: StackTraceElement) = cond(x.getClassName) {
-        case classNameRegex() if x.getMethodName == nme.CONSTRUCTOR.decoded => true
-      }
-      val stackTrace = unwrapped stackTracePrefixString (!isWrapperInit(_))
+      def notWrapperInit(x: StackTraceElement) =
+        !isLineWrapperClassName(x.getClassName) || x.getMethodName != nme.CONSTRUCTOR.decoded
+
+      val stackTrace: String = unwrapped.stackTracePrefixString(notWrapperInit _)
 
       withLastExceptionLock[String]({
         directBind[Throwable]("lastException", unwrapped)(StdReplTags.tagOfThrowable, classTag[Throwable])
@@ -765,18 +762,18 @@ class IMain(val settings: Settings, parentClassLoaderOverride: Option[ClassLoade
       case _                => Nil
     }
 
+    /** Code to import bound names from previous lines - accessPath is code to
+      * append to objectName to access anything bound by request.
+      */
+    lazy val ComputedImports(headerPreamble, importsPreamble, importsTrailer, accessPath) =
+      exitingTyper(importsCode(referencedNames.toSet, definesClass, generousImports))
+
 
     /** The path of the value that contains the user code. */
     def fullAccessPath = s"${lineRep.readPathInstance}$accessPath"
 
     /** The path of the given member of the wrapping instance. */
     def fullPath(vname: String) = s"$fullAccessPath.`$vname`"
-
-    /** Code to import bound names from previous lines - accessPath is code to
-      * append to objectName to access anything bound by request.
-      */
-    lazy val ComputedImports(headerPreamble, importsPreamble, importsTrailer, accessPath) =
-      exitingTyper(importsCode(referencedNames.toSet, this, definesClass, generousImports))
 
 
     private val USER_CODE_PLACEHOLDER = newTermName("$user_code_placeholder$")
@@ -806,6 +803,7 @@ class IMain(val settings: Settings, parentClassLoaderOverride: Option[ClassLoade
     /** generate the source code for the object that computes this request */
     def mkUnit: CompilationUnit = {
       val readName = newTermName(lineRep.readName)
+      val instanceName = newTermName(lineRep.instanceName)
 
       val stats = ListBuffer.empty[Tree]
 
@@ -827,7 +825,7 @@ class IMain(val settings: Settings, parentClassLoaderOverride: Option[ClassLoade
         else ModuleDef(NoMods, readName, wrapperTempl))
 
       if (isClassBased)
-        stats += q"""object $readName { val INSTANCE = new ${tq"""${readName.toTypeName}"""} }"""
+        stats += q"""object $readName { val $instanceName = new ${tq"""${readName.toTypeName}"""} }"""
 
       val unspliced = PackageDef(atPos(wholeUnit.focus)(Ident(lineRep.packageName)), stats.toList)
       unit.body = spliceUserCode.transform(unspliced)
@@ -850,12 +848,6 @@ class IMain(val settings: Settings, parentClassLoaderOverride: Option[ClassLoade
     def wrapperDef(iw: String) =
       if (isClassBased) s"sealed class $iw extends _root_.java.io.Serializable"
       else s"object $iw"
-
-    import nme.{ INTERPRETER_IMPORT_WRAPPER => iw }
-    /** Like postamble for an import wrapper. */
-    def postwrap: String =
-      if (isClassBased) s"val $iw = new $iw"
-      else ""
 
 
     private def mkResultUnit(contributors: List[MemberHandler]): CompilationUnit = {
@@ -918,11 +910,9 @@ class IMain(val settings: Settings, parentClassLoaderOverride: Option[ClassLoade
     }
 
     // the type symbol of the owner of the member that supplies the result value
-    lazy val resultSymbol = {
-      val sym = lineRep.resolvePathToSymbol(fullAccessPath)
-      // plow through the INSTANCE member when -Yrepl-class-based
-      if (sym.isTerm && sym.nameString == "INSTANCE") sym.typeSignature.typeSymbol else sym
-    }
+    lazy val resultSymbol =
+      lineRep.resolvePathToSymbol(fullAccessPath)
+
 
     def applyToResultMember[T](name: Name, f: Symbol => T) = exitingTyper(f(resultSymbol.info.nonPrivateDecl(name)))
 
@@ -935,7 +925,7 @@ class IMain(val settings: Settings, parentClassLoaderOverride: Option[ClassLoade
     /** Types of variables defined by this request. */
     lazy val compilerTypeOf = typeMap[Type](x => x) withDefaultValue NoType
     /** String representations of same. */
-    lazy val typeOf         = typeMap[String](tp => exitingTyper(tp.toString))
+    lazy val typeOf         = typeMap[String](tp => exitingTyper { tp.toString })
 
     def sigOf(name: Name) = exitingTyper { val sym = resultSymbol.info.nonPrivateDecl(name)
       s"${sym.nameString}${sym.signatureString}" // not using defString because we don't need all the details
@@ -1319,6 +1309,7 @@ object IMain {
   //   $line3.$read$$iw$$iw$Bippy@4a6a00ca
 //  private def removeLineWrapper(s: String) = s.replaceAll("""\$line\d+[./]\$(read|eval|print)[$.]""", "")
 //  private def removeIWPackages(s: String)  = s.replaceAll("""\$(iw|read|eval|print)[$.]""", "")
+//  @deprecated("Use intp.naming.unmangle.", "2.12.0-M5")
 //  def stripString(s: String)               = removeIWPackages(removeLineWrapper(s))
 
 }

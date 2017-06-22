@@ -236,45 +236,39 @@ package $line10 {
       super.<init>;
       ()
     };
-    sealed class $iw extends _root_.java.io.Serializable {
-      def <init>() = {
-        super.<init>;
-        ()
-      };
-      import $line7.$read.INSTANCE.$iw.$iw.BippyBups;
-      import $line7.$read.INSTANCE.$iw.$iw.BippyBups;
-      import $line8.$read.INSTANCE.$iw.$iw.PuppyPups;
-      import $line8.$read.INSTANCE.$iw.$iw.PuppyPups;
-      import $line9.$read.INSTANCE.$iw.$iw.Bingo;
-      import $line9.$read.INSTANCE.$iw.$iw.Bingo;
-      sealed class $iw extends _root_.java.io.Serializable {
-        def <init>() = {
-          super.<init>;
-          ()
-        };
-        val res3 = List(BippyBups, PuppyPups, Bingo)
-      };
-      val $iw = new $iw.<init>
-    };
-    val $iw = new $iw.<init>
+    import _root_.scala.tools.nsc.interpreter.$u007B$u007B;
+    import _root_.scala.tools.nsc.interpreter.$u007B$u007B;
+    import $line7.$read.$read$INST.BippyBups;
+    import _root_.scala.tools.nsc.interpreter.$u007B$u007B;
+    import $line7.$read.$read$INST.BippyBups;
+    import _root_.scala.tools.nsc.interpreter.$u007B$u007B;
+    import $line8.$read.$read$INST.PuppyPups;
+    import _root_.scala.tools.nsc.interpreter.$u007B$u007B;
+    import $line8.$read.$read$INST.PuppyPups;
+    import _root_.scala.tools.nsc.interpreter.$u007B$u007B;
+    import $line9.$read.$read$INST.Bingo;
+    import _root_.scala.tools.nsc.interpreter.$u007B$u007B;
+    import $line9.$read.$read$INST.Bingo;
+    import _root_.scala.tools.nsc.interpreter.$u007B$u007B;
+    val res3 = List(BippyBups, PuppyPups, Bingo)
   };
   object $read extends scala.AnyRef {
     def <init>() = {
       super.<init>;
       ()
     };
-    val INSTANCE = new $read.<init>
+    val $read$INST = new $read.<init>
   }
 }
 package $line10
 
 
 object $eval {
-  lazy val $result = $line10.$read.INSTANCE.$iw.$iw.res3
+  lazy val $result = $line10.$read.$read$INST.res3
   lazy val $print: _root_.java.lang.String =  {
-    $line10.$read.INSTANCE.$iw.$iw
+    $line10.$read.$read$INST
     ( ""
- + "res3: List[Product with Serializable] = " + _root_.scala.runtime.ScalaRunTime.replStringOf($line10.$read.INSTANCE.$iw.$iw.res3, 1000)
+ + "res3: List[Product with Serializable] = " + _root_.scala.runtime.ScalaRunTime.replStringOf($line10.$read.$read$INST.res3, 1000)
 
     )
   }

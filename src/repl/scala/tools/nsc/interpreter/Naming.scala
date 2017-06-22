@@ -14,7 +14,7 @@ import scala.util.matching.Regex
 object Naming {
   def unmangle(str: String): String = {
     val ESC = '\u001b'
-    val cleaned = removeIWPackages(removeLineWrapper(str))
+    val cleaned = str.replaceAll(lineRegex, "")
     // Looking to exclude binary data which hoses the terminal, but
     // let through the subset of it we need, like whitespace and also
     // <ESC> for ansi codes.
@@ -35,16 +35,17 @@ object Naming {
 
   // The two name forms this is catching are the two sides of this assignment:
   //
-  // $line3.$read.$iw.$iw.Bippy =
-  //   $line3.$read$$iw$$iw$Bippy@4a6a00ca
-  lazy val lineRegex = {
+  // $line3.$read.Bippy =
+  //   $line3.$read$Bippy@4a6a00ca
+  private lazy val lineRegex = {
     val sn = sessionNames
     val members = List(sn.read, sn.eval, sn.print) map Regex.quote mkString("(?:", "|", ")")
     Regex.quote(sn.line) + """\d+[./]""" + members + """[$.]"""
   }
 
-  private def removeLineWrapper(s: String) = s.replaceAll(lineRegex, "")
-  private def removeIWPackages(s: String)  = s.replaceAll("""\$iw[$.]""", "")
+  // Example input: $line3.$read$
+  private lazy val classNameRegex = (lineRegex + ".*").r
+  def isLineWrapperClassName(name: String): Boolean = classNameRegex.findFirstIn(name).nonEmpty
 
   object sessionNames {
     // All values are configurable by passing e.g. -Dscala.repl.name.read=XXX
@@ -52,11 +53,18 @@ object Naming {
     final def propOr(name: String, default: String): String =
       sys.props.getOrElse("scala.repl.name." + name, default)
 
-    // Prefixes used in repl machinery.  Default to $line, $read, etc.
-    def line = propOr("line")
-    def read = propOr("read")
-    def eval = propOr("eval")
-    def print = propOr("print")
+    // Prefixes used in repl machinery.
+    // `read` is special-cased by the type checker (see INTERPRETER_WRAPPER / isReplWrapperName)
+    // not a good idea to have it depend on a property IMO
+    def read   = "$read"
+
+    // important it contains `read`, so that isReplWrapperName is true for this one too
+    def instance = read+"$INST"
+
+    // Can be customized using a property:
+    def eval   = propOr("eval")
+    def print  = propOr("print")
+    def line   = propOr("line")
     def result = propOr("result")
 
     // The prefix for unnamed results: by default res0, res1, etc.

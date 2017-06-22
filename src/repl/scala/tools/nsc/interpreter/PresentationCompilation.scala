@@ -96,11 +96,23 @@ trait PresentationCompilation { self: IMain =>
     // offsets are 0-based
     def treeAt(start: Int, end: Int): compiler.Tree = treeAt(unit.source.position(start).withEnd(end))
     def treeAt(pos: Position): compiler.Tree = {
-      import compiler.{Locator, Template, Block}
+      import compiler.{Locator, Template, Block, Import}
+      import scala.tools.nsc.interpreter.Naming.isLineWrapperClassName
       new Locator(pos) locateIn unit.body match {
         case t@Template(_, _, constructor :: (rest :+ last)) =>
           if (rest.isEmpty) last
-          else Block(rest, last)
+          else {
+            val noScopingImports = rest.dropWhile {
+              case Import(expr, _) =>
+                /* selecting $iw or from history (trailing dot or dollar required) */
+                val importStr = expr.toString
+                importStr.startsWith("scala.tools.nsc.interpreter") || isLineWrapperClassName(importStr + "$")
+              case _ => false
+            }
+
+            if (noScopingImports.isEmpty) last
+            else Block(rest, last) setType last.tpe
+          }
         case t =>
           t
       }
