@@ -292,8 +292,8 @@ class IMain(val settings: Settings, parentClassLoaderOverride: Option[ClassLoade
   }
 
   override def originalPath(name: String): String = originalPath(TermName(name))
-  def originalPath(name: Name): String   = translateOriginalPath(typerOp path name)
-  def originalPath(sym: Symbol): String  = translateOriginalPath(typerOp path sym)
+  def originalPath(name: Name): String   = typerOp path name
+  def originalPath(sym: Symbol): String  = typerOp path sym
 
   /** For class based repl mode we use the .$read$INST accessor. */
   val readInstanceName = s".${sessionNames.instance}"
@@ -613,11 +613,9 @@ class IMain(val settings: Settings, parentClassLoaderOverride: Option[ClassLoade
     // object and we can do that much less wrapping.
     def packageDecl = "package " + packageName
 
-    def pathToInstance(name: String)   = packageName + "." + name + readInstanceName
     def pathTo(name: String)   = packageName + "." + name
     def packaged(code: String) = packageDecl + "\n\n" + code
 
-    def readPathInstance  = pathToInstance(readName)
     def readPath = pathTo(readName)
     def evalPath = pathTo(evalName)
 
@@ -758,70 +756,49 @@ class IMain(val settings: Settings, parentClassLoaderOverride: Option[ClassLoade
       case _                => Nil
     }
 
-    /** Code to import bound names from previous lines - accessPath is code to
-      * append to objectName to access anything bound by request.
-      */
-    lazy val ComputedImports(headerPreamble, importsPreamble, importsTrailer, accessPath) =
-      exitingTyper(importsCode(referencedNames.toSet, definesClass, generousImports))
-
-
-    /** The path of the value that contains the user code. */
-    def fullAccessPath = s"${lineRep.readPathInstance}$accessPath"
 
     /** The path of the given member of the wrapping instance. */
-    def fullPath(vname: String) = s"$fullAccessPath.`$vname`"
+    def fullPath(vname: String) = s"${lineRep.readPath}.`$vname`"
 
-
-    private val USER_CODE_PLACEHOLDER = newTermName("$user_code_placeholder$")
-    private object spliceUserCode extends Transformer {
-      var parents: List[Tree] = Nil
-      override def transform(tree: Tree): Tree = {
-        parents ::= tree
-        try super.transform(tree)
-        finally parents = parents.tail
-      }
-
-      override def transformStats(stats: List[Tree], exprOwner: Symbol): List[Tree] =
-        stats flatMap {
-          case Ident(USER_CODE_PLACEHOLDER) =>
-            parents.foreach(p => p.setPos(wholeUnit))
-            trees
-          case t => List(transform(t))
-        }
-    }
-
-    private def parseSynthetic(code: String): List[Tree] = {
-      val stats = newUnitParser(code, "<synthetic>").parseStats()
-      stats foreach {_.foreach(t => t.pos = t.pos.makeTransparent)}
-      stats
-    }
 
     /** generate the source code for the object that computes this request */
     def mkUnit: CompilationUnit = {
+      val iwOwner = definitions.Interpreter_iw.owner
+      val iwName = definitions.Interpreter_iw.name
+      def levelChangingImport = gen.mkImport(iwOwner, iwName, iwName)
+
+      def synthPos[T <: Tree](t: T): T = atPos(wholeUnit.makeTransparent)(t)
+
       val readName = newTermName(lineRep.readName)
       val instanceName = newTermName(lineRep.instanceName)
 
       val stats = ListBuffer.empty[Tree]
 
-      stats ++= parseSynthetic(headerPreamble)
+      val predefImports =
+        prevRequestList.flatMap(req => req.handlers collect {
+          case h: ImportHandler if h.referencedNames contains definitions.PredefModule.name =>
+            atPos(wholeUnit.makeTransparent)(h.member.duplicate)
+        })
 
-      // the imports logic builds up a nesting of object $iw wrappers :-S
-      // (have to parse importsPreamble + ... + importsTrailer at once)
-      // This will be simplified when we stop wrapping to begin with.
-      val syntheticStats =
-        parseSynthetic(importsPreamble + s"`$USER_CODE_PLACEHOLDER`" + importsTrailer)
+      stats ++= predefImports
 
-      // don't use empty list of parents, since that triggers a rangepos bug in typer (the synthetic typer tree violates overlapping invariant)
-      val parents = List(atPos(wholeUnit.focus)(gen.rootScalaDot(tpnme.Serializable)))
+      prevRequestList.foreach { prevReq =>
+        val pkgName = newTermName(prevReq.lineRep.packageName)
+        stats += synthPos(q"""import $pkgName.$readName._""")
+        stats += synthPos(levelChangingImport)
+      }
 
-      val wrapperTempl = gen.mkTemplate(parents, noSelfType, NoMods, ListOfNil, syntheticStats, superPos = wholeUnit.focus)
+      stats += {
+        val parents = List(synthPos(gen.rootScalaDot(tpnme.Serializable)))
+        val templ = gen.mkTemplate(parents, noSelfType, NoMods, ListOfNil, trees, superPos = wholeUnit.focus)
+        ClassDef(Modifiers(Flags.SEALED), readName.toTypeName, Nil, templ setPos wholeUnit) setPos wholeUnit
+      }
 
-      stats += ClassDef(Modifiers(Flags.SEALED), readName.toTypeName, Nil, wrapperTempl)
+      stats += synthPos(q"""object $readName extends ${tq"""${readName.toTypeName}"""}""")
 
-      stats += q"""object $readName { val $instanceName = new ${tq"""${readName.toTypeName}"""} }"""
 
-      val unspliced = PackageDef(atPos(wholeUnit.focus)(Ident(lineRep.packageName)), stats.toList)
-      unit.body = spliceUserCode.transform(unspliced)
+      unit.body = PackageDef(synthPos(Ident(lineRep.packageName)), stats.toList) setPos wholeUnit
+
       unit.encounteredXml(firstXmlPos)
 
 //      settings.Xprintpos.value = true
@@ -833,7 +810,7 @@ class IMain(val settings: Settings, parentClassLoaderOverride: Option[ClassLoade
     // Secret bookcase entrance for repl debuggers: end the line
     // with "// show" and see what's going on.
     private def showCode(code: => String) =
-      if (reporter.isDebug || (label == "<console>" && line.contains("// show")))
+//      if (reporter.isDebug || (label == "<console>" && line.contains("// show")))
         reporter.withoutUnwrapping(reporter.withoutTruncating(reporter.echo(code)))
 
 
@@ -854,10 +831,10 @@ class IMain(val settings: Settings, parentClassLoaderOverride: Option[ClassLoade
              |object ${lineRep.evalName} {
              |  ${if (resValSym != NoSymbol) s"lazy val ${lineRep.resultName} = ${originalPath(resValSym)}" else ""}
              |  lazy val ${lineRep.printName}: _root_.java.lang.String = $executionWrapper {
-             |    $fullAccessPath
+             |    ${lineRep.readPath}
              |    ( "" """.stripMargin) // the result extraction code will emit code to append strings to this initial ""
 
-          contributors map (_.resultExtractionCode(this)) foreach code.println
+//          contributors map (_.resultExtractionCode(this)) foreach code.println
 
           code.println("""
              |    )
@@ -903,7 +880,7 @@ class IMain(val settings: Settings, parentClassLoaderOverride: Option[ClassLoade
 
     // the type symbol of the owner of the member that supplies the result value
     lazy val resultSymbol =
-      lineRep.resolvePathToSymbol(fullAccessPath)
+      lineRep.resolvePathToSymbol(lineRep.readPath)
 
 
     def applyToResultMember[T](name: Name, f: Symbol => T) = exitingTyper(f(resultSymbol.info.nonPrivateDecl(name)))
