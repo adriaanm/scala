@@ -2,12 +2,6 @@ import scala.tools.partest.ReplTest
 import scala.tools.nsc.Settings
 
 object Test extends ReplTest {
-
-  override def transformSettings(s: Settings): Settings = {
-    s.Yreplclassbased.value = true
-    s
-  }
-
   override def normalize(s: String) = {
     // replace indylambda function names by <function0>
     """\$Lambda.*""".r.replaceAllIn(s, "<function0>")

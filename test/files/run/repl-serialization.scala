@@ -10,7 +10,6 @@ import scala.tools.nsc.interpreter.shell.ReplReporterImpl
 object Test extends App {
   val settings = {
     val ss = new Settings()
-    ss.Yreplclassbased.value = true
     ss.usejavacp.value = true
     ss
   }

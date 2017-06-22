@@ -117,9 +117,6 @@ class IMain(val settings: Settings, parentClassLoaderOverride: Option[ClassLoade
     writer.toString
   }
 
-  lazy val isClassBased: Boolean = settings.Yreplclassbased.value
-
-
   override def initializeComplete = _initializeComplete
   private[this] var _initializeComplete = false
 
@@ -299,9 +296,8 @@ class IMain(val settings: Settings, parentClassLoaderOverride: Option[ClassLoade
   def originalPath(sym: Symbol): String  = translateOriginalPath(typerOp path sym)
 
   /** For class based repl mode we use the .$read$INST accessor. */
-  val readInstanceName = if (isClassBased) s".${sessionNames.instance}" else ""
-  def translateOriginalPath(p: String): String =
-    if (isClassBased) p.replace(sessionNames.read, sessionNames.read + readInstanceName) else p
+  val readInstanceName = s".${sessionNames.instance}"
+  def translateOriginalPath(p: String): String = p.replace(sessionNames.read, sessionNames.read + readInstanceName)
   def flatPath(sym: Symbol): String      = flatOp shift sym.javaClassName
 
   override def translatePath(path: String): Option[String] = {
@@ -816,16 +812,13 @@ class IMain(val settings: Settings, parentClassLoaderOverride: Option[ClassLoade
         parseSynthetic(importsPreamble + s"`$USER_CODE_PLACEHOLDER`" + importsTrailer)
 
       // don't use empty list of parents, since that triggers a rangepos bug in typer (the synthetic typer tree violates overlapping invariant)
-      val parents = List(atPos(wholeUnit.focus)(if (isClassBased) gen.rootScalaDot(tpnme.Serializable) else gen.rootScalaDot(tpnme.AnyRef)))
+      val parents = List(atPos(wholeUnit.focus)(gen.rootScalaDot(tpnme.Serializable)))
 
       val wrapperTempl = gen.mkTemplate(parents, noSelfType, NoMods, ListOfNil, syntheticStats, superPos = wholeUnit.focus)
 
-      stats += (
-        if (isClassBased) ClassDef(Modifiers(Flags.SEALED), readName.toTypeName, Nil, wrapperTempl)
-        else ModuleDef(NoMods, readName, wrapperTempl))
+      stats += ClassDef(Modifiers(Flags.SEALED), readName.toTypeName, Nil, wrapperTempl)
 
-      if (isClassBased)
-        stats += q"""object $readName { val $instanceName = new ${tq"""${readName.toTypeName}"""} }"""
+      stats += q"""object $readName { val $instanceName = new ${tq"""${readName.toTypeName}"""} }"""
 
       val unspliced = PackageDef(atPos(wholeUnit.focus)(Ident(lineRep.packageName)), stats.toList)
       unit.body = spliceUserCode.transform(unspliced)
@@ -846,8 +839,7 @@ class IMain(val settings: Settings, parentClassLoaderOverride: Option[ClassLoade
 
     // used for import wrapping (this will go away entirely when we use the more direct approach)
     def wrapperDef(iw: String) =
-      if (isClassBased) s"sealed class $iw extends _root_.java.io.Serializable"
-      else s"object $iw"
+      s"sealed class $iw extends _root_.java.io.Serializable"
 
 
     private def mkResultUnit(contributors: List[MemberHandler]): CompilationUnit = {

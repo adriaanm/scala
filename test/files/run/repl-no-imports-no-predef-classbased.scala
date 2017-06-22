@@ -3,7 +3,6 @@ object Test extends scala.tools.partest.ReplTest {
   override def transformSettings(settings: scala.tools.nsc.Settings) = {
     settings.noimports.value = true
     settings.nopredef.value = true
-    settings.Yreplclassbased.value = true
     settings
   }
 

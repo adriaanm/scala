@@ -2,12 +2,6 @@ import scala.tools.partest.ReplTest
 import scala.tools.nsc.Settings
 
 object Test extends ReplTest {
-
-  override def transformSettings(s: Settings): Settings = {
-    s.Yreplclassbased.value = true
-    s
-  }
-
   lazy val normalizeRegex = """(import\s.*)\(.*\)""".r
 
   override def normalize(s: String): String = normalizeRegex.replaceFirstIn(s, "$1(...)")

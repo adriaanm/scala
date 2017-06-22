@@ -264,7 +264,6 @@ object Scripted {
   }
 
   def apply(factory: ScriptEngineFactory = new Factory, settings: Settings = new Settings, out: PrintWriter = ReplReporterImpl.defaultOut) = {
-    settings.Yreplclassbased.value = true
     settings.usejavacp.value       = true
     val s = new Scripted(factory, settings, out)
     s.setBindings(s.createBindings, ScriptContext.ENGINE_SCOPE)

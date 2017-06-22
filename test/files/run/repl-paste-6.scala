@@ -8,11 +8,7 @@ import scala.tools.nsc.Settings
  *     val $line3$read: $line3.$read.INSTANCE.type = $line3.$read.INSTANCE;
  */
 object Test extends ReplTest {
-  override def transformSettings(settings: Settings): Settings = {
-    settings.Yreplclassbased.value = true
-    settings
-  }
-  def code = 
+  def code =
     """
 :paste < EOF
 case class C(i: Int)

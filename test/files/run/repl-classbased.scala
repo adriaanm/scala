@@ -4,12 +4,7 @@ import scala.tools.nsc.Settings
 
 //scala/bug#9740
 object Test extends ReplTest {
-  override def transformSettings(s: Settings): Settings = {
-    s.Yreplclassbased.value = true
-    s
-  }
-
-  def code = 
+  def code =
     """
 case class K(s: String)
 class C { implicit val k: K = K("OK?"); override def toString = s"C($k)" }
