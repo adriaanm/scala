@@ -237,17 +237,13 @@ package $line10 {
       ()
     };
     import _root_.scala.tools.nsc.interpreter.$u007B$u007B;
-    import _root_.scala.tools.nsc.interpreter.$u007B$u007B;
     import $line7.$read.$read$INST.BippyBups;
-    import _root_.scala.tools.nsc.interpreter.$u007B$u007B;
     import $line7.$read.$read$INST.BippyBups;
     import _root_.scala.tools.nsc.interpreter.$u007B$u007B;
     import $line8.$read.$read$INST.PuppyPups;
-    import _root_.scala.tools.nsc.interpreter.$u007B$u007B;
     import $line8.$read.$read$INST.PuppyPups;
     import _root_.scala.tools.nsc.interpreter.$u007B$u007B;
     import $line9.$read.$read$INST.Bingo;
-    import _root_.scala.tools.nsc.interpreter.$u007B$u007B;
     import $line9.$read.$read$INST.Bingo;
     import _root_.scala.tools.nsc.interpreter.$u007B$u007B;
     val res3 = List(BippyBups, PuppyPups, Bingo)

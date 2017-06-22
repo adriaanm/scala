@@ -6,7 +6,7 @@ scala> println(h()(5))
 6
 
 scala> val f = h() _
-f: Int => Int = <function1>
+f: Int => Int = $Lambda$1835/1197430386@616a06e3
 
 scala> println(f(10))
 11

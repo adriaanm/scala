@@ -16,5 +16,7 @@ scala> $intp.valueOfTerm("i")
 res4: Option[Any] = Some(17)
 
 scala> assert($intp.settings.Yreplclassbased)
+                             ^
+       error: value Yreplclassbased is not a member of scala.tools.nsc.Settings
 
 scala> :quit

@@ -3,6 +3,6 @@ scala> def f(x: => Int): Int = x
 defined def f(x: => Int): Int
 
 scala> f _
-res0: (=> Int) => Int = <function1>
+res0: (=> Int) => Int = $Lambda$1852/117859171@75b38c36
 
 scala> :quit

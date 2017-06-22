@@ -4,8 +4,3 @@ defined def g: String
 defined def h: String
 defined def g: String
 defined def h: String
-defined def callerOfCaller: String
-defined def g: String
-defined def h: String
-defined def g: String
-defined def h: String

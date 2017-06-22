@@ -45,20 +45,20 @@ res10: (Int, Int, Int) = (1,2,3)
 scala> 55 ; (x: Int) => x + 1 ; () => ((5))
        ^
        warning: a pure expression does nothing in statement position; multiline expressions may require enclosing parentheses
-res11: () => Int = <function0>
+res11: () => Int = $Lambda$1863/1710905079@232be28d
 
 scala> 
 
 scala> () => 5
-res12: () => Int = <function0>
+res12: () => Int = $Lambda$1864/1631537374@33ce081a
 
 scala> 55 ; () => 5
        ^
        warning: a pure expression does nothing in statement position; multiline expressions may require enclosing parentheses
-res13: () => Int = <function0>
+res13: () => Int = $Lambda$1865/1924009991@4545cfc0
 
 scala> () => { class X ; new X }
-res14: () => AnyRef = <function0>
+res14: () => AnyRef = $Lambda$1902/709531076@71ae1cb
 
 scala> 
 

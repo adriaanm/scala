@@ -4,7 +4,8 @@ defined def f: Nothing
 
 scala> f
 java.lang.Exception: Uh-oh
-  at .f(<console>:XX)
+  at f(<console>:1)
+  at <init>(<console>:1)
   ... ??? elided
 
 scala> def f = throw new Exception("")
@@ -12,7 +13,8 @@ defined def f: Nothing
 
 scala> f
 java.lang.Exception:
-  at .f(<console>:XX)
+  at f(<console>:1)
+  at <init>(<console>:1)
   ... ??? elided
 
 scala> def f = throw new Exception
@@ -20,7 +22,8 @@ defined def f: Nothing
 
 scala> f
 java.lang.Exception
-  at .f(<console>:XX)
+  at f(<console>:1)
+  at <init>(<console>:1)
   ... ??? elided
 
 scala> :quit

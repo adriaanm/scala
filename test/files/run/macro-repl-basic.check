@@ -36,15 +36,35 @@ scala> object Macros {
 }; class Macros {
   def quux(x: Int): Int = macro Impls.quux
 }
-defined object Macros
-defined class Macros
+           def foo(x: Int): Int = macro Impls.foo
+               ^
+On line 3: error: macro definition needs to be enabled
+       by making the implicit value scala.language.experimental.macros visible.
+       This can be achieved by adding the import clause 'import scala.language.experimental.macros'
+       or by setting the compiler option -language:experimental.macros.
+       See the Scaladoc for value scala.language.experimental.macros for a discussion
+       why the feature needs to be explicitly enabled.
+         def bar(x: Int): Int = macro Impls.bar
+             ^
+On line 5: error: macro definition needs to be enabled
+       by making the implicit value scala.language.experimental.macros visible.
+         def quux(x: Int): Int = macro Impls.quux
+             ^
+On line 7: error: macro definition needs to be enabled
+       by making the implicit value scala.language.experimental.macros visible.
 
 scala> 
 
 scala> import Macros.Shmacros._
-import Macros.Shmacros._
+              ^
+       error: not found: value Macros
 
 scala> println(foo(2) + Macros.bar(2) * new Macros().quux(4))
-31
+               ^
+       error: not found: value foo
+                        ^
+       error: not found: value Macros
+                                            ^
+       error: not found: type Macros
 
 scala> :quit

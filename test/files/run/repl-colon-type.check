@@ -35,12 +35,12 @@ Int
 
 scala> :type protected lazy val f = 5
 
-         lazy val $result = $line13.$read.f
-                                          ^
-<synthetic>:5: error: lazy value f cannot be accessed in object $line13.$read
+         lazy val $result = $line13.$read.$read$INST.f
+                                                     ^
+<synthetic>:5: error: lazy value f cannot be accessed in $line13.$read
         Access to protected lazy value f not permitted because
         enclosing object $eval in package $line13 is not a subclass of
-        object $read in package $line13 where target is defined
+        class $read in package $line13 where target is defined
 
 (To diagnose errors in synthetic code, try adding `// show` to the end of your input.)
 

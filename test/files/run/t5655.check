@@ -6,17 +6,9 @@ scala> import x._
 import x._
 
 scala> x
-       ^
-       error: reference to x is ambiguous;
-       it is imported twice in the same scope by
-       import x._
-       and import x
+res0: x.type = x$@XXXXXXXX
 
 scala> x
-       ^
-       error: reference to x is ambiguous;
-       it is imported twice in the same scope by
-       import x._
-       and import x
+res1: x.type = x$@XXXXXXXX
 
 scala> :quit

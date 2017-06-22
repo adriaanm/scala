@@ -18,6 +18,10 @@ scala> val k = 42
 k: Int = 42
 
 scala> k                 // was K(OK?)
-res1: Int = 42
+       ^
+       error: reference to k is ambiguous;
+       it is imported twice in the same scope by
+       import $line11$read.k
+       and import c.k
 
 scala> :quit
