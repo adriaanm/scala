@@ -1587,11 +1587,11 @@ trait Namers extends MethodSynthesis {
             // (a deferred val or most vals defined in a trait -- see Field.noFieldFor)
             val isGetter = vdef.symbol hasFlag ACCESSOR
 
-            val (pt, fieldAnnots) = {
+            val pt = {
               val valOwner = owner.owner
               // there's no overriding outside of classes, and we didn't use to do this in 2.11, so provide opt-out
 
-              if (!settings.isScala212 || !valOwner.isClass) (WildcardType, Nil)
+              if (!settings.isScala212 || !valOwner.isClass) WildcardType
               else {
                 // normalize to getter so that we correctly consider a val overriding a def
                 // (a val's name ends in a " ", so can't compare to def)
@@ -1601,24 +1601,14 @@ trait Namers extends MethodSynthesis {
                 // which may or may not be `vdef.symbol` (see isGetter above)
                 val overridden = safeNextOverriddenSymbol(overridingSym)
 
-                if (overridden == NoSymbol || overridden.isOverloaded) (WildcardType, Nil)
-                else {
-                  val annots =
-                    if (overridden hasFlag ACCESSOR) overridden.accessed.annotations
-                    else Nil // could be overriding a regular def
-                  (valOwner.thisType.memberType(overridden).resultType, annots)
-                }
+                if (overridden == NoSymbol || overridden.isOverloaded) WildcardType
+                else valOwner.thisType.memberType(overridden).resultType
               }
             }
 
-            def patchSymInfo(tp: Type): Unit = {}
-//              if (pt ne WildcardType) { // no patching up to do if we didn't infer a prototype
-//                if (isGetter) vdef.symbol setInfo NullaryMethodType(tp)
-//                else {
-//                  if (fieldAnnots.nonEmpty) vdef.symbol setAnnotations fieldAnnots
-//                  vdef.symbol setInfo tp
-//                }
-//              }
+            def patchSymInfo(tp: Type): Unit =
+              if (pt ne WildcardType) // no patching up to do if we didn't infer a prototype
+                vdef.symbol setInfo (if (isGetter) NullaryMethodType(tp) else tp)
 
             patchSymInfo(pt)
 
