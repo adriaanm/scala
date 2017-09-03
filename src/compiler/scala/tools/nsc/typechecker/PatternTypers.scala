@@ -76,7 +76,7 @@ trait PatternTypers {
       val caseClass   = companionSymbolOf(fun.tpe.typeSymbol.sourceModule, context)
       val member      = unapplyMember(fun.tpe)
       def resultType  = (fun.tpe memberType member).finalResultType
-      def isEmptyType = resultOfMatchingMethod(resultType, nme.isEmpty)()
+      def isEmptyType = resultOfIsEmpty(resultType)
       def isOkay      = (
            resultType.isErroneous
         || (resultType <:< BooleanTpe)
@@ -303,16 +303,23 @@ trait PatternTypers {
           else freshUnapplyArgType()
         )
       )
+
+      // NOTE: The symbol of unapplyArgTree (`<unapply-selector>`) may be referenced in `fun1.tpe`
+      // the pattern matcher deals with this in ExtractorCallRegular -- SI-6130
       val unapplyArgTree = Ident(unapplyArg) updateAttachment SubpatternsAttachment(args)
 
-      // clearing the type is necessary so that ref will be stabilized; see bug 881
+      // Clearing the type is necessary so that ref will be stabilized; see bug 881.
       val fun1 = typedPos(fun.pos)(Apply(Select(fun.clearType(), unapplyMethod), unapplyArgTree :: Nil))
 
       def makeTypedUnapply() = {
         // the union of the expected type and the inferred type of the argument to unapply
         val glbType        = glb(ensureFullyDefined(pt) :: unapplyArg.tpe_* :: Nil)
         val wrapInTypeTest = canRemedy && !(fun1.symbol.owner isNonBottomSubClass ClassTagClass)
-        val formals        = patmat.alignPatterns(context.asInstanceOf[analyzer.Context], fun1, args).unexpandedFormals
+        val formals        = patmat.unapplyFormals(fun1, args)(context)
+        // SI-6130 -- TODO: what should we do when a type in `formals` depends on the symbol `unapplyArg` (that references the unapply selector)
+        // One solution could be to widen all expected types for sub-patterns since the extractor's result type
+        // may contain singleton types that depend on `arg` (<unapply-selector>)
+        // `formals mapConserve (_.widen)`
         val args1          = typedArgsForFormals(args, formals, mode)
         val result         = UnApply(fun1, args1) setPos tree.pos setType glbType
 
