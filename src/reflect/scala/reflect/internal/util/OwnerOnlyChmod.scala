@@ -23,7 +23,14 @@ trait OwnerOnlyChmod {
   }
   /** Remove group/other permisisons for `file`, it if exists */
   def chmod(file: java.io.File): Unit
-  final def chmodOrCreateEmpty(file: File): Unit = if (file.exists()) chmod(file) else chmodAndWrite(file, Array[Byte]())
+
+  // TODO: use appropriate NIO call instead of two-step exists?/create!
+  final def chmodOrCreateEmpty(file: File): Unit =
+    if (!file.exists()) chmodAndWrite(file, Array[Byte]()) else chmod(file)
+
+  final def chmodEmptyIfNotExists(file: File) =
+    if (!file.exists()) chmodAndWrite(file, Array[Byte]())
+
 }
 
 object OwnerOnlyChmod {

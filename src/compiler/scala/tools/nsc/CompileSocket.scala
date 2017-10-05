@@ -14,6 +14,7 @@ import scala.reflect.internal.util.StringOps.splitWhere
 import scala.sys.process._
 import scala.tools.nsc.io.{File, Path, Socket}
 import scala.tools.util.CompileOutputCommon
+import scala.util.control.NonFatal
 
 trait HasCompileSocket {
   def compileSocket: CompileSocket
@@ -72,23 +73,15 @@ class CompileSocket extends CompileOutputCommon {
   protected val serverClass     = "scala.tools.nsc.CompileServer"
   protected def serverClassArgs = (if (verbose) List("-v") else Nil) ::: (if (fixPort > 0) List("-p", fixPort.toString) else Nil)
 
-  /** A temporary directory to use */
-  val tmpDir = {
-    val udir  = Option(Properties.userName) getOrElse "shared"
-    val f     = (Path(Properties.tmpDir) / ("scala-devel" + udir)).createDirectory()
-
-    if (f.isDirectory && f.canWrite) {
-      info("[Temp directory: " + f + "]")
-      OwnerOnlyChmod().chmod(f.jfile)
-      f
-    }
-    else fatal("Could not find a directory for temporary files")
-  }
-
   /* A directory holding port identification files */
-  val portsDir = {
+  private lazy val portsDir = {
     val dir = (Path(Properties.userHome) / dirName).createDirectory()
-    OwnerOnlyChmod().chmod(dir.jfile)
+    try OwnerOnlyChmod().chmod(dir.jfile)
+    catch {
+      case t: Throwable =>
+        if (verbose) Console.err.println(t.toString)
+        fatal(s"Failed to change permissions on ${dir}. The compilation daemon requires a secure directory; use -nc to disable the daemon.")
+    }
     dir
   }
 

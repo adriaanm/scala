@@ -8,16 +8,39 @@ package scala.tools.nsc.interpreter.jline
 import _root_.jline.console.history.PersistentHistory
 
 import scala.tools.nsc.interpreter
-import scala.reflect.io.{ File, Path }
-import scala.tools.nsc.Properties.{ propOrNone, userHome }
+import scala.reflect.io.{File, Path}
+import scala.tools.nsc.Properties.{propOrNone, userHome}
 import scala.reflect.internal.util.OwnerOnlyChmod
+import scala.util.control.NonFatal
 
 /** TODO: file locking.
   */
 trait FileBackedHistory extends JLineHistory with PersistentHistory {
   def maxSize: Int
 
-  protected lazy val historyFile: File = FileBackedHistory.defaultFile
+  // For a history file in the standard location, always try to restrict permission,
+  // creating an empty file if none exists.
+  // For a user-specified location, only lock down permissions on if we're the ones
+  // creating it, otherwise responsibility for permissions is up to the caller.
+  private def restrictPermissions(standard: Boolean)(p: Path): Path = {
+    try {
+      if (standard) OwnerOnlyChmod().chmodOrCreateEmpty(result.jfile)
+      else OwnerOnlyChmod().chmodEmptyIfNotExists(p.jfile)
+    } catch { case NonFatal(e) =>
+      interpreter.replinfo(s"Warning: history file ${p}'s permissions could not be restricted to owner-only.")
+      interpreter.repldbg(e)
+    }
+
+    p
+  }
+
+  protected lazy val historyFile: File = File {
+    propOrNone("scala.shell.histfile") match {
+      case Some(p) => restrictPermissions(standard = false)(Path(p))
+      case None => restrictPermissions(standard = true)(Path(userHome) / FileBackedHistory.defaultFileName)
+    }
+  }
+
   private var isPersistent = true
 
   locally {
@@ -87,19 +110,4 @@ object FileBackedHistory {
   //   val ContinuationNL: String = Array('\003', '\n').mkString
 
   final val defaultFileName = ".scala_history"
-
-  def defaultFile: File = File {
-    val chmod = OwnerOnlyChmod()
-    propOrNone("scala.shell.histfile") map (Path.apply) match {
-      case Some(p) =>
-        // only lock down permissions on custom history file if we're the ones
-        // creating it, otherwise responsibility for permissions is up to the caller.
-        if (p.exists) chmod.chmod(p.jfile)
-        p
-      case None =>
-        val result = Path(userHome) / defaultFileName
-        chmod.chmodOrCreateEmpty(result.jfile)
-        result
-    }
-  }
 }

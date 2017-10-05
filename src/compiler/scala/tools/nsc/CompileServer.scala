@@ -6,9 +6,10 @@
 package scala.tools.nsc
 
 import java.io.PrintStream
-import io.Directory
-import scala.tools.nsc.reporters.{Reporter, ConsoleReporter}
-import scala.reflect.internal.util.{FakePos, Position}
+
+import io.{Directory, Path}
+import scala.tools.nsc.reporters.{ConsoleReporter, Reporter}
+import scala.reflect.internal.util.{FakePos, OwnerOnlyChmod, Position}
 import scala.tools.util.SocketServer
 import settings.FscSettings
 
@@ -199,7 +200,23 @@ object CompileServer {
     
     // Create instance rather than extend to pass a port parameter.
     val server = new StandardCompileServer(port)
-    val redirectDir = (server.compileSocket.tmpDir / "output-redirects").createDirectory()
+    /** A temporary directory to use */
+    val tmpDir = {
+      val udir  = Option(Properties.userName) getOrElse "shared"
+      val f     = (Path(Properties.tmpDir) / ("scala-devel" + udir)).createDirectory()
+
+      if (f.isDirectory && f.canWrite) {
+        Console.err.println("[Temp directory: " + f + "]")
+        OwnerOnlyChmod().chmod(f.jfile)
+        f
+      }
+      else {
+        Console.err.println("Could not find a directory for temporary files")
+        sys.exit(1)
+      }
+    }
+
+    val redirectDir = (tmpDir / "output-redirects").createDirectory()
     
     if (debug) {
       server.echo("Starting CompileServer on port " + server.port)
