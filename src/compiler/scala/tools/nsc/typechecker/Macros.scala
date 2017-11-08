@@ -1,5 +1,7 @@
-package scala.tools.nsc
-package typechecker
+package scala.tools.nsc.typechecker
+
+import scala.tools.nsc._
+import Mode.EXPRmode
 
 import java.lang.Math.min
 import symtab.Flags._

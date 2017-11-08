@@ -9,7 +9,7 @@ package object nsc {
   type Mode = scala.reflect.internal.Mode
   val Mode = scala.reflect.internal.Mode
 
-  def EXPRmode = Mode.EXPRmode
+//  def EXPRmode = Mode.EXPRmode
 
   type Phase = scala.reflect.internal.Phase
   val NoPhase = scala.reflect.internal.NoPhase

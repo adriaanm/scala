@@ -8,10 +8,10 @@
 //todo: disallow C#D in superclass
 //todo: treat :::= correctly
 
-package scala
-package tools.nsc
-package typechecker
+package scala.tools.nsc.typechecker
 
+import scala.tools.nsc._
+import Mode.EXPRmode
 import scala.annotation.tailrec
 import scala.collection.mutable
 import mutable.{ LinkedHashMap, ListBuffer }

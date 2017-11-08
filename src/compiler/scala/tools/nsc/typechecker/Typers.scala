@@ -9,9 +9,9 @@
 // Added: Thu Apr 12 18:23:58 2007
 //todo: disallow C#D in superclass
 //todo: treat :::= correctly
-package scala
-package tools.nsc
-package typechecker
+package scala.tools.nsc.typechecker
+
+import scala.tools.nsc._
 
 import scala.collection.{immutable, mutable}
 import scala.reflect.internal.util.{ListOfNil, Statistics, StatisticsStatics}
