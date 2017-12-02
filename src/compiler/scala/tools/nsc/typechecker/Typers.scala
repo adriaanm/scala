@@ -2965,15 +2965,18 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
          *
          * TODO: vararg sams handled correctly?
          */
-        val formalsFromPt = formalTypes(methFromPt.paramTypes, numVparams) map { tp => if (isFullyDefined(tp)) tp else ErrorType }
+        val formalsFromPt =
+          if (methFromPt eq NoType) List.fill(numVparams)(ErrorType) // TODO: if (pt == ErrorType) ErrorType else NoType??
+          else formalTypes(methFromPt.paramTypes, numVparams) map { tp => if (isFullyDefined(tp)) tp else ErrorType }
 
         // an arity mismatch can potentially be overcome by tupling the function parameters into the match's selector
         // e.g., { case (x,y) => x + y } : Function2[Int, Int, Int]
         // mismatches will later result in type errors for the match (would be nice to improve this, but that would require looking at the shapes of the patterns)
-        if (!(formalsFromPt.lengthCompare(numVparams) == 0 || (fun.body match { case Match(EmptyTree, _) => true case _ => false})))
-          WrongNumberOfParametersError(fun, formalsFromPt.length)
+        val aritySeemsOk = (methFromPt eq NoType) || formalsFromPt.lengthCompare(numVparams) == 0 || (fun.body match { case Match(EmptyTree, _) => true case _ => false})
+
+        if (!aritySeemsOk) WrongNumberOfParametersError(fun, formalsFromPt.length)
         else {
-          def missingParamType = exists2(vparams, formalsFromPt) { (vparam, argPt) => vparam.tpt.isEmpty && argPt == ErrorType }
+          def missingParamType = exists2(vparams, formalsFromPt) { (vparam, argPt) => vparam.tpt.isEmpty && (argPt eq ErrorType) }
 
           // If we're typing `(a1: T1, ..., aN: TN) => m(a1,..., aN)`, where some Ti are not fully defined,
           // type `m` directly (undoing eta-expansion of method m) to determine the argument types.
