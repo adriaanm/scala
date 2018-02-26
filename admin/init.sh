@@ -11,7 +11,7 @@ sensitive() {
   perl -p -e 's/\$\{([^}]+)\}/defined $ENV{$1} ? $ENV{$1} : $&/eg' < files/sonatype-curl            > ~/.sonatype-curl
   # perl -p -e 's/\$\{([^}]+)\}/defined $ENV{$1} ? $ENV{$1} : $&/eg' < files/m2-settings.xml          > ~/.m2/settings.xml  -- not needed anymore (used for ide integration?)
 
-  openssl aes-256-cbc -K $encrypted_40abf89dbafd_key -iv $encrypted_40abf89dbafd_iv -in files/gpg_subkey.enc | gpg --import
+  openssl aes-256-cbc -K $encrypted_40abf89dbafd_key -iv $encrypted_40abf89dbafd_iv -in files/bla.enc
 }
 
 # directories needed by sensitive part
