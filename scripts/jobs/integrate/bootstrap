@@ -83,7 +83,9 @@ testStability=${testStability-yes}
 
 clean="clean" # TESTING leave empty to speed up testing
 
-baseDir=${WORKSPACE-`pwd`}
+WORKSPACE=${WORKSPACE-`pwd`}
+baseDir=${WORKSPACE}
+
 scriptsDir="$baseDir/scripts"
 . $scriptsDir/common
 
