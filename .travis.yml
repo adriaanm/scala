@@ -5,8 +5,16 @@ sudo: false
 # based on http://www.paperplanes.de/2013/8/13/deploying-your-jekyll-blog-to-s3-with-travis-ci.html
 
 language: scala
+jdk: openjdk8
+
+# the spec is built with jekyll
 rvm:
   - 2.2
+
+cache:
+  directories:
+    - $HOME/.ivy2/cache
+    - $HOME/.sbt
 
 before_script:
   - (cd admin && ./init.sh)
@@ -36,3 +44,9 @@ after_success:
 
 # using S3 would be simpler, but we want to upload to scala-lang.org
 # after_success: bundle exec s3_website push --headless
+
+
+before_cache:
+  # Cleanup the cached directories to avoid unnecessary cache updates
+  - find $HOME/.ivy2/cache -name "ivydata-*.properties" -print -delete
+  - find $HOME/.sbt        -name "*.lock"               -print -delete
