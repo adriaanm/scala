@@ -18,12 +18,9 @@ mkdir -p ~/.ssh
 sensitive >/dev/null 2>&1
 
 # just to verify
-gpg --list-keys
-
+gpg --list-secret-keys
 
 mkdir -p ~/.sbt/0.13/plugins
 cp files/gpg.sbt ~/.sbt/0.13/plugins/
 
 export SBT_CMD=$(which sbt)
-
-$SBT_CMD -v
