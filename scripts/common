@@ -173,7 +173,6 @@ function generateRepositoriesConfig() {
   fi
 
   cat >> "$sbtRepositoryConfig" << EOF
-  jcenter-cache: $jcenterCacheUrl
   typesafe-ivy-releases: https://repo.lightbend.com/typesafe/ivy-releases/, [organisation]/[module]/[revision]/[type]s/[artifact](-[classifier]).[ext], bootOnly
   sbt-plugin-releases: https://repo.scala-sbt.org/scalasbt/sbt-plugin-releases/, [organisation]/[module]/(scala_[scalaVersion]/)(sbt_[sbtVersion]/)[revision]/[type]s/[artifact](-[classifier]).[ext]
   maven-central
