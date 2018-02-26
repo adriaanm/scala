@@ -3,9 +3,10 @@ sudo: false
 
 # this builds the spec using jekyll
 # based on http://www.paperplanes.de/2013/8/13/deploying-your-jekyll-blog-to-s3-with-travis-ci.html
-language: ruby
-rvm:
-  - 2.2
+
+# language: ruby
+# rvm:
+#   - 2.2
 
 before_script:
   - (cd admin && ./init.sh)
