@@ -234,7 +234,7 @@ buildScalaCheck(){
 
 # build modules, using ${buildTasks[@]} (except for ScalaCheck, which is hard-coded to publish to artifactory)
 buildModules() {
-  publishTasks=('set credentials += Credentials("Artifactory Realm", "scala-ci.typesafe.com", "scala-ci", env("PRIVATE_REPO_PASS"))' "set every publishTo := Some(\"publish-repo\" at \"$integrationRepoUrl\")")
+  publishTasks=('set credentials += Credentials("Artifactory Realm", "scala-ci.typesafe.com", "scala-ci", System.getenv("PRIVATE_REPO_PASS"))' "set every publishTo := Some(\"publish-repo\" at \"$integrationRepoUrl\")")
   buildTasks=($publishPrivateTask)
   buildXML
   # buildScalaCheck
@@ -242,7 +242,7 @@ buildModules() {
 }
 
 buildPublishedModules() {
-  publishTasks=('set credentials += Credentials("Sonatype Nexus Repository Manager", "oss.sonatype.org", env("SONA_USER"), env("SONA_PASS"))' "set pgpPassphrase := Some(Array.empty)")
+  publishTasks=('set credentials += Credentials("Sonatype Nexus Repository Manager", "oss.sonatype.org", System.getenv("SONA_USER"), System.getenv("SONA_PASS"))' "set pgpPassphrase := Some(Array.empty)")
   buildTasks=($publishSonatypeTaskModules)
   buildXML
   buildPartest

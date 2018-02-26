@@ -6,6 +6,8 @@ import BuildSettings.autoImport._
 
 /** Custom commands for use by the Jenkins scripts. This keeps the surface area and call syntax small. */
 object ScriptCommands {
+  def env(key: String) = Option(System.getenv(key)).getOrElse("")
+
   def all = Seq(
     setupPublishCore,
     setupValidateTest,
