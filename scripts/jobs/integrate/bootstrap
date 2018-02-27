@@ -78,7 +78,9 @@ publishSonatypeTaskModules=${publishSonatypeTaskModules-"publishSigned"}
 
 forceRebuild=${forceRebuild-no}
 
+publishToSonatype="yes" # for testing
 sbtBuildTask="" # for testing
+
 sbtBuildTask=${sbtBuildTask-"testAll"} # TESTING leave empty to avoid the sanity check
 testStability=${testStability-yes}
 
