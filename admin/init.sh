@@ -17,6 +17,9 @@ mkdir -p ~/.ssh
 # don't let anything escape from the sensitive part (e.g. leak environment var by echoing to log on failure)
 sensitive >/dev/null 2>&1
 
+# pgp signing doesn't work without public key??
+gpg --keyserver pgp.mit.edu --recv-keys 0xa9052b1b6d92e560
+
 # just to verify
 gpg --list-secret-keys
 
