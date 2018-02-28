@@ -484,7 +484,7 @@ publishSonatype() {
       --warn \
       -Dstarr.version=2.12.4 \
       "setupBootstrapPublish $integrationRepoUrl $SCALA_VER" \
-      "usePgpKeyHex(A9052B1B6D92E560)" \
+      'set pgpSigningKey := Some(new java.math.BigInteger("A9052B1B6D92E560", 16).longValue)' \
       $publishSonatypeTaskCore
   travis_fold_end sona
 
