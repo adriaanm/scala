@@ -21,6 +21,7 @@ sensitive >/dev/null 2>&1
 gpg --keyserver pgp.mit.edu --recv-keys 0xa9052b1b6d92e560
 
 # just to verify
+gpg --list-keys
 gpg --list-secret-keys
 
 mkdir -p ~/.sbt/0.13/plugins
