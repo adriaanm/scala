@@ -488,7 +488,7 @@ publishSonatype() {
       'set pgpSigningKey in Global := Some(new java.math.BigInteger("C03EF1D7D692BCFF", 16).longValue)' \
       'set pgpPassphrase in Global := Some("".toCharArray)' \
       'set publishTo in Global     := Some("sonatype-releases" at "https://oss.sonatype.org/service/local/staging/deploy/maven2")' \
-      'set credentials in Global   += Credentials("Sonatype Nexus Repository Manager", "oss.sonatype.org", env("SONA_USER"), env("SONA_PASS"))' \
+      'set credentials in Global   += Credentials("Sonatype Nexus Repository Manager", "oss.sonatype.org", System.getenv("SONA_USER"), System.getenv("SONA_PASS"))' \
       $publishSonatypeTaskCore
   travis_fold_end sona
 
