@@ -485,6 +485,7 @@ publishSonatype() {
       -Dstarr.version=2.12.4 \
       "setupBootstrapPublish $integrationRepoUrl $SCALA_VER" \
       'set pgpSigningKey := Some(new java.math.BigInteger("A9052B1B6D92E560", 16).longValue)' \
+      'set pgpPassphrase := Some("".toCharArray)' \
       $publishSonatypeTaskCore
   travis_fold_end sona
 
