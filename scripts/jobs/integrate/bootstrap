@@ -483,10 +483,12 @@ publishSonatype() {
   $SBT_CMD $sbtArgs \
       --warn \
       -Dstarr.version=2.12.4 \
-      "setupBootstrapPublish $integrationRepoUrl $SCALA_VER" \
+      'set baseVersion in Global       := "2.12.5"' \
+      'set baseVersionSuffix in Global := "-TEST-DO-NOT-PUBLISH"' \
       'set pgpSigningKey in Global := Some(new java.math.BigInteger("C03EF1D7D692BCFF", 16).longValue)' \
       'set pgpPassphrase in Global := Some("".toCharArray)' \
       'set publishTo in Global     := Some("sonatype-releases" at "https://oss.sonatype.org/service/local/staging/deploy/maven2")' \
+      'set credentials in Global   += Credentials("Sonatype Nexus Repository Manager", "oss.sonatype.org", env("SONA_USER"), env("SONA_PASS"))' \
       $publishSonatypeTaskCore
   travis_fold_end sona
 
