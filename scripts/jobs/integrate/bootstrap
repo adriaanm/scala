@@ -482,18 +482,18 @@ publishSonatype() {
   travis_fold_start sona "Publishing core to sonatype"
   $SBT_CMD $sbtArgs \
       --warn \
-      -Dstarr.version=$SCALA_VER \
-      ${updatedModuleVersions[@]} \
+      -Dstarr.version=2.12.4 \
       "setupBootstrapPublish $integrationRepoUrl $SCALA_VER" \
+      "usePgpKeyHex(A9052B1B6D92E560)" \
       $publishSonatypeTaskCore
   travis_fold_end sona
 
-  echo "### Publishing modules to sonatype"
+  # echo "### Publishing modules to sonatype"
   # build/test/publish scala core modules to sonatype (this will start a new staging repo)
   # (was hoping we could make everything go to the same staging repo, but it's not timing that causes two staging repos to be opened)
   # NOTE: only publish those for which versions are set
   # test and publish to sonatype, assuming you have ~/.sbt/0.13/sonatype.sbt and ~/.sbt/0.13/plugin/gpg.sbt
-  buildPublishedModules
+  # buildPublishedModules
 
   open=$(st_stagingReposOpen)
   allOpenUrls=$(echo $open | jq  '.repositoryURI' | tr -d \")
@@ -511,16 +511,20 @@ publishSonatype() {
 
 determineScalaVersion
 
-deriveModuleVersions
+publishSonatype
 
-removeExistingBuilds $integrationRepoUrl
-
-bootstrap
-
-if [ "$testStability" == "yes" ]
-  then testStability
-fi
-
-if [ "$publishToSonatype" == "yes" ]
-  then publishSonatype
-fi
+# determineScalaVersion
+#
+# deriveModuleVersions
+#
+# removeExistingBuilds $integrationRepoUrl
+#
+# bootstrap
+#
+# if [ "$testStability" == "yes" ]
+#   then testStability
+# fi
+#
+# if [ "$publishToSonatype" == "yes" ]
+#   then publishSonatype
+# fi
