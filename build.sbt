@@ -558,7 +558,7 @@ lazy val scalacheck = project.in(file("test") / "scalacheck")
   .settings(disableDocs)
   .settings(disablePublishing)
   .settings(
-    fork in Test := false,
+    fork in Test := true,
     javaOptions in Test += "-Xss1M",
     libraryDependencies ++= Seq(scalacheckDep),
     unmanagedSourceDirectories in Compile := Nil,
