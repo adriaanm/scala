@@ -348,23 +348,6 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
       }
     }
 
-    def checkParamsConvertible(tree: Tree, tpe0: Type) {
-      def checkParamsConvertible0(tpe: Type) =
-        tpe match {
-          case MethodType(formals, restpe) =>
-            /*
-            if (formals.exists(_.typeSymbol == ByNameParamClass) && formals.length != 1)
-              error(pos, "methods with `=>`-parameter can be converted to function values only if they take no other parameters")
-            if (formals exists (isRepeatedParamType(_)))
-              error(pos, "methods with `*`-parameters cannot be converted to function values");
-            */
-            if (tpe.isDependentMethodType)
-              DependentMethodTpeConversionToFunctionError(tree, tpe)
-            checkParamsConvertible(tree, restpe)
-          case _ =>
-        }
-      checkParamsConvertible0(tpe0)
-    }
 
     /** Check that type of given tree does not contain local or private
      *  components.
@@ -793,45 +776,48 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
     }
 
     /** Perform the following adaptations of expression, pattern or type `tree` wrt to
-     *  given mode `mode` and given prototype `pt`:
-     *  (-1) For expressions with annotated types, let AnnotationCheckers decide what to do
-     *  (0) Convert expressions with constant types to literals (unless in interactive/scaladoc mode)
-     *  (1) Resolve overloading, unless mode contains FUNmode
-     *  (2) Apply parameterless functions
-     *  (3) Apply polymorphic types to fresh instances of their type parameters and
-     *      store these instances in context.undetparams,
-     *      unless followed by explicit type application.
-     *  (4) Do the following to unapplied methods used as values:
-     *  (4.1) If the method has only implicit parameters pass implicit arguments
-     *  (4.2) otherwise, if `pt` is a function type and method is not a constructor,
-     *        convert to function by eta-expansion,
-     *  (4.3) otherwise, if the method is nullary with a result type compatible to `pt`
-     *        and it is not a constructor, apply it to ()
-     *  otherwise issue an error
-     *  (5) Convert constructors in a pattern as follows:
-     *  (5.1) If constructor refers to a case class factory, set tree's type to the unique
-     *        instance of its primary constructor that is a subtype of the expected type.
-     *  (5.2) If constructor refers to an extractor, convert to application of
-     *        unapply or unapplySeq method.
-     *
-     *  (6) Convert all other types to TypeTree nodes.
-     *  (7) When in TYPEmode but not FUNmode or HKmode, check that types are fully parameterized
-     *      (7.1) In HKmode, higher-kinded types are allowed, but they must have the expected kind-arity
-     *  (8) When in both EXPRmode and FUNmode, add apply method calls to values of object type.
-     *  (9) If there are undetermined type variables and not POLYmode, infer expression instance
-     *  Then, if tree's type is not a subtype of expected type, try the following adaptations:
-     *  (10) If the expected type is Byte, Short or Char, and the expression
-     *      is an integer fitting in the range of that type, convert it to that type.
-     *  (11) Widen numeric literals to their expected type, if necessary
-     *  (12) When in mode EXPRmode, convert E to { E; () } if expected type is scala.Unit.
-     *  (13) When in mode EXPRmode, apply AnnotationChecker conversion if expected type is annotated.
-     *  (14) When in mode EXPRmode, do SAM conversion
-     *  (15) When in mode EXPRmode, apply a view
-     *  If all this fails, error
-     *
-     *  Note: the `original` tree parameter is for re-typing implicit method invocations (see below)
-     *  and should not be used otherwise. TODO: can it be replaced with a tree attachment?
-     */
+      * given mode `mode` and given prototype `pt`:
+      *
+      * (-1) For expressions with annotated types, let AnnotationCheckers decide what to do
+      * (0) Convert expressions with constant types to literals (unless in interactive/scaladoc mode)
+      * (1) Resolve overloading, unless mode contains FUNmode
+      * (2) Apply parameterless functions
+      * (3) Apply polymorphic types to fresh instances of their type parameters and
+      *     store these instances in context.undetparams,
+      *     unless followed by explicit type application.
+      *
+      * (4) Do the following to unapplied methods used as values:
+      * (4.1) If the method has only implicit parameters, pass implicit arguments.
+      * (4.2) Otherwise, if the method is a constructor, report an error (the exact error depends on whether we're in pattern).
+      * (4.3) Otherwise, if the method has an empty argument list, apply it to `()`.
+      *       (This insertion of `()` will be deprecated, except for Java-defined methods.)
+      * (4.4) Otherwise, eta-expand the method.
+      *
+      * (5) Convert constructors in a pattern as follows:
+      * (5.1) If constructor refers to a case class factory, set tree's type to the unique
+      *       instance of its primary constructor that is a subtype of the expected type.
+      * (5.2) If constructor refers to an extractor, convert to application of
+      *       unapply or unapplySeq method.
+      *
+      * (6) Convert all other types to TypeTree nodes.
+      * (7) When in TYPEmode but not FUNmode or HKmode, check that types are fully parameterized
+      * (7.1) In HKmode, higher-kinded types are allowed, but they must have the expected kind-arity
+      * (8) When in both EXPRmode and FUNmode, add apply method calls to values of object type.
+      * (9) If there are undetermined type variables and not POLYmode, infer expression instance
+      *     Then, if tree's type is not a subtype of expected type, try the following adaptations:
+      * (10) If the expected type is Byte, Short or Char, and the expression
+      *      is an integer fitting in the range of that type, convert it to that type.
+      * (11) Widen numeric literals to their expected type, if necessary
+      * (12) When in mode EXPRmode, convert E to { E; () } if expected type is scala.Unit.
+      * (13) When in mode EXPRmode, apply AnnotationChecker conversion if expected type is annotated.
+      * (14) When in mode EXPRmode, do SAM conversion
+      * (15) When in mode EXPRmode, apply a view
+      *
+      * If all this fails, error
+      *
+      * Note: the original tree parameter is for re-typing implicit method invocations (see below)
+      * and should not be used otherwise. TODO: can it be replaced with a tree attachment?
+      */
     protected def adapt(tree: Tree, mode: Mode, pt: Type, original: Tree = EmptyTree): Tree = {
       def hasUndets           = !context.undetparams.isEmpty
       def hasUndetsInMonoMode = hasUndets && !mode.inPolyMode
@@ -904,41 +890,28 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
           case _               => tree.symbol
         }
 
-        def cantAdapt =
-          if (context.implicitsEnabled) MissingArgsForMethodTpeError(tree, meth)
-          else UnstableTreeError(tree)
+        // (4.2) constructors do not eta-expand
+        // TODO: find better way to detect we're typing a pattern (which implies `!context.implicitsEnabled`)
+        if (meth.isConstructor)
+          if (context.implicitsEnabled) MissingArgsForMethodTpeError(tree, meth) else UnstableTreeError(tree)
+        else {
+          // method values (`m _`) are eta-expanded even if they are 0-ary
+          // (Now that we always eta-expand methods of arity > 0, method value syntax only makes sense for 0-ary methods,
+          // and will eventually be dropped along with ()-insertion)
+          // TODO: deprecate insertion of `()` for Scala-defined methods
+          //       when ()-insertion is dropped, we can eta-expand uniformly (regardless of arity or expected type)
+          // TODO: deprecate method values of arity > 0 (and, once ()-insertion is dropped, deprecate all method values)
+          val isMethodValue = tree.getAndRemoveAttachment[MethodValueAttachment.type].isDefined
 
-        def emptyApplication: Tree = adapt(typed(Apply(tree, Nil) setPos tree.pos), mode, pt, original)
-
-        // constructors do not eta-expand
-        if (meth.isConstructor) cantAdapt
-        // (4.2) eta-expand method value when function or sam type is expected
-        else if (isFunctionType(pt) || (!mt.params.isEmpty && samOf(pt).exists)) {
-          // scala/bug#9536 `!mt.params.isEmpty &&`: for backwards compatibility with 2.11,
-          // we don't adapt a zero-arg method value to a SAM
-          // In 2.13, we won't do any eta-expansion for zero-arg methods, but we should deprecate first
-
-          debuglog(s"eta-expanding $tree: ${tree.tpe} to $pt")
-          checkParamsConvertible(tree, tree.tpe)
-
-          // method values (`m _`) are always eta-expanded (this syntax will disappear once we eta-expand regardless of expected type, at least for arity > 0)
-          // a "naked" method reference (`m`) may or not be eta expanded -- currently, this depends on the expected type and the arity (the conditions for this are in flux)
-          def isMethodValue = tree.getAndRemoveAttachment[MethodValueAttachment.type].isDefined
-          val nakedZeroAryMethod = mt.params.isEmpty && !isMethodValue
-
-          // scala/bug#7187 eta-expansion of zero-arg method value is deprecated
-          // 2.13 will switch order of (4.3) and (4.2), always inserting () before attempting eta expansion
-          // (This effectively disables implicit eta-expansion of 0-ary methods.)
-          // See mind-bending stuff like scala/bug#9178
-          if (nakedZeroAryMethod && settings.isScala213) emptyApplication
-          else {
-            // eventually, we will deprecate insertion of `()` (except for java-defined methods) -- this is already the case in dotty
-            // Once that's done, we can more aggressively eta-expand method references, even if they are 0-arity
-            // 2.13 will already eta-expand non-zero-arity methods regardless of expected type (whereas 2.12 requires a function-equivalent type)
-            if (nakedZeroAryMethod && settings.isScala212) {
-              currentRun.reporting.deprecationWarning(tree.pos, NoSymbol,
-                                                       s"Eta-expansion of zero-argument methods is deprecated. To avoid this warning, write ${Function(Nil, Apply(tree, Nil))}.", "2.12.0")
-            }
+          // (4.3) insert application to `()`
+          // scala/bug#7187 deprecated eta-expansion of zero-arg methods
+          // See mind-bending stuff like scala/bug#9178 (I don't think we should consider the expected type to decide whether to apply to () or eta-expand)
+          // Once we remove automatic application to (), we can also eta-expand 0-arity methods, but the deprecation is needed first
+          if (mt.params.isEmpty && !isMethodValue) adapt(typed(Apply(tree, Nil) setPos tree.pos), mode, pt, original)
+          // TODO: add dependent function types, so that we can eta-expand all shapes of methods
+          else if (mt.isDependentMethodType) DependentMethodTpeConversionToFunctionError(tree, mt)
+          else { // (4.4) eta-expand method reference
+            println(s"eta-expanding $tree: ${tree.tpe} to $pt")
 
             val tree0 = etaExpand(context.unit, tree, this)
 
@@ -954,9 +927,6 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
               typed(tree0, mode, pt)
           }
         }
-        // (4.3) apply to empty argument list
-        else if (mt.params.isEmpty) emptyApplication
-        else cantAdapt
       }
 
       def adaptType(): Tree = {
@@ -3408,6 +3378,9 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
             val undetparams = context.undetparams
 
             def funArgTypes(tpAlts: List[(Type, Symbol)]) = tpAlts.map { case (tp, alt) =>
+              // Types in the applicable overload alternatives need to be seen from the respective
+              // owners of the individual alternative, not from the target’s owner
+              // (which can be a subtype of the types that define the methods).
               val relTp = tp.asSeenFrom(pre, alt.owner)
               functionOrPfOrSamArgTypes(relTp)
             }
@@ -3420,6 +3393,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
               try appliedType(PartialFunctionClass, funArgTypes(argTpWithAlt).transpose.map(lub) :+ WildcardType)
               catch { case _: IllegalArgumentException => WildcardType }
 
+            println(s"overloaded apply: $fun : ${fun.tpe} to $args ($alts)")
             // To propagate as much information as possible to typedFunction, which uses the expected type to
             // infer missing parameter types for Function trees that we're typing as arguments here,
             // we expand the parameter types for all alternatives to the expected argument length,
@@ -3430,16 +3404,15 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
             // and lubbing the argument types (we treat SAM and FunctionN types equally, but non-function arguments
             // do not receive special treatment: they are typed under WildcardType.)
             val altArgPts =
-              if (settings.isScala212 && args.exists(t => treeInfo.isFunctionMissingParamType(t) || treeInfo.isPartialFunctionMissingParamType(t)))
-                try alts.map { alt =>
+              if (settings.isScala212)
+                alts.map { alt =>
                   val paramTypes = pre.memberType(alt) match {
                     case mt @ MethodType(_, _) => mt.paramTypes
                     case PolyType(_, mt @ MethodType(_, _)) => mt.paramTypes
                     case t => throw new RuntimeException("Expected MethodType or PolyType of MethodType, got "+t)
                   }
                   formalTypes(paramTypes, argslen).map(ft => (ft, alt))
-                }.transpose // do least amount of work up front
-                catch { case _: IllegalArgumentException => args.map(_ => Nil) } // fail safe in case formalTypes fails to align to argslen
+                }
               else args.map(_ => Nil) // will type under argPt == WildcardType
 
             val (args1, argTpes) = context.savingUndeterminedTypeParams() {

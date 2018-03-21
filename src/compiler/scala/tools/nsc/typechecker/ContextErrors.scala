@@ -730,9 +730,12 @@ trait ContextErrors {
         setError(tree)
       }
 
-      // cases where we do not necessarily return trees
-      def DependentMethodTpeConversionToFunctionError(tree: Tree, tp: Type) =
+      def DependentMethodTpeConversionToFunctionError(tree: Tree, tp: Type) = {
         issueNormalTypeError(tree, "method with dependent type "+tp+" cannot be converted to function value")
+        setError(tree)
+      }
+
+      // cases where we do not necessarily return trees
 
       //checkStarPatOK
       def StarPatternWithVarargParametersError(tree: Tree) =
