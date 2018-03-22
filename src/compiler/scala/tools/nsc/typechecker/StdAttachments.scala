@@ -204,4 +204,7 @@ trait StdAttachments {
 
   /** Added to trees that appear in a method value, e.g., to `f(x)` in `f(x) _` */
   case object MethodValueAttachment
+
+  /** Added before typing an argument that's passed to an overloaded method, with target type `pre`, and alternatives `alternatives` */
+  case class ArgForOverloadedMethodAttachment(index: Int, pre: Type, alternatives: List[Symbol])
 }

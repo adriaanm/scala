@@ -19,6 +19,7 @@ import scala.reflect.internal.TypesStats
 import mutable.ListBuffer
 import symtab.Flags._
 import Mode._
+import scala.reflect.internal.Flags.DEFAULTPARAM
 import scala.reflect.macros.whitebox
 
 // Suggestion check whether we can do without priming scopes with symbols of outer scopes,
@@ -2964,10 +2965,25 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
       val ptNorm =
         if (samMatchesFunctionBasedOnArity(sam, vparams)) samToFunctionType(pt, sam)
         else pt
+
       val (argpts, respt) =
         ptNorm baseType FunctionSymbol match {
           case TypeRef(_, FunctionSymbol, args :+ res) => (args, res)
-          case _                                       => (vparams map (if (pt == ErrorType) (_ => ErrorType) else (_ => NoType)), WildcardType)
+          case _                                       =>
+            fun.getAndRemoveAttachment[ArgForOverloadedMethodAttachment] match {
+              case Some(ArgForOverloadedMethodAttachment(i, pre, alts)) =>
+                val altInfos = alts map { alt => pre.memberInfo(alt).paramTypes(i) } // TODO harden
+                val argTypes = try altInfos.map(functionOrPfOrSamArgTypes).transpose.map(lub) catch { case _: IllegalArgumentException => Nil } // TOOD cleanup
+
+                val args =
+                  if (argTypes.lengthCompare(numVparams) == 0) argTypes else vparams map (if (pt == ErrorType) (_ => ErrorType) else (_ => NoType))
+
+                println(s"Typedfun using args $args")
+
+                (args, WildcardType)
+              case _ =>
+                (vparams map (if (pt == ErrorType) (_ => ErrorType) else (_ => NoType)), WildcardType)
+            }
         }
 
       if (!FunctionSymbol.exists) MaxFunctionArityError(fun)
@@ -3323,147 +3339,101 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
       def duplErrTree = setError(treeCopy.Apply(tree, fun0, args))
       def duplErrorTree(err: AbsTypeError) = { context.issue(err); duplErrTree }
 
-      def preSelectOverloaded(fun: Tree): Tree = {
-        if (fun.hasSymbolField && fun.symbol.isOverloaded) {
+      val argslen = args.length
+      // NOTE duplicated with logic in inferMethodAlternative -- do some cheap up front pruning here already, before we call `inferMethodAlternative`
+      // can we just use the same methods between the two?
+      val fun =
+        if (fun0.hasSymbolField && fun0.symbol.isOverloaded) {
           // remove alternatives with wrong number of parameters without looking at types.
           // less expensive than including them in inferMethodAlternative (see below).
           def shapeType(arg: Tree): Type = arg match {
-            case Function(vparams, body) =>
-              // No need for phasedAppliedType, as we don't get here during erasure --
-              // overloading resolution happens during type checking.
-              // During erasure, the condition above (fun.symbol.isOverloaded) is false.
-              functionType(vparams map (_ => AnyTpe), shapeType(body))
-            case Match(EmptyTree, _) => // A partial function literal
-              appliedType(PartialFunctionClass, AnyTpe :: NothingTpe :: Nil)
-            case NamedArg(Ident(name), rhs) =>
-              NamedType(name, shapeType(rhs))
-            case _ =>
-              NothingTpe
+            // No need to replace `functionType` with `phasedAppliedType`. During erasure, we know !fun.symbol.isOverloaded.
+            case Function(vparams, body)    => functionType(vparams map (_ => AnyTpe), shapeType(body))
+            // A partial function literal
+            case Match(EmptyTree, _)        => appliedType(PartialFunctionClass, AnyTpe :: NothingTpe :: Nil)
+            case NamedArg(Ident(name), rhs) => NamedType(name, shapeType(rhs))
+            case _                          => NothingTpe
           }
-          val argtypes = args map shapeType
-          val pre = fun.symbol.tpe.prefix
-          var sym = fun.symbol filter { alt =>
-            // must use pt as expected type, not WildcardType (a tempting quick fix to #2665)
-            // now fixed by using isWeaklyCompatible in exprTypeArgs
-            // TODO: understand why exactly -- some types were not inferred anymore (`ant clean quick.bin` failed)
-            // (I had expected inferMethodAlternative to pick up the slack introduced by using WildcardType here)
-            //
-            // @PP responds: I changed it to pass WildcardType instead of pt and only one line in
-            // trunk (excluding scalacheck, which had another) failed to compile. It was this line in
-            // Types: "refs = Array(Map(), Map())".  I determined that inference fails if there are at
-            // least two invariant type parameters. See the test case I checked in to help backstop:
-            // pos/isApplicableSafe.scala.
-            isApplicableSafe(context.undetparams, followApply(pre memberType alt), argtypes, pt)
-          }
-          if (sym.isOverloaded) {
-              // eliminate functions that would result from tupling transforms
-              // keeps alternatives with repeated params
-            val sym1 = sym filter (alt =>
-                 isApplicableBasedOnArity(pre memberType alt, argtypes.length, varargsStar = false, tuplingAllowed = false)
-              || alt.tpe.params.exists(_.hasDefault)
-            )
-            if (sym1 != NoSymbol) sym = sym1
-          }
-          if (sym == NoSymbol) fun
-          else adaptAfterOverloadResolution(fun setSymbol sym setType pre.memberType(sym), mode.forFunMode)
-        } else fun
-      }
 
-      val fun = preSelectOverloaded(fun0)
-      val argslen = args.length
+          val sym = fun0.symbol
+          val pre = sym.tpe.prefix
+          val argtypes = args map shapeType
+
+          def followType(sym: Symbol) = followApply(pre memberType sym)
+
+          // must use pt as expected type, not WildcardType (a tempting quick fix to #2665)
+          // now fixed by using isWeaklyCompatible in exprTypeArgs
+          // TODO: understand why exactly -- some types were not inferred anymore (`ant clean quick.bin` failed)
+          // (I had expected inferMethodAlternative to pick up the slack introduced by using WildcardType here)
+          //
+          // @PP responds: I changed it to pass WildcardType instead of pt and only one line in
+          // trunk (excluding scalacheck, which had another) failed to compile. It was this line in
+          // Types: "refs = Array(Map(), Map())".  I determined that inference fails if there are at
+          // least two invariant type parameters. See the test case I checked in to help backstop:
+          // pos/isApplicableSafe.scala.
+          def isAltApplicableSafe(alt: Symbol) = isApplicableSafe(context.undetparams, followType(alt), argtypes, pt)
+
+          sym.filter(isAltApplicableSafe) match {
+            case NoSymbol            => fun0
+            // Use a simplified version of `overloadsToConsiderBySpecificity` to further eliminate overloads
+            // that would result from tupling transforms, but keep alternatives with repeated params (`varargsStar = false`).
+            case applicableOverloads =>
+              applicableOverloads.filter { alt => (
+                alt.tpe.params.exists(_.hasFlag(DEFAULTPARAM)) ||
+                isApplicableBasedOnArity(pre memberType alt, argslen, varargsStar = false, tuplingAllowed = false))
+              } match {
+                case NoSymbol => fun0
+                case byArity =>
+                  if (byArity ne sym)
+                    fun0.setSymbol(byArity).setType(pre.memberType(byArity))
+              }
+
+              adaptAfterOverloadResolution(fun0, mode.forFunMode)
+          }
+        } else fun0
 
       fun.tpe match {
         case OverloadedType(pre, alts) =>
-          def handleOverloaded = {
-            val undetparams = context.undetparams
+          val undetparams = context.undetparams
 
-            def funArgTypes(tpAlts: List[(Type, Symbol)]) = tpAlts.map { case (tp, alt) =>
-              // Types in the applicable overload alternatives need to be seen from the respective
-              // owners of the individual alternative, not from the target’s owner
-              // (which can be a subtype of the types that define the methods).
-              val relTp = tp.asSeenFrom(pre, alt.owner)
-              functionOrPfOrSamArgTypes(relTp)
-            }
+          val (typedArgs, argTypes) = context.savingUndeterminedTypeParams() {
+            val amode = forArgMode(fun, mode)
 
-            def functionProto(argTpWithAlt: List[(Type, Symbol)]): Type =
-              try functionType(funArgTypes(argTpWithAlt).transpose.map(lub), WildcardType)
-              catch { case _: IllegalArgumentException => WildcardType }
+            mapWithIndex(args) { (arg, i) =>
+              def typedArg0(tree: Tree) = {
+                // if we have an overloaded HOF such as `(f: Int => Int)Int <and> (f: Char => Char)Char`,
+                // and we're typing a function like `x => x` for the argument, try to collapse
+                // the overloaded type into a single function type from which `typedFunction`
+                // can derive the argument type for `x` in the function literal above
 
-            def partialFunctionProto(argTpWithAlt: List[(Type, Symbol)]): Type =
-              try appliedType(PartialFunctionClass, funArgTypes(argTpWithAlt).transpose.map(lub) :+ WildcardType)
-              catch { case _: IllegalArgumentException => WildcardType }
+                typedArg(tree.updateAttachment(ArgForOverloadedMethodAttachment(i, pre, alts)), amode, BYVALmode, WildcardType)
+              }
 
-            println(s"overloaded apply: $fun : ${fun.tpe} to $args ($alts)")
-            // To propagate as much information as possible to typedFunction, which uses the expected type to
-            // infer missing parameter types for Function trees that we're typing as arguments here,
-            // we expand the parameter types for all alternatives to the expected argument length,
-            // then transpose to get a list of alternative argument types (push down the overloading to the arguments).
-            // Thus, for each `arg` in `args`, the corresponding `argPts` in `altArgPts` is a list of expected types
-            // for `arg`. Depending on which overload is picked, only one of those expected types must be met, but
-            // we're in the process of figuring that out, so we'll approximate below by normalizing them to function types
-            // and lubbing the argument types (we treat SAM and FunctionN types equally, but non-function arguments
-            // do not receive special treatment: they are typed under WildcardType.)
-            val altArgPts =
-              if (settings.isScala212)
-                alts.map { alt =>
-                  val paramTypes = pre.memberType(alt) match {
-                    case mt @ MethodType(_, _) => mt.paramTypes
-                    case PolyType(_, mt @ MethodType(_, _)) => mt.paramTypes
-                    case t => throw new RuntimeException("Expected MethodType or PolyType of MethodType, got "+t)
-                  }
-                  formalTypes(paramTypes, argslen).map(ft => (ft, alt))
-                }
-              else args.map(_ => Nil) // will type under argPt == WildcardType
-
-            val (args1, argTpes) = context.savingUndeterminedTypeParams() {
-              val amode = forArgMode(fun, mode)
-
-              map2(args, altArgPts) { (arg, argPtAlts) =>
-                def typedArg0(tree: Tree) = {
-                  // if we have an overloaded HOF such as `(f: Int => Int)Int <and> (f: Char => Char)Char`,
-                  // and we're typing a function like `x => x` for the argument, try to collapse
-                  // the overloaded type into a single function type from which `typedFunction`
-                  // can derive the argument type for `x` in the function literal above
-                  val argPt =
-                    if (argPtAlts.isEmpty) WildcardType
-                    else if (treeInfo.isFunctionMissingParamType(tree)) functionProto(argPtAlts)
-                    else if (treeInfo.isPartialFunctionMissingParamType(tree)) {
-                      if (argPtAlts.exists(ts => isPartialFunctionType(ts._1))) partialFunctionProto(argPtAlts)
-                      else functionProto(argPtAlts)
-                    } else WildcardType
-
-                  val argTyped = typedArg(tree, amode, BYVALmode, argPt)
+              arg match {
+                // scala/bug#8197/scala/bug#4592 call for checking whether this named argument could be interpreted as an assign
+                // infer.checkNames must not use UnitType: it may not be a valid assignment, or the setter may return another type from Unit
+                // TODO: just make it an error to refer to a non-existent named arg, as it's far more likely to be
+                //       a typo than an assignment passed as an argument
+                // named args: only type the righthand sides ("unknown identifier" errors otherwise)
+                // the assign is untyped; that's ok because we call doTypedApply
+                case NamedArg(lhs@Ident(name), rhs) =>
+                  val rhsTyped = typedArg0(rhs)
+                  (treeCopy.NamedArg(arg, lhs, rhsTyped), NamedType(name, rhsTyped.tpe.deconst))
+                case treeInfo.WildcardStarArg(_) =>
+                  val argTyped = typedArg0(arg)
+                  (argTyped, RepeatedType(argTyped.tpe.deconst))
+                case _ =>
+                  val argTyped = typedArg0(arg)
                   (argTyped, argTyped.tpe.deconst)
-                }
-
-                arg match {
-                  // scala/bug#8197/scala/bug#4592 call for checking whether this named argument could be interpreted as an assign
-                  // infer.checkNames must not use UnitType: it may not be a valid assignment, or the setter may return another type from Unit
-                  // TODO: just make it an error to refer to a non-existent named arg, as it's far more likely to be
-                  //       a typo than an assignment passed as an argument
-                  case NamedArg(lhs@Ident(name), rhs) =>
-                    // named args: only type the righthand sides ("unknown identifier" errors otherwise)
-                    // the assign is untyped; that's ok because we call doTypedApply
-                    typedArg0(rhs) match {
-                      case (rhsTyped, tp) => (treeCopy.NamedArg(arg, lhs, rhsTyped), NamedType(name, tp))
-                    }
-                  case treeInfo.WildcardStarArg(_) =>
-                    typedArg0(arg) match {
-                      case (argTyped, tp) => (argTyped, RepeatedType(tp))
-                    }
-                  case _ =>
-                    typedArg0(arg)
-                }
-              }.unzip
-            }
-            if (context.reporter.hasErrors)
-              setError(tree)
-            else {
-              inferMethodAlternative(fun, undetparams, argTpes, pt)
-              doTypedApply(tree, adaptAfterOverloadResolution(fun, mode.forFunMode, WildcardType), args1, mode, pt)
-            }
+              }
+            }.unzip
           }
-          handleOverloaded
+
+          if (context.reporter.hasErrors) setError(tree)
+          else {
+            inferMethodAlternative(fun, undetparams, argTypes, pt)
+            doTypedApply(tree, adaptAfterOverloadResolution(fun, mode.forFunMode, WildcardType), typedArgs, mode, pt)
+          }
 
         case _ if isPolymorphicSignature(fun.symbol) =>
           // Mimic's Java's treatment of polymorphic signatures as described in

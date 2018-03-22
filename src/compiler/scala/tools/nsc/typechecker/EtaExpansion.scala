@@ -46,11 +46,17 @@ trait EtaExpansion { self: Analyzer =>
     }
     val defs = new ListBuffer[Tree]
 
+    // This attachment helps typedFunction infer better argument types in case the function is an argument to an overloaded method
+    def propagateFunAttach(from: Tree, to: Tree): to.type = {
+      from.getAndRemoveAttachment[ArgForOverloadedMethodAttachment] foreach (a => to.updateAttachment(a))
+      to
+    }
+
     /* Append to `defs` value definitions for all non-stable
      * subexpressions of the function application `tree`.
      */
     def liftoutPrefix(tree: Tree): Tree = {
-      def liftout(tree: Tree, byName: Boolean): Tree =
+      def liftout(tree: Tree, byName: Boolean): Tree = {
         if (treeInfo.isExprSafeToInline(tree)) tree
         else {
           val vname: Name = freshName()
@@ -67,6 +73,7 @@ trait EtaExpansion { self: Analyzer =>
             if (byName) Apply(Ident(vname), List()) else Ident(vname)
           }
         }
+      }
       val tree1 = tree match {
         // a partial application using named arguments has the following form:
         // { val qual$1 = qual
@@ -77,7 +84,7 @@ trait EtaExpansion { self: Analyzer =>
         // Eta-expansion has to be performed on `fun`
         case Block(stats, fun) =>
           defs ++= stats
-          liftoutPrefix(fun)
+          propagateFunAttach(fun, liftoutPrefix(fun))
         case Apply(fn, args) =>
           val byName: Int => Option[Boolean] = fn.tpe.params.map(p => definitions.isByNameParamType(p.tpe)).lift
           val newArgs = mapWithIndex(args) { (arg, i) =>
@@ -86,7 +93,7 @@ trait EtaExpansion { self: Analyzer =>
           }
           treeCopy.Apply(tree, liftoutPrefix(fn), newArgs).clearType()
         case TypeApply(fn, args) =>
-          treeCopy.TypeApply(tree, liftoutPrefix(fn), args).clearType()
+          propagateFunAttach(fn, treeCopy.TypeApply(tree, liftoutPrefix(fn), args).clearType())
         case Select(qual, name) =>
           val name = tree.symbol.name // account for renamed imports, scala/bug#7233
           treeCopy.Select(tree, liftout(qual, byName = false), name).clearType() setSymbol NoSymbol
@@ -113,7 +120,7 @@ trait EtaExpansion { self: Analyzer =>
           val args = params.map {
             case (valDef, isRepeated) => gen.paramToArg(Ident(valDef.name), isRepeated)
           }
-          Function(params.map(_._1), expand(Apply(tree, args), restpe))
+          propagateFunAttach(tree, Function(params.map(_._1), expand(Apply(tree, args), restpe)))
         }
       case _ =>
         tree
