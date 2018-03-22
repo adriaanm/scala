@@ -38,6 +38,7 @@ trait EtaExpansion { self: Analyzer =>
     *
     **/
   def etaExpand(unit: CompilationUnit, tree: Tree, typer: Typer): Tree = {
+    import ArgForOverloadedMethodAttachment.{propagate => propagateFunAttach}
     val tpe = tree.tpe
     var cnt = 0 // for NoPosition
     def freshName() = {
@@ -46,11 +47,6 @@ trait EtaExpansion { self: Analyzer =>
     }
     val defs = new ListBuffer[Tree]
 
-    // This attachment helps typedFunction infer better argument types in case the function is an argument to an overloaded method
-    def propagateFunAttach(from: Tree, to: Tree): to.type = {
-      from.getAndRemoveAttachment[ArgForOverloadedMethodAttachment] foreach (a => to.updateAttachment(a))
-      to
-    }
 
     /* Append to `defs` value definitions for all non-stable
      * subexpressions of the function application `tree`.

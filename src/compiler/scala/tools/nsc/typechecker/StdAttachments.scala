@@ -206,5 +206,14 @@ trait StdAttachments {
   case object MethodValueAttachment
 
   /** Added before typing an argument that's passed to an overloaded method, with target type `pre`, and alternatives `alternatives` */
-  case class ArgForOverloadedMethodAttachment(index: Int, pre: Type, alternatives: List[Symbol])
+  object ArgForOverloadedMethodAttachment {
+    // This attachment helps typedFunction infer better argument types in case the function is an argument to an overloaded method
+    def propagate(from: Tree, to: Tree): to.type = {
+      from.getAndRemoveAttachment[ArgForOverloadedMethodAttachment] foreach (a => to.updateAttachment(a))
+      to
+    }
+  }
+  case class ArgForOverloadedMethodAttachment(index: Int, pre: Type, alternatives: List[Symbol]) {
+    def altInfos = alternatives map { alt => pre.memberInfo(alt).paramTypes(index) } // TODO harden
+  }
 }

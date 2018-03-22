@@ -938,7 +938,22 @@ trait Infer extends Checkable {
     def inferExprInstance(tree: Tree, tparams: List[Symbol], pt: Type = WildcardType, treeTp0: Type = null, keepNothings: Boolean = true, useWeaklyCompatible: Boolean = false): List[Symbol] = {
       val treeTp = if (treeTp0 eq null) tree.tpe else treeTp0 // can't refer to tree in default for treeTp0
       val tvars  = tparams map freshVar
-      val targs  = exprTypeArgs(tvars, tparams, treeTp, pt, useWeaklyCompatible)
+      val ptHOF: Type =
+        if (pt eq WildcardType)
+          tree.getAndRemoveAttachment[ArgForOverloadedMethodAttachment] match {
+            case Some(a@ArgForOverloadedMethodAttachment(i, pre, alts)) =>
+              // TODO cleanup
+              val argTypes = try a.altInfos.map(functionOrPfOrSamArgTypes).transpose.map(lub) catch {
+                case _: IllegalArgumentException => Nil
+              }
+              val argPtSym = a.altInfos.map(_.typeSymbol)
+              println(s"infer: $tree ~~> $argPtSym [ $argTypes ] ")
+              functionType(argTypes, WildcardType)
+            case _                                                      => WildcardType
+          } else WildcardType
+
+      println(s"infer expr $tree $pt --> $ptHOF")
+      val targs  = exprTypeArgs(tvars, tparams, treeTp, ptHOF, useWeaklyCompatible)
       def infer_s = map3(tparams, tvars, targs)((tparam, tvar, targ) => s"$tparam=$tvar/$targ") mkString ","
       printTyping(tree, s"infer expr instance from pt=$pt, $infer_s")
 
@@ -946,7 +961,7 @@ trait Infer extends Checkable {
       def targsStrict = if (targs eq null) null else targs mapConserve dropByName
 
       if (keepNothings || (targs eq null)) { //@M: adjustTypeArgs fails if targs==null, neg/t0226
-        substExpr(tree, tparams, targsStrict, pt)
+        substExpr(tree, tparams, targsStrict, ptHOF)
         List()
       } else {
         val AdjustedTypeArgs.Undets(okParams, okArgs, leftUndet) = adjustTypeArgs(tparams, tvars, targsStrict)
@@ -959,7 +974,7 @@ trait Infer extends Checkable {
         }
 
         printTyping(tree, s"infer solved $solved_s$undet_s")
-        substExpr(tree, okParams, okArgs, pt)
+        substExpr(tree, okParams, okArgs, ptHOF)
         leftUndet
       }
     }

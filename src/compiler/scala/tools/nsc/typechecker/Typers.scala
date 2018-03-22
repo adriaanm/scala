@@ -912,9 +912,11 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
           // TODO: add dependent function types, so that we can eta-expand all shapes of methods
           else if (mt.isDependentMethodType) DependentMethodTpeConversionToFunctionError(tree, mt)
           else { // (4.4) eta-expand method reference
-            println(s"eta-expanding $tree: ${tree.tpe} to $pt")
+            println(s"eta-expanding $tree: ${tree.tpe} expecting $pt")
 
             val tree0 = etaExpand(context.unit, tree, this)
+
+            println(s"eta-expanded to $tree0: ${tree0.tpe}")
 
             // #2624: need to infer type arguments for eta expansion of a polymorphic method
             // context.undetparams contains clones of meth.typeParams (fresh ones were generated in etaExpand)
@@ -1195,7 +1197,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
           val tparams1 = cloneSymbols(tparams)
           val tree1 = (
             if (tree.isType) tree
-            else TypeApply(tree, tparams1 map (tparam => TypeTree(tparam.tpeHK) setPos tree.pos.focus)) setPos tree.pos
+            else ArgForOverloadedMethodAttachment.propagate(tree, TypeApply(tree, tparams1 map (tparam => TypeTree(tparam.tpeHK) setPos tree.pos.focus)) setPos tree.pos)
           )
           context.undetparams ++= tparams1
           notifyUndetparamsAdded(tparams1)
@@ -1206,6 +1208,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
         case mt: MethodType if mode.typingExprNotFunNotLhs && !hasUndetsInMonoMode && !treeInfo.isMacroApplicationOrBlock(tree) =>
           instantiateToMethodType(mt)
         case _ =>
+          println(s"vanilla? $tree : ${tree.tpe}")
           vanillaAdapt(tree)
       }
     }
@@ -2971,9 +2974,8 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
           case TypeRef(_, FunctionSymbol, args :+ res) => (args, res)
           case _                                       =>
             fun.getAndRemoveAttachment[ArgForOverloadedMethodAttachment] match {
-              case Some(ArgForOverloadedMethodAttachment(i, pre, alts)) =>
-                val altInfos = alts map { alt => pre.memberInfo(alt).paramTypes(i) } // TODO harden
-                val argTypes = try altInfos.map(functionOrPfOrSamArgTypes).transpose.map(lub) catch { case _: IllegalArgumentException => Nil } // TOOD cleanup
+              case Some(a@ArgForOverloadedMethodAttachment(i, pre, alts)) =>
+                val argTypes = try a.altInfos.map(functionOrPfOrSamArgTypes).transpose.map(lub) catch { case _: IllegalArgumentException => Nil } // TOOD cleanup
 
                 val args =
                   if (argTypes.lengthCompare(numVparams) == 0) argTypes else vparams map (if (pt == ErrorType) (_ => ErrorType) else (_ => NoType))
@@ -3406,6 +3408,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
                 // the overloaded type into a single function type from which `typedFunction`
                 // can derive the argument type for `x` in the function literal above
 
+                println(s"typedArg: $tree")
                 typedArg(tree.updateAttachment(ArgForOverloadedMethodAttachment(i, pre, alts)), amode, BYVALmode, WildcardType)
               }
 
