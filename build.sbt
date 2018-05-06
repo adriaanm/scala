@@ -560,6 +560,26 @@ lazy val junit = project.in(file("test") / "junit")
     unmanagedSourceDirectories in Test := List(baseDirectory.value)
   )
 
+lazy val macroAnnot = project.in(file("test") / "macro-annot")
+  .dependsOn(library, reflect, compiler, repl, replFrontend, scaladoc)
+  .settings(disableDocs)
+  .settings(disablePublishing)
+  .settings(instanceSettings)
+  .settings(
+    fork in Test := true,
+    javaOptions in Test += "-Xss1M",
+    libraryDependencies ++= Seq(junitDep, junitInterfaceDep),
+    testOptions += Tests.Argument(TestFrameworks.JUnit, "-q", "-v",
+                                  s"-Dsbt.paths.tests.classpath=${(fullClasspath in Test).value.files.map(_.getAbsolutePath).mkString(java.io.File.pathSeparatorChar.toString)}"),
+
+    baseDirectory in Compile := (baseDirectory in ThisBuild).value,
+    baseDirectory in Test := (baseDirectory in ThisBuild).value,
+
+    scalacOptions += "-Ymacro-annotations",
+    scalacOptions += "-Ywarn-unused-import",
+    scalacOptions += "-Xfatal-warnings"
+  )
+
 lazy val scalacheck = project.in(file("test") / "scalacheck")
   .dependsOn(library, reflect, compiler, scaladoc)
   .settings(clearSourceAndResourceDirectories)
@@ -804,6 +824,7 @@ lazy val root: Project = (project in file("."))
       val results = ScriptCommands.sequence[(Result[Unit], String)](List(
         (Keys.test in Test in junit).result map (_ -> "junit/test"),
         (Keys.test in Test in scalacheck).result map (_ -> "scalacheck/test"),
+//        (Keys.test in Test in macroAnnot).result map (_ -> "macroAnnot/test"),
         (testOnly in IntegrationTest in testP).toTask(" -- run").result map (_ -> "partest run"),
         (testOnly in IntegrationTest in testP).toTask(" -- pos neg jvm").result map (_ -> "partest pos neg jvm"),
         (testOnly in IntegrationTest in testP).toTask(" -- res scalap specialized").result map (_ -> "partest res scalap specialized"),

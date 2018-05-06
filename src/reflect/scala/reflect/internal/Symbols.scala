@@ -2807,6 +2807,7 @@ trait Symbols extends api.Symbols { self: SymbolTable =>
     override def isValue     = !(isModule && hasFlag(PACKAGE | JAVA))
     override def isVariable  = isMutable && !isMethod
     override def isTermMacro = hasFlag(MACRO)
+    def isAnnotationMacro    = hasFlag(MACRO) && name == nme.macroTransform && owner.isClass && owner.hasFlag(MACRO)
 
     // interesting only for lambda lift. Captured variables are accessed from inner lambdas.
     override def isCapturedVariable = hasAllFlags(MUTABLE | CAPTURED) && !hasFlag(METHOD)
@@ -3268,6 +3269,8 @@ trait Symbols extends api.Symbols { self: SymbolTable =>
     override def isPackageClass            = this hasFlag PACKAGE
     override def isTrait                   = this hasFlag TRAIT
 
+    def isMacroAnnotation = hasFlag(MACRO)
+
     override def isAnonOrRefinementClass = isAnonymousClass || isRefinementClass
     override def isAnonymousClass        = name containsName tpnme.ANON_CLASS_NAME
     override def isConcreteClass         = !(this hasFlag ABSTRACT | TRAIT)
@@ -3278,6 +3281,7 @@ trait Symbols extends api.Symbols { self: SymbolTable =>
     override def isPackageObjectClass    = isModuleClass && (name == tpnme.PACKAGE)
     override def isPrimitiveValueClass   = definitions.isPrimitiveValueClass(this)
     override def isPrimitive             = isPrimitiveValueClass
+
 
     // The corresponding interface is the last parent by convention.
     private def lastParent = if (tpe.parents.isEmpty) NoSymbol else tpe.parents.last.typeSymbol

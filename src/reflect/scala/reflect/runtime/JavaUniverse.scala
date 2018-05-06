@@ -2,8 +2,7 @@ package scala
 package reflect
 package runtime
 
-import scala.reflect.internal.{TreeInfo, SomePhase}
-import scala.reflect.internal.{SymbolTable => InternalSymbolTable}
+import scala.reflect.internal.{MacroAnnotionTreeInfo, SomePhase, TreeInfo, SymbolTable => InternalSymbolTable}
 import scala.reflect.runtime.{SymbolTable => RuntimeSymbolTable}
 import scala.reflect.internal.util.Statistics
 import scala.reflect.api.{TypeCreator, Universe}
@@ -76,7 +75,7 @@ class JavaUniverse extends InternalSymbolTable with JavaUniverseForce with Refle
   // can't put this in runtime.Trees since that's mixed with Global in ReflectGlobal, which has the definition from internal.Trees
   object treeInfo extends {
     val global: JavaUniverse.this.type = JavaUniverse.this
-  } with TreeInfo
+  } with TreeInfo with MacroAnnotionTreeInfo
 
   init()
 
