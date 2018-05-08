@@ -11,14 +11,18 @@ object doublerMacro {
         val doubled = if (name.isTermName) TermName(sdoubled) else TypeName(sdoubled)
         doubled.asInstanceOf[T]
       }
+      println("annottees "+ annottees.map(_.tree))
+      println("annottees list "+ annottees.map(_.tree).toList)
+      
       annottees.map(_.tree).toList match {
         case ClassDef(mods, name, tparams, impl) :: rest => ClassDef(mods, double(name), tparams, impl) :: rest
-        case ModuleDef(mods, name, impl) :: rest => ModuleDef(mods, double(name), impl) :: rest
+        case ModuleDef(mods, name, impl) :: rest         => println("rest "+ rest); ModuleDef(mods, double(name), impl) :: rest
         case DefDef(mods, name, tparams, vparamss, tpt, rhs) :: rest => DefDef(mods, double(name), tparams, vparamss, tpt, rhs) :: rest
         case TypeDef(mods, name, tparams, rhs) :: rest => TypeDef(mods, double(name), tparams, rhs) :: rest
         case ValDef(mods, name, tpt, rhs) :: rest => ValDef(mods, double(name), tpt, rhs) :: rest
       }
     }
+    println("result: "+ result)
     c.Expr[Any](Block(result, Literal(Constant(()))))
   }
 }
