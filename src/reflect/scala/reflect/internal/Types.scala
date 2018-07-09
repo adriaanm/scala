@@ -1192,6 +1192,130 @@ trait Types
     def toVariantType: Type = NoType
   }
 
+  /** Help infer parameter types for function arguments to overloaded methods.
+    *
+    * Normally, overload resolution types the arguments to the alternatives without an expected type.
+    * However, typing function literals and eta-expansion are driven by the expected type:
+    *   - function literals usually don't have parameter types, which are derived from the expected type;
+    *   - eta-expansion right now only happens when a function/sam type is expected.
+    *
+    * Now that the collections are full of overloaded HO methods, we should try harder to type check them nicely.
+    *
+    * To avoid breaking existing code, we only provide an expected type (for each argument position) when:
+    *   - there is at least one FunctionN type expected by one of the overloads:
+    *     in this case, the expected type is a FunctionN[Ti, ?], where Ti are the argument types (they must all be =:=),
+    *     and the expected result type is elided using a wildcard.
+    *     This does not exclude any overloads that expect a SAM, because they conform to a function type through SAM conversion
+    *   - OR: all overloads expect a SAM type of the same class, but with potentially varying result types (argument types must be =:=)
+    *
+    * We allow polymorphic cases, as long as the types parameters are instantiated by the AntiPolyType prefix.
+    *
+    * In all other cases, the old behavior is maintained: Wildcard is expected.
+    */
+  case class OverloadedArgFunProto(argIdx: Int, pre: Type, alternatives: List[Symbol]) extends ProtoType with SimpleTypeProxy {
+    override def safeToString: String = "?<: " + underlying.safeToString
+    override def kind = "OverloadedArgFunProto"
+
+    override def underlying: Type = functionArgsProto
+
+    // Always match if we couldn't collapse the expected types contributed for this argument by the alternatives.
+    override def isMatchedBy(tp: Type, depth: Depth): Boolean =
+      isPastTyper || underlying == WildcardType || isSubType(tp, underlying, depth)
+
+    // Empty signals failure. We don't consider the 0-ary HOF case, since we are only concerned with inferring param types for these functions anyway
+    def hofParamTypes = functionOrPfOrSamArgTypes(underlying)
+
+    override def expectsFunctionType: Boolean = hofParamTypes.nonEmpty
+
+    // TODO: include result type?
+    override def asFunctionType = functionType(hofParamTypes, WildcardType)
+
+    override def mapOver(map: TypeMap): Type = {
+      val pre1 = pre.mapOver(map)
+      val alts1 = map.mapOver(alternatives)
+      if ((pre ne pre1) || (alternatives ne alts1)) OverloadedArgFunProto(argIdx, pre1, alts1)
+      else this
+    }
+
+    // TODO
+    // override def registerTypeEquality(tp: Type): Boolean = functionArgsProto =:= tp
+
+
+    // Try to collapse all expected argument types (already distinct by =:=) into a single expected type,
+    // so that we can use it to as the expected type to drive parameter type inference for a function literal argument.
+    private lazy val functionArgsProto: Type = {
+      val ABORT = (NoType, false, false)
+
+      // TODO: use =:=, but it seems to have a bug: `typeOf[String with AnyRef] =:= typeOf[String]` == false...
+      def same(x: Type, y: Type) = (x <:< y) && (y <:< x)
+
+      // we also consider any function-ish type equal as long as the argument types are
+      def sameHOArgTypes(tp1: Type, tp2: Type) = tp1 == WildcardType || {
+        val hoArgTypes1 = functionOrPfOrSamArgTypes(tp1)
+        hoArgTypes1.nonEmpty && hoArgTypes1.corresponds(functionOrPfOrSamArgTypes(tp2))(same)
+      }
+
+      object ParamAtIdx {
+        def unapply(params: List[Symbol]): Option[Type] = {
+          lazy val lastParamTp = params.last.tpe
+
+          // if we're asking for the last argument, or past, and it happens to be a repeated param -- strip the vararg marker and return the type
+          if (params.nonEmpty && params.lengthCompare(argIdx + 1) <= 0 && isRepeatedParamType(lastParamTp)) {
+            Some(lastParamTp.dealiasWiden.typeArgs.head)
+          } else if (params.isDefinedAt(argIdx)) {
+            Some(params(argIdx).tpe)
+          } else None
+        }
+      }
+
+      object Wild {
+        def unapply(tp: Type): Some[Type] = Some(tp match {
+          case PolyType(tparams, tp) => new SubstWildcardMap(tparams).apply(tp)
+          case tp => tp
+        })
+      }
+      val sameTypesFolded = {
+        // Collect all expected types contributed by the various alternatives for this argument (TODO: repeated params?)
+        // Relative to `pre` at `alt.owner`, with `alt`'s type params approximated.
+        val altParamTps =
+          alternatives map { alt =>
+            // Use memberType so that a pre: AntiPolyType can instantiate its type params
+            pre.memberType(alt) match {
+              case PolyType(tparams, MethodType(ParamAtIdx(paramTp), res)) => PolyType(tparams, paramTp.asSeenFrom(pre, alt.owner))
+              case MethodType(ParamAtIdx(paramTp), res)                    => paramTp.asSeenFrom(pre, alt.owner)
+              case _                                                       => NoType
+            }
+          }
+
+        altParamTps.foldLeft(Nil: List[Type]) {
+          case (acc, NoType | WildcardType) => acc
+          case (acc, tp)                    => if (acc.exists(same(tp, _))) acc else tp :: acc
+        }
+      }
+
+      // TODO: compute functionOrPfOrSamArgTypes during fold?
+      val (sameHoArgTypesFolded, partialFun, regularFun) =
+        sameTypesFolded.foldLeft((WildcardType: Type, false, false)) {
+          case (ABORT, _)              => ABORT
+          case ((acc, partialFun, regularFun), Wild(tp))
+            if sameHOArgTypes(acc, tp) => (tp, partialFun || isPartialFunctionType(tp), regularFun || isFunctionType(tp))
+          case _                       => ABORT // different HO argument types encountered
+        }
+
+      if ((sameHoArgTypesFolded eq WildcardType) || (sameHoArgTypesFolded eq NoType)) WildcardType
+      else functionOrPfOrSamArgTypes(sameHoArgTypesFolded) match {
+        case Nil     => WildcardType // TODO: can we retain some of this?
+        case hofArgs =>
+          if (partialFun) appliedType(PartialFunctionClass, hofArgs :+ WildcardType)
+          else if (regularFun) functionType(hofArgs, WildcardType)
+          // if we saw a variety of SAMs, can't collapse them -- what if they were accidental sams and we're not going to supply a function literal?
+          else if (sameTypesFolded.lengthCompare(1) == 0) Wild.unapply(sameTypesFolded.head).get
+          else WildcardType
+      }
+
+    }
+  }
+
   /** An object representing a non-existing type */
   case object NoType extends Type {
     override def isTrivial: Boolean = true

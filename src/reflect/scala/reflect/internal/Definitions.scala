@@ -704,6 +704,7 @@ trait Definitions extends api.StandardDefinitions {
     // @requires pt.typeSymbol == PartialFunctionClass
     def partialFunctionArgTypeFromProto(pt: Type) =
       pt match {
+        case oap: OverloadedArgFunProto => oap.hofParamTypes :+ WildcardType
         case _                          => pt.dealiasWiden.typeArgs
       }
 

@@ -3316,59 +3316,12 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
           def handleOverloaded = {
             val undetparams = context.undetparams
 
-            def funArgTypes(tpAlts: List[(Type, Symbol)]) = tpAlts.map { case (tp, alt) =>
-              val relTp = tp.asSeenFrom(pre, alt.owner)
-              functionOrPfOrSamArgTypes(relTp)
-            }
-
-            def functionProto(argTpWithAlt: List[(Type, Symbol)]): Type =
-              try functionType(funArgTypes(argTpWithAlt).transpose.map(lub), WildcardType)
-              catch { case _: IllegalArgumentException => WildcardType }
-
-            def partialFunctionProto(argTpWithAlt: List[(Type, Symbol)]): Type =
-              try appliedType(PartialFunctionClass, funArgTypes(argTpWithAlt).transpose.map(lub) :+ WildcardType)
-              catch { case _: IllegalArgumentException => WildcardType }
-
-            // To propagate as much information as possible to typedFunction, which uses the expected type to
-            // infer missing parameter types for Function trees that we're typing as arguments here,
-            // we expand the parameter types for all alternatives to the expected argument length,
-            // then transpose to get a list of alternative argument types (push down the overloading to the arguments).
-            // Thus, for each `arg` in `args`, the corresponding `argPts` in `altArgPts` is a list of expected types
-            // for `arg`. Depending on which overload is picked, only one of those expected types must be met, but
-            // we're in the process of figuring that out, so we'll approximate below by normalizing them to function types
-            // and lubbing the argument types (we treat SAM and FunctionN types equally, but non-function arguments
-            // do not receive special treatment: they are typed under WildcardType.)
-            val altArgPts =
-              if (settings.isScala212 && args.exists(t => treeInfo.isFunctionMissingParamType(t) || treeInfo.isPartialFunctionMissingParamType(t)))
-                try alts.map { alt =>
-                  val paramTypes = pre.memberType(alt) match {
-                    case mt @ MethodType(_, _) => mt.paramTypes
-                    case PolyType(_, mt @ MethodType(_, _)) => mt.paramTypes
-                    case t => throw new RuntimeException("Expected MethodType or PolyType of MethodType, got "+t)
-                  }
-                  formalTypes(paramTypes, argslen).map(ft => (ft, alt))
-                }.transpose // do least amount of work up front
-                catch { case _: IllegalArgumentException => args.map(_ => Nil) } // fail safe in case formalTypes fails to align to argslen
-              else args.map(_ => Nil) // will type under argPt == WildcardType
-
             val (args1, argTpes) = context.savingUndeterminedTypeParams() {
               val amode = forArgMode(fun, mode)
 
-              map2(args, altArgPts) { (arg, argPtAlts) =>
+              mapWithIndex(args) { (arg, argIdx) =>
                 def typedArg0(tree: Tree) = {
-                  // if we have an overloaded HOF such as `(f: Int => Int)Int <and> (f: Char => Char)Char`,
-                  // and we're typing a function like `x => x` for the argument, try to collapse
-                  // the overloaded type into a single function type from which `typedFunction`
-                  // can derive the argument type for `x` in the function literal above
-                  val argPt =
-                    if (argPtAlts.isEmpty) WildcardType
-                    else if (treeInfo.isFunctionMissingParamType(tree)) functionProto(argPtAlts)
-                    else if (treeInfo.isPartialFunctionMissingParamType(tree)) {
-                      if (argPtAlts.exists(ts => isPartialFunctionType(ts._1))) partialFunctionProto(argPtAlts)
-                      else functionProto(argPtAlts)
-                    } else WildcardType
-
-                  val argTyped = typedArg(tree, amode, BYVALmode, argPt)
+                  val argTyped = typedArg(tree, amode, BYVALmode, OverloadedArgFunProto(argIdx, pre, alts))
                   (argTyped, argTyped.tpe.deconst)
                 }
 
