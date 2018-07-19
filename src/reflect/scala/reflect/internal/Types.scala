@@ -1219,8 +1219,13 @@ trait Types
     override def underlying: Type = functionArgsProto
 
     // Always match if we couldn't collapse the expected types contributed for this argument by the alternatives.
+    // TODO: could we just match all function-ish types as an optimization? We previously used WildcardType
     override def isMatchedBy(tp: Type, depth: Depth): Boolean =
-      isPastTyper || underlying == WildcardType || isSubType(tp, underlying, depth)
+      isPastTyper || underlying == WildcardType ||
+        isSubType(tp, underlying, depth) ||
+        // NOTE: converting tp to a function type won't work, since `tp` need not be an actual sam type,
+        // just some subclass of the sam expected by one of our overloads
+        sameTypesFoldedSam.exists { underlyingSam => isSubType(tp, underlyingSam, depth) }
 
     // Empty signals failure. We don't consider the 0-ary HOF case, since we are only concerned with inferring param types for these functions anyway
     def hofParamTypes = functionOrPfOrSamArgTypes(underlying)
@@ -1243,57 +1248,60 @@ trait Types
     // override def registerTypeEquality(tp: Type): Boolean = functionArgsProto =:= tp
 
 
+    // TODO: use =:=, but `!(typeOf[String with AnyRef] =:= typeOf[String])` (https://github.com/scala/scala-dev/issues/530)
+    private def same(x: Type, y: Type) = (x <:< y) && (y <:< x)
+
+    private object ParamAtIdx {
+      def unapply(params: List[Symbol]): Option[Type] = {
+        lazy val lastParamTp = params.last.tpe
+
+        // if we're asking for the last argument, or past, and it happens to be a repeated param -- strip the vararg marker and return the type
+        if (params.nonEmpty && params.lengthCompare(argIdx + 1) <= 0 && isRepeatedParamType(lastParamTp)) {
+          Some(lastParamTp.dealiasWiden.typeArgs.head)
+        } else if (params.isDefinedAt(argIdx)) {
+          Some(params(argIdx).tpe)
+        } else None
+      }
+    }
+
+
+    private def toWild(tp: Type): Type = tp match {
+      case PolyType(tparams, tp) => new SubstWildcardMap(tparams).apply(tp)
+      case tp                    => tp
+    }
+
+    private lazy val sameTypesFolded = {
+      // Collect all expected types contributed by the various alternatives for this argument (TODO: repeated params?)
+      // Relative to `pre` at `alt.owner`, with `alt`'s type params approximated.
+      val altParamTps =
+        alternatives map { alt =>
+          // Use memberType so that a pre: AntiPolyType can instantiate its type params
+          pre.memberType(alt) match {
+            case PolyType(tparams, MethodType(ParamAtIdx(paramTp), res)) => PolyType(tparams, paramTp.asSeenFrom(pre, alt.owner))
+            case MethodType(ParamAtIdx(paramTp), res)                    => paramTp.asSeenFrom(pre, alt.owner)
+            case _                                                       => NoType
+          }
+        }
+
+      altParamTps.foldLeft(Nil: List[Type]) {
+        case (acc, NoType | WildcardType) => acc
+        case (acc, tp)                    => if (acc.exists(same(tp, _))) acc else tp :: acc
+      }
+    }
+
+    private lazy val sameTypesFoldedSam =
+      sameTypesFolded.iterator.map(toWild).filter(tp => samOf(tp).exists).toList
+
     // Try to collapse all expected argument types (already distinct by =:=) into a single expected type,
     // so that we can use it to as the expected type to drive parameter type inference for a function literal argument.
-    private lazy val functionArgsProto: Type = {
+    private lazy val functionArgsProto = {
       val ABORT = (NoType, false, false)
-
-      // TODO: use =:=, but it seems to have a bug: `typeOf[String with AnyRef] =:= typeOf[String]` == false...
-      def same(x: Type, y: Type) = (x <:< y) && (y <:< x)
-
-      object ParamAtIdx {
-        def unapply(params: List[Symbol]): Option[Type] = {
-          lazy val lastParamTp = params.last.tpe
-
-          // if we're asking for the last argument, or past, and it happens to be a repeated param -- strip the vararg marker and return the type
-          if (params.nonEmpty && params.lengthCompare(argIdx + 1) <= 0 && isRepeatedParamType(lastParamTp)) {
-            Some(lastParamTp.dealiasWiden.typeArgs.head)
-          } else if (params.isDefinedAt(argIdx)) {
-            Some(params(argIdx).tpe)
-          } else None
-        }
-      }
-
-      def toWild(tp: Type): Type = tp match {
-        case PolyType(tparams, tp) => new SubstWildcardMap(tparams).apply(tp)
-        case tp                    => tp
-      }
-
-      val sameTypesFolded = {
-        // Collect all expected types contributed by the various alternatives for this argument (TODO: repeated params?)
-        // Relative to `pre` at `alt.owner`, with `alt`'s type params approximated.
-        val altParamTps =
-          alternatives map { alt =>
-            // Use memberType so that a pre: AntiPolyType can instantiate its type params
-            pre.memberType(alt) match {
-              case PolyType(tparams, MethodType(ParamAtIdx(paramTp), res)) => PolyType(tparams, paramTp.asSeenFrom(pre, alt.owner))
-              case MethodType(ParamAtIdx(paramTp), res)                    => paramTp.asSeenFrom(pre, alt.owner)
-              case _                                                       => NoType
-            }
-          }
-
-        altParamTps.foldLeft(Nil: List[Type]) {
-          case (acc, NoType | WildcardType) => acc
-          case (acc, tp)                    => if (acc.exists(same(tp, _))) acc else tp :: acc
-        }
-      }
 
       // we also consider any function-ish type equal as long as the argument types are
       def sameHOArgTypes(tp1: Type, tp2: Type) = tp1 == WildcardType || {
-        val hoArgTypes1 = functionOrPfOrSamArgTypes(tp1.resultType) // unwrap PolyType (but don't replace type params by wildcards)
-        val hoArgTypes2 = functionOrPfOrSamArgTypes(tp2.resultType)
+        val hoArgTypes1 = functionOrPfOrSamArgTypes(tp1.resultType)
         // println(s"sameHOArgTypes($tp1, $tp2) --> $hoArgTypes1 === $hoArgTypes2 : $res")
-        hoArgTypes1.nonEmpty && hoArgTypes1.corresponds(hoArgTypes2)(same)
+        hoArgTypes1.nonEmpty && hoArgTypes1.corresponds(functionOrPfOrSamArgTypes(tp2.resultType))(same)
       }
 
       // TODO: compute functionOrPfOrSamArgTypes during fold?

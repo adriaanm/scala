@@ -46,3 +46,12 @@ class Trees { outer =>
   def prune[A, B](t: Tree[A], f: A => Option[B]): Option[Tree[B]] = ???
   def prune[A](t: Tree[A], f: Tree[A] => Option[A])(implicit initial: A): Tree[A] = ???
 }
+
+
+// From gigahorse
+abstract class Sam[A] { def apply(a: String): A }
+
+class GigaHorse {
+  def map[A](f: String => A): A = map(new Sam[A] { def apply(a: String): A = f(a) })
+  def map[A](f: Sam[A]): A = ???
+}
