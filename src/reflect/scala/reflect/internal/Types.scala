@@ -1213,7 +1213,7 @@ trait Types
     * In all other cases, the old behavior is maintained: Wildcard is expected.
     */
   case class OverloadedArgFunProto(argIdx: Int, pre: Type, alternatives: List[Symbol]) extends ProtoType with SimpleTypeProxy {
-    override def safeToString: String = "?<: " + underlying.safeToString
+    override def safeToString: String = underlying.safeToString
     override def kind = "OverloadedArgFunProto"
 
     override def underlying: Type = functionArgsProto
