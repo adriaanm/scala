@@ -1136,6 +1136,8 @@ trait Types
    *  If you see WildcardType outside of inference it is almost certainly a bug.
    */
   case object WildcardType extends Type with ProtoType {
+    override def isWildcard = true
+
     override def safeToString: String = "?"
     override def kind = "WildcardType"
   }
@@ -1150,9 +1152,29 @@ trait Types
    *       BoundedWildcardTypes.
    */
   case class BoundedWildcardType(override val bounds: TypeBounds) extends Type with BoundedWildcardTypeApi with ProtoType {
-    override def isMatchedBy(tp: Type, depth: Depth)= isSubType(tp, bounds.hi, depth)
-    override def canMatch(tp: Type, depth: Depth): Boolean = isSubType(bounds.lo, tp, depth)
-    override def registerTypeEquality(tp: Type): Boolean = bounds.containsType(tp)
+    override def isWildcard = true
+
+    // TODO: I think if we expand the subtyping rules for TypeBounds (see TODO over there),
+    // we could just unwrap to the bounds, instead of all the way to bounds.hi/lo
+    // tp <:< this?
+    override def isMatchedBy(tp: Type, depth: Depth)=
+      tp match {
+        case pt: ProtoType => pt.canMatch(bounds.hi, depth) // unwrap to bounds, potentially bound a TypeVar (pt) directly
+        case other: TypeBounds => isSubType(other, bounds, depth)
+        case _ => isSubType(tp, bounds.hi, depth) // if tp is a prototype, going through subtyping would eventually end up back in ProtoType territory anyway
+      }
+
+    // could this prototype <:< tp?
+    override def canMatch(tp: Type, depth: Depth): Boolean =
+      tp match {
+        case pt: ProtoType => pt.isMatchedBy(bounds.lo, depth) // unwrap to bounds, potentially bound a TypeVar (pt) directly
+        case other: TypeBounds => isSubType(bounds, other, depth)
+        case _ => isSubType(bounds.lo, tp, depth) // if tp is a prototype, going through subtyping would eventually end up back in ProtoType territory anyway
+      }
+
+    override def registerTypeEquality(tp: Type, protoOnLeft: Boolean): Boolean =
+      bounds.containsType(tp)
+
     override def toBounds: TypeBounds = bounds
     override def members = bounds.lo.members
 
@@ -1171,7 +1193,6 @@ trait Types
   trait ProtoType extends Type {
     def toBounds: TypeBounds = TypeBounds.empty
 
-    override def isWildcard = true
     override def members = ErrorType.decls
 
     // tp <:< this prototype?
@@ -1181,7 +1202,7 @@ trait Types
     def canMatch(tp: Type, depth: Depth): Boolean = true
 
     // when comparing for type equality
-    def registerTypeEquality(tp: Type): Boolean = true
+    def registerTypeEquality(tp: Type, protoOnLeft: Boolean): Boolean = true
 
     // Does this prototype denote that we're expecting a function?
     def expectsFunctionType: Boolean = false
@@ -1218,10 +1239,13 @@ trait Types
 
     override def underlying: Type = functionArgsProto
 
+    override def isWildcard = functionArgsProto eq WildcardType
+
     // Always match if we couldn't collapse the expected types contributed for this argument by the alternatives.
-    // TODO: could we just match all function-ish types as an optimization? We previously used WildcardType
+    // TODO: optimize; in any case, we have to look at enough overloads to decide whether there's a single function proto,
+    // or whether we behave like WildcardType
     override def isMatchedBy(tp: Type, depth: Depth): Boolean =
-      isPastTyper || underlying == WildcardType ||
+      isPastTyper || isWildcard ||
         isSubType(tp, underlying, depth) ||
         // NOTE: converting tp to a function type won't work, since `tp` need not be an actual sam type,
         // just some subclass of the sam expected by one of our overloads
@@ -3311,11 +3335,11 @@ trait Types
   trait UntouchableTypeVar extends TypeVar {
     override def untouchable = true
     override def isGround = true
-    override def registerTypeEquality(tp: Type, typeVarLHS: Boolean) = tp match {
+    override def registerTypeEquality(tp: Type, protoOnLeft: Boolean) = tp match {
       case t: TypeVar if !t.untouchable =>
-        t.registerTypeEquality(this, !typeVarLHS)
+        t.registerTypeEquality(this, !protoOnLeft)
       case _ =>
-        super.registerTypeEquality(tp, typeVarLHS)
+        super.registerTypeEquality(tp, protoOnLeft)
     }
     override def registerBound(tp: Type, isLowerBound: Boolean, isNumericBound: Boolean = false): Boolean = tp match {
       case t: TypeVar if !t.untouchable =>
@@ -3334,11 +3358,7 @@ trait Types
    *
    *  Precondition for this class, enforced structurally: args.isEmpty && params.isEmpty.
    */
-  abstract case class TypeVar(
-                               origin: Type,
-    var constr: TypeConstraint
-  ) extends Type {
-
+  abstract case class TypeVar(origin: Type, var constr: TypeConstraint) extends Type with ProtoType {
     // We don't want case class equality/hashing as TypeVar-s are mutable,
     // and TypeRefs based on them get wrongly `uniqued` otherwise. See scala/bug#7226.
     override def hashCode(): Int = System.identityHashCode(this)
@@ -3362,6 +3382,20 @@ trait Types
 
     /** The variable's skolemization level */
     val level = skolemizationLevel
+
+    override def toBounds: TypeBounds = { assert(false, s"Unexpected toBounds on TypeVar $this"); ??? }
+
+    override def isMatchedBy(tp: Type, depth: Depth) =
+      registerBound(tp match {
+        case bw: BoundedWildcardType => bw.bounds.lo
+        case _ => tp
+      }, isLowerBound = true)
+
+    override def canMatch(tp: Type, depth: Depth) =
+      registerBound(tp match {
+        case bw: BoundedWildcardType => bw.bounds.hi
+        case _                       => tp
+      }, isLowerBound = false)
 
     /** Applies this TypeVar to type arguments, if arity matches.
      *
@@ -3612,10 +3646,10 @@ trait Types
       }
     }
 
-    def registerTypeEquality(tp: Type, typeVarLHS: Boolean): Boolean = {
+    override def registerTypeEquality(tp: Type, protoOnLeft: Boolean): Boolean = {
 //      println("regTypeEq: "+(safeToString, debugString(tp), tp.getClass, if (typeVarLHS) "in LHS" else "in RHS", if (suspended) "ZZ" else if (instValid) "IV" else "")) //@MDEBUG
       def checkIsSameType(tp: Type) = (
-        if (typeVarLHS) inst =:= tp
+        if (protoOnLeft) inst =:= tp
         else            tp   =:= inst
       )
 
@@ -4060,7 +4094,7 @@ trait Types
       case TypeBounds(lo, hi)                             => TypeBounds(appliedType(lo, args), appliedType(hi, args)) // @PP: Can this be right?
       case tv@TypeVar(_, _)                               => tv.applyArgs(args)
       case AnnotatedType(annots, underlying)              => AnnotatedType(annots, appliedType(underlying, args))
-      case ErrorType | WildcardType                       => tycon
+      case ErrorType | _: ProtoType                       => tycon
       case _                                              => abort(debugString(tycon))
     }
   }
@@ -4506,7 +4540,6 @@ trait Types
   private def isInternalTypeUsedAsTypeArg(tp: Type): Boolean = tp match {
     case ErrorType    => true
     case _: ProtoType => true
-    case _: TypeVar   => true
     case _            => false
   }
   private def isAlwaysValueType(tp: Type) = tp match {

@@ -199,8 +199,7 @@ trait TypeComparers {
      *  up any type constraints naive enough to get into their hot rods.
      */
     def mutateNonTypeConstructs(lhs: Type, rhs: Type) = lhs match {
-      case pt: ProtoType                       => pt.registerTypeEquality(rhs)
-      case tv @ TypeVar(_, _)                  => tv.registerTypeEquality(rhs, typeVarLHS = lhs eq tp1)
+      case pt: ProtoType                       => pt.registerTypeEquality(rhs, protoOnLeft = pt eq tp1)
       case TypeRef(tv @ TypeVar(_, _), sym, _) => tv.registerTypeSelection(sym, rhs)
       case _                                   => false
     }
@@ -426,7 +425,7 @@ trait TypeComparers {
 
     /* First try, on the right:
      *   - unwrap Annotated types, BoundedWildcardTypes,
-     *   - bind TypeVars  on the right, if lhs is not Annotated nor BoundedWildcard
+     *   - bind TypeVars on the right, if lhs is not Annotated nor BoundedWildcard
      *   - handle common cases for first-kind TypeRefs on both sides as a fast path.
      */
     def firstTry = tp2 match {
@@ -441,35 +440,28 @@ trait TypeComparers {
             val sym2 = tr2.sym
             val pre1 = tr1.pre
             val pre2 = tr2.pre
-            (((if (sym1 eq sym2) phase.erasedTypes || sym1.owner.hasPackageFlag || isSubType(pre1, pre2, depth)
-            else (sym1.name == sym2.name && !sym1.isModuleClass && !sym2.isModuleClass &&
-              (isUnifiable(pre1, pre2) ||
-                isSameSpecializedSkolem(sym1, sym2, pre1, pre2) ||
-                sym2.isAbstractType && isSubPre(pre1, pre2, sym2)))) &&
-              isSubArgs(tr1.args, tr2.args, sym1.typeParams, depth))
-              ||
+            val prefixOk =
+              if (sym1 eq sym2) phase.erasedTypes || sym1.owner.hasPackageFlag || isSubType(pre1, pre2, depth)
+              else sym1.name == sym2.name && !sym1.isModuleClass && !sym2.isModuleClass &&
+                    (isUnifiable(pre1, pre2) ||
+                     isSameSpecializedSkolem(sym1, sym2, pre1, pre2) ||
+                     sym2.isAbstractType && isSubPre(pre1, pre2, sym2))
+
+            (prefixOk && isSubArgs(tr1.args, tr2.args, sym1.typeParams, depth)) ||
               sym2.isClass && {
                 val base = tr1 baseType sym2
                 // During bootstrap, `base eq NoType` occurs about 2.5 times as often as `base ne NoType`.
                 // The extra check seems like a worthwhile optimization (about 2.5M useless calls to isSubType saved during that run).
                 (base ne tr1) && (base ne NoType) && isSubType(base, tr2, depth)
-              }
-              ||
-              thirdTryRef(tr1, tr2))
+              } || thirdTryRef(tr1, tr2)
           case _ =>
             secondTry
         }
       case AnnotatedType(_, _) =>
         isSubType(tp1.withoutAnnotations, tp2.withoutAnnotations, depth) &&
           annotationsConform(tp1, tp2)
-      case tp2: ProtoType => tp2.isMatchedBy(tp1, depth)
-      case tv2 @ TypeVar(_, constr2) =>
-        tp1 match {
-          case AnnotatedType(_, _) | _: ProtoType =>
-            secondTry
-          case _ =>
-            tv2.registerBound(tp1, isLowerBound = true)
-        }
+      case tp2: ProtoType if !tp1.isInstanceOf[AnnotatedType] =>
+        tp2.isMatchedBy(tp1, depth)
       case _ =>
         secondTry
     }
@@ -481,12 +473,9 @@ trait TypeComparers {
      *   - handle existential types by skolemization.
      */
     def secondTry = tp1 match {
-      case pt: ProtoType => pt.canMatch(tp2, depth)
       case AnnotatedType(_, _) =>
         isSubType(tp1.withoutAnnotations, tp2.withoutAnnotations, depth) &&
           annotationsConform(tp1, tp2)
-      case tv @ TypeVar(_,_) =>
-        tv.registerBound(tp2, isLowerBound = false)
       case ExistentialType(_, _) =>
         try {
           skolemizationLevel += 1
@@ -494,6 +483,7 @@ trait TypeComparers {
         } finally {
           skolemizationLevel -= 1
         }
+      case pt: ProtoType => pt.canMatch(tp2, depth)
       case _ =>
         thirdTry
     }
@@ -555,7 +545,7 @@ trait TypeComparers {
           case TypeBounds(lo1, hi1) =>
             isSubType(lo2, lo1, depth) && isSubType(hi1, hi2, depth)
           case _ =>
-            false
+            false // ??? why not isSubType(lo2, tp1, depth) && isSubType(tp1, hi2, depth) (and a similar case on the left)
         }
       case _ =>
         fourthTry

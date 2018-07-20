@@ -139,8 +139,8 @@ trait Infer extends Checkable {
         finally excludedVars -= tv
     }
     def apply(tp: Type): Type = tp match {
-      case _: ProtoType | NoType          => throw new NoInstance("undetermined type")
       case tv: TypeVar if !tv.untouchable => applyTypeVar(tv)
+      case _: ProtoType | NoType          => throw new NoInstance("undetermined type")
       case _                              => mapOver(tp)
     }
   }
@@ -151,12 +151,12 @@ trait Infer extends Checkable {
   /** Is type fully defined, i.e. no embedded anytypes or wildcards in it?
    */
   private[typechecker] def isFullyDefined(tp: Type): Boolean = tp match {
-    case _: ProtoType | NoType                       => false
-    case NoPrefix | ThisType(_) | ConstantType(_)    => true
     case TypeRef(pre, _, args)                       => isFullyDefined(pre) && (args forall isFullyDefined)
     case SingleType(pre, _)                          => isFullyDefined(pre)
     case RefinedType(ts, _)                          => ts forall isFullyDefined
     case TypeVar(_, constr) if constr.inst == NoType => false
+    case _: ProtoType | NoType                       => false
+    case NoPrefix | ThisType(_) | ConstantType(_)    => true
     case _                                           => falseIfNoInstance { instantiate(tp); true }
   }
 
@@ -362,6 +362,7 @@ trait Infer extends Checkable {
         tparam.tpe
       }
       val tp1 = tp map {
+        case tv: TypeVar   => tv
         case pt: ProtoType => addTypeParam(pt.toBounds)
         case t             => t
       }

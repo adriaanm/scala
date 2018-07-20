@@ -931,12 +931,12 @@ private[internal] trait TypeMaps {
     }
   }
 
-  /** A map to convert every occurrence of a wildcard type to a fresh
-    *  type variable */
+  /** A map to convert every occurrence of a wildcard type to a fresh type variable */
   object wildcardToTypeVarMap extends TypeMap {
     def apply(tp: Type): Type = tp match {
+      case tv: TypeVar   => tv
       case pt: ProtoType => TypeVar(tp, new TypeConstraint(pt.toBounds))
-      case _ => tp.mapOver(this)
+      case _             => tp.mapOver(this)
     }
   }
 
