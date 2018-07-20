@@ -1263,7 +1263,7 @@ class Global(var currentSettings: Settings, reporter0: LegacyReporter)
               }.asJava
               new JpmsModuleDescriptor(moduleDef.name.toString, requires)
           }
-          val graph = jcp.impl.resolveModuleGraph(jpmsModuleDescriptor.orNull)
+          val graph = jcp.resolveModuleGraph(jpmsModuleDescriptor.orNull)
           Some(graph)
         case _ => None
       }
