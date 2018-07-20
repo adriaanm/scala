@@ -2550,21 +2550,17 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
     def synthesizePartialFunction(paramName: TermName, paramPos: Position, paramSynthetic: Boolean,
                                   tree: Tree, mode: Mode, pt: Type): Tree = {
       assert(pt.typeSymbol == PartialFunctionClass, s"PartialFunction synthesis for match in $tree requires PartialFunction expected type, but got $pt.")
-      val targs = partialFunctionArgTypeFromProto(pt)
+      val (argTp, resTp) = partialFunctionArgResTypeFromProto(pt)
 
-      // if targs.head isn't fully defined, we can't translate --> error
-      targs match {
-        case argTp :: _ if isFullyDefined(argTp) => // ok
-        case _ => // uh-oh
-          MissingParameterTypeAnonMatchError(tree, pt)
-          return setError(tree)
+      // if argTp isn't fully defined, we can't translate --> error
+      // NOTE: resTp still might not be fully defined
+      if (!isFullyDefined(argTp)) {
+        MissingParameterTypeAnonMatchError(tree, pt)
+        return setError(tree)
       }
 
-      // NOTE: resTp still might not be fully defined
-      val argTp :: resTp :: Nil = targs
-
       // targs must conform to Any for us to synthesize an applyOrElse (fallback to apply otherwise -- typically for @cps annotated targs)
-      val targsValidParams = targs forall (_ <:< AnyTpe)
+      val targsValidParams = (argTp <:< AnyTpe) && (resTp <:< AnyTpe)
 
       val anonClass = context.owner newAnonymousFunctionClass tree.pos addAnnotation SerialVersionUIDAnnotation
 
