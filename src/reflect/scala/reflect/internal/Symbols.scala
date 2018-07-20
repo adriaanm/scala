@@ -3597,7 +3597,6 @@ trait Symbols extends api.Symbols { self: SymbolTable =>
   }
   lazy val NoJpmsModuleSymbol = new JpmsModuleSymbol(nme.EMPTY)
   lazy val DefaultJpmsModuleSymbol = new JpmsModuleSymbol(nme.EMPTY)
-  lazy val ClassOutputJpmsModuleSymbol = new JpmsModuleSymbol(nme.EMPTY)
 
   // TODO JPMS What about multi-run compilation?
   private val jpmsModules = collection.mutable.AnyRefMap[String, JpmsModuleSymbol]()
