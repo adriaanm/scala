@@ -1943,6 +1943,7 @@ trait Types
                                          // (this can happen only for erroneous programs).
       }
 
+    // TODO should we pull this out to reduce memory footprint of ClassInfoType?
     private object enterRefs extends TypeMap {
       private var tparam: Symbol = _
 
@@ -2496,7 +2497,7 @@ trait Types
       val tpars = initializedTypeParams
       if (tpars.isEmpty) this
       else  {
-        val relativeTpars = cloneSymbolsAndModify(tpars, relativize)
+        val relativeTpars = cloneSymbolsAtOwnerAndModify(tpars, sym.newLocalDummy(sym.pos), relativize)
         // @PP: use typeConstructor! #3343, #4018, #4347.
         PolyType(relativeTpars, TypeRef(pre, sym, relativeTpars map (_.typeConstructor)))
       }
