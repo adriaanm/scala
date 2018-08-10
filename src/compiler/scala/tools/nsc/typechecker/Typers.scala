@@ -625,6 +625,8 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
         narrowIf(tree, true)
       else if (isGetClassCall)                        // (4)
         tree setType MethodType(Nil, getClassReturnType(pre))
+      else if (mode.inFunMode)
+        tree modifyType (deconstMap)
       else
         tree
     }
@@ -3028,7 +3030,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
               val formals = vparamSyms map (_.tpe)
               val body1 = typed(fun.body, respt)
               val restpe = {
-                val restpe0 = packedType(body1, fun.symbol).deconst.resultType
+                val restpe0 = packedType(body1, fun.symbol).resultType.deconst
                 restpe0 match {
                   case ct: ConstantType if (respt eq WildcardType) || (ct.widen <:< respt) => ct.widen
                   case tp => tp
