@@ -952,6 +952,11 @@ private[internal] trait TypeMaps {
     }
   }
 
+  // Used during erasure
+  // Note that there were some bugs with `classOf[tp]`'s representation (`ConstantType(Constant(tp: Type))`),
+  // but they seem to have been resolved by now, so going back to a more straight forward implementation
+  object deconstMap extends TypeMap { def apply(tp: Type): Type = tp.mapOver(this).deconst }
+
   /** A map to implement the `contains` method. */
   class ContainsCollector(sym: Symbol) extends TypeCollector(false) {
     def traverse(tp: Type): Unit = {

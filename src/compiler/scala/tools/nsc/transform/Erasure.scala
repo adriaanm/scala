@@ -428,20 +428,6 @@ abstract class Erasure extends InfoTransform
   }
 
 
-  val deconstMap = new TypeMap {
-    // For some reason classOf[Foo] creates ConstantType(Constant(tpe)) with an actual Type for tpe,
-    // which is later translated to a Class. Unfortunately that means we have bugs like the erasure
-    // of Class[Foo] and classOf[Bar] not being seen as equivalent, leading to duplicate method
-    // generation and failing bytecode. See ticket #4753.
-    def apply(tp: Type): Type = tp match {
-      case PolyType(_, _)                  => mapOver(tp)
-      case MethodType(_, _)                => mapOver(tp)     // nullarymethod was eliminated during uncurry
-      case ConstantType(Constant(_: Type)) => ClassClass.tpe  // all classOfs erase to Class
-      case ConstantType(value)             => value.tpe.deconst
-      case _                               => tp.deconst
-    }
-  }
-
   // ## requires a little translation
   private lazy val poundPoundMethods = Set[Symbol](Any_##, Object_##)
   // Methods on Any/Object which we rewrite here while we still know what
