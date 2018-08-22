@@ -224,10 +224,22 @@ trait PatternTypers {
      */
     private def convertToCaseConstructor(tree: Tree, caseClass: Symbol, ptIn: Type): Tree = {
       val variantToSkolem     = new VariantToSkolemMap
-      val caseClassType       = tree.tpe.prefix memberType caseClass
-      val caseConstructorType = caseClassType memberType caseClass.primaryConstructor
+      // Note that
+      val caseClassType       = caseClass.tpe_*.asSeenFrom(tree.tpe.prefix, caseClass.owner)
+      // If the case class is polymorphic, need to capture those type params in the type that we relativize using asSeenFrom,
+      // as they may also be sensitive to the prefix (see test/files/pos/t11103.scala).
+      // Note that undetParams may thus be different from caseClass.typeParams.
+      // (For a monomorphic case class, GenPolyType will not create/destruct a PolyType.)
+      val (undetparams, caseConstructorType) =
+        GenPolyType.unapply {
+          // We need to bind any case class type params that may appear in the constructor's info, so that their infos also get relativized by asSeenFrom
+          val ctorInfo = GenPolyType(caseClass.typeParams, caseClass.primaryConstructor.info)
+          ctorInfo.asSeenFrom(caseClassType, caseClass)
+        }.get
+
       val tree1               = TypeTree(caseConstructorType) setOriginal tree
 
+      // println(s"convertToCaseConstructor(${tree.tpe}, $caseClass, $ptIn) // $caseClassType // ${caseConstructorType.typeParams.map(_.info)}")
       // have to open up the existential and put the skolems in scope
       // can't simply package up pt in an ExistentialType, because that takes us back to square one (List[_ <: T] == List[T] due to covariance)
       val ptSafe   = logResult(s"case constructor from (${tree.summaryString}, $caseClassType, $ptIn)")(variantToSkolem(ptIn))
@@ -237,7 +249,7 @@ trait PatternTypers {
       // as instantiateTypeVar's bounds would end up there
       val ctorContext = context.makeNewScope(tree, context.owner)
       freeVars foreach ctorContext.scope.enter
-      newTyper(ctorContext).infer.inferConstructorInstance(tree1, caseClass.typeParams, ptSafe)
+      newTyper(ctorContext).infer.inferConstructorInstance(tree1, undetparams, ptSafe)
 
       // simplify types without losing safety,
       // so that we get rid of unnecessary type slack, and so that error messages don't unnecessarily refer to skolems
