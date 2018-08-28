@@ -372,9 +372,9 @@ abstract class Erasure extends InfoTransform
           superSig(tp.typeSymbol, parents)
         case AnnotatedType(_, atp) =>
           jsig(atp, existentiallyBound, toplevel, primitiveOK)
-        case BoundedWildcardType(bounds) =>
+        case BoundedWildcardType(_, hi) =>
           println("something's wrong: "+sym0+":"+sym0.tpe+" has a bounded wildcard type")
-          jsig(bounds.hi, existentiallyBound, toplevel, primitiveOK)
+          jsig(hi, existentiallyBound, toplevel, primitiveOK)
         case _ =>
           val etp = erasure(sym0)(tp)
           if (etp eq tp) throw new UnknownSig

@@ -24,7 +24,7 @@ import TypeConstants._
     // internal: error
   case WildcardType =>
     // internal: unknown
-  case BoundedWildcardType(bounds) =>
+  case BoundedWildcardType(lo, hi) =>
     // internal: unknown
   case NoType =>
   case NoPrefix =>
@@ -152,7 +152,6 @@ trait Types
     override def typeSymbolDirect = underlying.typeSymbolDirect
     override def widen = underlying.widen
     override def typeOfThis = underlying.typeOfThis
-    override def bounds = underlying.bounds
     override def lowerBound = underlying.lowerBound
     override def upperBound = underlying.upperBound
     override def parents = underlying.parents
@@ -400,7 +399,13 @@ trait Types
      *  for a reference denoting an abstract type, its bounds,
      *  for all other types, a TypeBounds type all of whose bounds are this type.
      */
-    def bounds: TypeBounds = TypeBounds(lowerBound, upperBound)
+    final def bounds: TypeBounds =
+      this match {
+        case proxy: SimpleTypeProxy => proxy.underlying.bounds
+        case tb: TypeBounds         => tb
+        case _                      => TypeBounds(lowerBound, upperBound)
+      }
+
     def lowerBound: Type = this
     def upperBound: Type = this
 
@@ -1145,22 +1150,21 @@ trait Types
    *       type is created: a MethodType with parameters typed as
    *       BoundedWildcardTypes.
    */
-  case class BoundedWildcardType(override val bounds: TypeBounds) extends Type with BoundedWildcardTypeApi with ProtoType {
-    override def upperBound: Type = bounds.hi
-    override def lowerBound: Type = bounds.lo
-    override def isMatchedBy(tp: Type, depth: Depth)= isSubType(tp, bounds.hi, depth)
-    override def canMatch(tp: Type, depth: Depth): Boolean = isSubType(bounds.lo, tp, depth)
+  case class BoundedWildcardType(override val lowerBound: Type, override val upperBound: Type) extends Type with BoundedWildcardTypeApi with ProtoType {
+    override def isMatchedBy(tp: Type, depth: Depth)= isSubType(tp, upperBound, depth)
+    override def canMatch(tp: Type, depth: Depth): Boolean = isSubType(lowerBound, tp, depth)
     override def registerTypeEquality(tp: Type): Boolean = bounds.containsType(tp)
     override def toBounds: TypeBounds = bounds
-    override def members = bounds.lo.members
+    override def members = lowerBound.members
 
     override def toVariantType: Type = bounds
     override def safeToString: String = "?" + bounds
     override def kind = "BoundedWildcardType"
     override def mapOver(map: TypeMap): Type = {
-      val bounds1 = map(bounds)
-      if (bounds1 eq bounds) this
-      else BoundedWildcardType(bounds1.asInstanceOf[TypeBounds])
+      val lo1 = map(lowerBound)
+      val hi1 = map(upperBound)
+      if ((lo1 eq lowerBound) && (hi1 eq upperBound)) this
+      else BoundedWildcardType(lo1, hi1)
     }
   }
 
@@ -1491,7 +1495,6 @@ trait Types
   abstract case class TypeBounds(lo: Type, hi: Type) extends SubType with TypeBoundsApi {
     def supertype = hi
     override def isTrivial: Boolean = lo.isTrivial && hi.isTrivial
-    override def bounds: TypeBounds = this
     override def upperBound: Type = hi
     override def lowerBound: Type = lo
     def containsType(that: Type) = that match {
@@ -2308,12 +2311,11 @@ trait Types
 
     override def baseClasses = relativeInfo.baseClasses
     override def decls       = relativeInfo.decls
-    override def bounds      = relativeInfo.bounds
     override def upperBound  = relativeInfo.upperBound
     override def lowerBound  = relativeInfo.lowerBound
 
     // TODO: this deviates from the spec "The base types of an abstract type are the base types of its upper bound."
-    override protected[Types] def baseTypeSeqImpl: BaseTypeSeq = bounds.hi.baseTypeSeq prepend this
+    override protected[Types] def baseTypeSeqImpl: BaseTypeSeq = upperBound.baseTypeSeq prepend this
     override protected[Types] def parentsImpl: List[Type] = relativeInfo.parents
 
     override def kind = "AbstractTypeRef"
@@ -2983,7 +2985,6 @@ trait Types
     override protected def rewrap(newtp: Type) = existentialAbstraction(quantified, newtp)
 
     override def isTrivial = false
-    override def bounds = TypeBounds(lowerBound, upperBound)
     override def lowerBound = maybeRewrap(underlying.lowerBound)
     override def upperBound = maybeRewrap(underlying.upperBound)
     override def parents = underlying.parents map maybeRewrap
@@ -3748,16 +3749,6 @@ trait Types
      *  recursively calls withoutAnnotations.
      */
     override def withoutAnnotations = underlying.withoutAnnotations
-
-    /** Drop the annotations on the bounds, unless the low and high
-     *  bounds are exactly tp.
-     */
-    override def bounds: TypeBounds = underlying.bounds match {
-      case TypeBounds(_: this.type, _: this.type) => TypeBounds(this, this)
-      case oftp                                   => oftp
-    }
-    override def lowerBound: Type = bounds.lo
-    override def upperBound: Type = bounds.hi
 
 
     // ** Replace formal type parameter symbols with actual type arguments. * /

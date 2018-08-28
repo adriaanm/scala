@@ -998,7 +998,7 @@ trait Types {
    *  @group Extractors
    */
   abstract class BoundedWildcardTypeExtractor {
-    def unapply(tpe: BoundedWildcardType): Option[TypeBounds]
+    def unapply(tpe: BoundedWildcardType): Option[(Type, Type)]
 
     /** @see [[InternalApi.boundedWildcardType]] */
     @deprecated("use `internal.boundedWildcardType` instead", "2.11.0")

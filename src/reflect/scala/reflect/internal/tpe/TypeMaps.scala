@@ -339,8 +339,8 @@ private[internal] trait TypeMaps {
   object wildcardExtrapolation extends TypeMap(trackVariance = true) {
     def apply(tp: Type): Type =
       tp match {
-        case BoundedWildcardType(TypeBounds(lo, AnyTpe)) if variance.isContravariant => lo
-        case BoundedWildcardType(TypeBounds(NothingTpe, hi)) if variance.isCovariant => hi
+        case BoundedWildcardType(lo, AnyTpe) if variance.isContravariant => lo
+        case BoundedWildcardType(NothingTpe, hi) if variance.isCovariant => hi
         case tp => tp.mapOver(this)
       }
   }
@@ -807,7 +807,8 @@ private[internal] trait TypeMaps {
     def apply(tp: Type): Type = try {
       tp match {
         case TypeRef(_, sym, _) if from contains sym =>
-          BoundedWildcardType(sym.info.bounds)
+          val symBounds = sym.info.bounds // TODO: shouldn't this be tp.bounds? (introduced in 58a86b6)
+          BoundedWildcardType(symBounds.lo, symBounds.hi)
         case _ =>
           tp.mapOver(this)
       }

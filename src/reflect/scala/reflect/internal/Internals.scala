@@ -110,7 +110,7 @@ trait Internals extends api.Internals {
     def existentialAbstraction(tparams: List[Symbol], tpe0: Type): Type = self.existentialAbstraction(tparams, tpe0)
     def annotatedType(annotations: List[Annotation], underlying: Type): AnnotatedType = self.AnnotatedType(annotations, underlying)
     def typeBounds(lo: Type, hi: Type): TypeBounds = self.TypeBounds(lo, hi)
-    def boundedWildcardType(bounds: TypeBounds): BoundedWildcardType = self.BoundedWildcardType(bounds)
+    def boundedWildcardType(bounds: TypeBounds): BoundedWildcardType = self.BoundedWildcardType(bounds.lo, bounds.hi)
 
     def subpatterns(tree: Tree): Option[List[Tree]] = tree.attachments.get[SubpatternsAttachment].map(_.patterns.map(duplicateAndKeepPositions))
 

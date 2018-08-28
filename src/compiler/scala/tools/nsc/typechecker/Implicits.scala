@@ -343,7 +343,7 @@ trait Implicits {
   object HasMethodMatching {
     val dummyMethod = NoSymbol.newTermSymbol(TermName("typer$dummy")) setInfo NullaryMethodType(AnyTpe)
 
-    def templateArgType(argtpe: Type) = new BoundedWildcardType(TypeBounds.lower(argtpe))
+    def templateArgType(argtpe: Type) = new BoundedWildcardType(argtpe, AnyTpe)
 
     def apply(name: Name, argtpes: List[Type], restpe: Type): Type = {
       val mtpe = MethodType(dummyMethod.newSyntheticValueParams(argtpes map templateArgType), restpe)

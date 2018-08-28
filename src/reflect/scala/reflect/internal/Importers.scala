@@ -238,8 +238,8 @@ trait Importers { to: SymbolTable =>
         SuperType(importType(thistpe), importType(supertpe))
       case from.TypeBounds(lo, hi) =>
         TypeBounds(importType(lo), importType(hi))
-      case from.BoundedWildcardType(bounds) =>
-        BoundedWildcardType(importType(bounds).asInstanceOf[TypeBounds])
+      case from.BoundedWildcardType(lo, hi) =>
+        BoundedWildcardType(importType(lo), importType(hi))
       case from.ClassInfoType(parents, decls, clazz) =>
         val myclazz = importSymbol(clazz)
         val myscope = if (myclazz.isPackageClass) newPackageScope(myclazz) else newScope
