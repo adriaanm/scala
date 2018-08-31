@@ -60,6 +60,11 @@ trait Reporting extends scala.reflect.internal.Reporting { self: ast.Positions w
         }
     }
 
+//    import scala.reflect.internal.Reporter.{Severity, SUPPRESSED, WARNING, ERROR, INFO}
+    object deprecationSuppression {
+      def apply(since: String, in: String, from: String): Int = ???
+    }
+
     // This change broke sbt; I gave it the thrilling name of uncheckedWarnings0 so
     // as to recover uncheckedWarnings for its ever-fragile compiler interface.
     private val _deprecationWarnings    = new ConditionalWarning("deprecation", settings.deprecation)
@@ -81,13 +86,19 @@ trait Reporting extends scala.reflect.internal.Reporting { self: ast.Positions w
 
     def allConditionalWarnings = _allConditionalWarnings flatMap (_.warnings)
 
-    // behold! the symbol that caused the deprecation warning (may not be deprecated itself)
-    def deprecationWarning(pos: Position, sym: Symbol, msg: String, since: String): Unit = _deprecationWarnings.warn(pos, msg, since)
-    def deprecationWarning(pos: Position, sym: Symbol): Unit = {
+    def deprecationWarning(pos: Position, sym: Symbol, msg: String, since: String, from: String): Unit =
+      deprecationSuppression(since, sym.fullName, from) match {
+        case -1 =>
+        case 0  => reporter.echo(pos, s"$msg (since $since)")
+        case 1  => _deprecationWarnings.warn(pos, msg, since)
+        case 2  => reporter.error(pos, s"$msg (since $since)")
+      }
+
+    def deprecationWarning(pos: Position, sym: Symbol, from: String): Unit = {
       val version = sym.deprecationVersion.getOrElse("")
       val since   = if (version.isEmpty) version else s" (since $version)"
       val message = sym.deprecationMessage match { case Some(msg) => s": $msg"        case _ => "" }
-      deprecationWarning(pos, sym, s"$sym${sym.locationString} is deprecated$since$message", version)
+      deprecationWarning(pos, sym, s"$sym${sym.locationString} is deprecated$since$message", version, from)
     }
 
     private[this] var reportedFeature = Set[Symbol]()

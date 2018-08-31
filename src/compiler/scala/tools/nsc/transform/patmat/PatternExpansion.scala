@@ -209,7 +209,7 @@ trait PatternExpansion {
 
     private def err(msg: String) = context.error(fun.pos,msg)
     private def warn(msg: String) = context.warning(fun.pos,msg)
-    private def depr(msg: String, since: String) = currentRun.reporting.deprecationWarning(fun.pos, fun.symbol.owner, msg, since)
+    private def depr(msg: String, since: String) = currentRun.reporting.deprecationWarning(fun.pos, fun.symbol.owner, msg, since, context.owner.fullName)
 
     private def warnPatternTupling() =
       if (effectivePatternArity(args) == 1 && tupleValuedUnapply) {

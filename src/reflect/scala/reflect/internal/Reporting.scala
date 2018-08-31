@@ -85,6 +85,7 @@ abstract class Reporter {
   def error(pos: Position, msg: String): Unit   = info0(pos, msg, ERROR, force = false)
 
   class Severity(val id: Int)(name: String) { var count: Int = 0 ; override def toString = name}
+  object SUPPRESSED extends Severity(-1)("")
   object INFO    extends Severity(0)("INFO")
   object WARNING extends Severity(1)("WARNING")
   object ERROR   extends Severity(2)("ERROR")

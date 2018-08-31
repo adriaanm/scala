@@ -895,7 +895,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
         // (4.3) eta-expand method value when function or sam type is expected (for experimentation, always eta-expand under 2.14 source level)
         else if (isFunctionProto(pt) || settings.isScala214) { // TODO: decide on `settings.isScala214`
           if (settings.isScala212 && mt.params.isEmpty) // implies isFunctionType(pt)
-             currentRun.reporting.deprecationWarning(tree.pos, NoSymbol, "Eta-expansion of zero-argument methods is deprecated. "+
+             context.deprecationWarning(tree.pos, NoSymbol, "Eta-expansion of zero-argument methods is deprecated. "+
                     s"To avoid this warning, write ${Function(Nil, Apply(tree, Nil))}.", "2.12.0")
 
           typedEtaExpansion(tree, mode, pt)
