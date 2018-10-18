@@ -2277,7 +2277,7 @@ trait Types
     override def betaReduce = relativize(sym.info.resultType)
 
     /** scala/bug#3731, scala/bug#8177: when prefix is changed to `newPre`, maintain consistency of prefix and sym
-     *  (where the symbol refers to a declaration "embedded" in the prefix).
+     *  (one of the prefixes must be a refinement type, as this is where the symbols tend to get out of synch).
      *
      *  @return newSym so that `newPre` binds `sym.name` to `newSym`,
      *                  to remain consistent with `pre` previously binding `sym.name` to `sym`.
@@ -2297,8 +2297,8 @@ trait Types
      *  have created a new symbol for the one the original sym referred to)
      */
     override def coevolveSym(newPre: Type): Symbol =
-      if ((pre ne newPre) && embeddedSymbol(pre, sym.name) == sym) {
-        val newSym = embeddedSymbol(newPre, sym.name)
+      if ((pre ne newPre) && pre.widen.typeSymbol.isRefinementClass || newPre.widen.typeSymbol.isRefinementClass) {
+        val newSym = newPre nonPrivateMember sym.name
         debuglog(s"co-evolve: ${pre} -> ${newPre}, $sym : ${sym.info} -> $newSym : ${newSym.info}")
         // To deal with erroneous `preNew`, fallback via `orElse sym`, in case `preNew` does not have a decl named `sym.name`.
         newSym orElse sym
@@ -2306,20 +2306,6 @@ trait Types
 
     override def kind = "AliasTypeRef"
   }
-
-  // Return the symbol named `name` that's "embedded" in tp
-  // This is the case if `tp` is a `T{...; type/val $name ; ...}`,
-  // or a singleton type with such an underlying type.
-  private def embeddedSymbol(tp: Type, name: Name): Symbol =
-    // normalize to flatten nested RefinedTypes
-    // don't check whether tp is a RefinedType -- it may be a ThisType of one, for example
-    // TODO: check the resulting symbol is owned by the refinement class? likely an invariant...
-    if (tp.typeSymbol.isRefinementClass) tp.normalize.decls lookup name
-    else {
-      debuglog(s"no embedded symbol $name found in ${showRaw(tp)} --> ${tp.normalize.decls lookup name}")
-      NoSymbol
-    }
-
 
   trait AbstractTypeRef extends NonClassTypeRef {
     require(sym.isAbstractType, sym)
