@@ -1728,16 +1728,14 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
             context.deprecationWarning(parent.pos, psym, report, version)
           }
 
-          val parentTypeOfThis = parent.tpe.dealias.typeOfThis
-
-          if (!(selfType <:< parentTypeOfThis) &&
+          if (!selfTypeConforms(selfType, parent.tpe) &&
               !phase.erasedTypes &&
               !context.owner.isSynthetic &&   // don't check synthetic concrete classes for virtuals (part of DEVIRTUALIZE)
               !selfType.isErroneous &&
               !parent.tpe.isErroneous)
           {
             pending += ParentSelfTypeConformanceError(parent, selfType)
-            if (settings.explaintypes) explainTypes(selfType, parentTypeOfThis)
+            if (settings.explaintypes) explainTypes(selfType, parent.tpe.dealias.typeOfThis)
           }
 
           if (parents exists (p => p != parent && p.tpe.typeSymbol == psym && !psym.isError))
@@ -1752,6 +1750,12 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
       }
 
       pending.foreach(ErrorUtils.issueTypeError)
+    }
+
+    private def selfTypeConforms(selfTp: Type, parentTp: Type) = {
+      val parentSelfTp = parentTp.dealias.typeOfThis
+
+      selfTp <:< parentSelfTp
     }
 
     def checkFinitary(classinfo: ClassInfoType): Unit = {
@@ -4537,7 +4541,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
         }
         else if (!(  tp == sym.typeOfThis // when there's no explicit self type -- with (#3612) or without self variable
                      // sym.thisSym.tpe == tp.typeOfThis (except for objects)
-                  || narrowRhs(tp) <:< tp.typeOfThis
+                  || selfTypeConforms(narrowRhs(tp), tp)
                   || phase.erasedTypes
                   )) {
           DoesNotConformToSelfTypeError(tree, sym, tp.typeOfThis)
