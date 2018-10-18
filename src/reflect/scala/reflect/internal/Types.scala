@@ -4643,7 +4643,7 @@ trait Types
   /** Does member `symLo` of `tpLo` have a stronger type
    *  than member `symHi` of `tpHi`?
    */
-  protected[internal] def specializesSym(preLo: Type, symLo: Symbol, preHi: Type, symHi: Symbol, depth: Depth): Boolean =
+  protected[scala] def specializesSym(preLo: Type, symLo: Symbol, preHi: Type, symHi: Symbol, depth: Depth): Boolean =
     (symHi.isAliasType || symHi.isTerm || symHi.isAbstractType) && {
       val symHiInfo = symHi.info
       if (symHi.isTerm && symHiInfo == WildcardType) {

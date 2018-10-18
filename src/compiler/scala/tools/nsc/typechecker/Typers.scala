@@ -22,7 +22,7 @@ package typechecker
 
 import scala.collection.mutable
 import scala.reflect.internal.util.{FreshNameCreator, ListOfNil, Statistics, StatisticsStatics}
-import scala.reflect.internal.TypesStats
+import scala.reflect.internal.{Depth, TypesStats}
 import mutable.{ArrayBuffer, ListBuffer}
 import symtab.Flags._
 import Mode._
@@ -1755,7 +1755,24 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
     private def selfTypeConforms(selfTp: Type, parentTp: Type) = {
       val parentSelfTp = parentTp.dealias.typeOfThis
 
-      selfTp <:< parentSelfTp
+      selfTp <:< parentSelfTp || {
+        parentSelfTp.normalize match {
+          // Special case: we allow refining type members. This is sound because erasure will take the member as seen from the self type
+          // The cool part is that this allows hiding the member from the outside:
+          // given `object Foo { self: {type T = Int} => type T }`, Foo.T is an abstract type, but self.T is an Int (and erases as such)
+          // We need a special case in erasure to make sure erasure(Foo.T) == erasure(self.T)e
+          case rt@RefinedType(parents, decls) =>
+            val glbSelf = glb(List(selfTp, parentSelfTp))
+
+//            println(s"self ok? $selfTp <:< $parents : ${selfTp <:< intersectionType(parents)}")
+            // def specializesSym(preLo: Type, symLo: Symbol, preHi: Type, symHi: Symbol, depth: Depth): Boolean
+            selfTp <:< intersectionType(parents) && decls.forall { sym =>
+//              println(s"decl ok? $selfTp $sym ${sym.isNonClassType} ${selfTp.nonPrivateMember(sym.name)}")
+              sym.isNonClassType && specializesSym(selfTp, sym, selfTp, selfTp.nonPrivateMember(sym.name), Depth.AnyDepth)
+            }
+          case _ => false
+        }
+      }
     }
 
     def checkFinitary(classinfo: ClassInfoType): Unit = {
