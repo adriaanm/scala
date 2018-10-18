@@ -3466,8 +3466,13 @@ trait Symbols extends api.Symbols { self: SymbolTable =>
     override def typeOfThis = {
       val period = typeOfThisPeriod
       if (period != currentPeriod) {
-        if (!isValid(period))
+        if (!isValid(period)) {
           typeOfThisCache = singleType(owner.thisType, sourceModule)
+
+          // If this object has an explicit self type, use that, but replace the ThisType(module class) with the singleType computed above
+          if (thisSym ne this) typeOfThisCache = thisSym.tpe_*.substThis(companionClass, typeOfThisCache)
+        }
+
         typeOfThisPeriod = currentPeriod
       }
       typeOfThisCache
