@@ -1036,7 +1036,11 @@ trait Namers extends MethodSynthesis {
         val selftpe = typer.typedType(tree).tpe
         sym setInfo {
           if (selftpe.typeSymbol isNonBottomSubClass sym.owner) selftpe
-          else intersectionType(List(sym.owner.tpe, selftpe))
+          else selftpe match {
+            // tuck in the class's type with any parents specified for the self type -- the opaque type encoding relies on a flat refined type self type
+            case rt@RefinedType(ps, ds) => copyRefinedType(rt, sym.owner.tpe :: ps, ds)
+            case _                      => intersectionType(List(sym.owner.tpe, selftpe))
+          }
         }
       }
     }
