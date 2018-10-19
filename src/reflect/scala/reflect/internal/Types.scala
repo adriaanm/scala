@@ -1546,6 +1546,7 @@ trait Types
     def empty: TypeBounds           = apply(NothingTpe, AnyTpe)
     def upper(hi: Type): TypeBounds = apply(NothingTpe, hi)
     def lower(lo: Type): TypeBounds = apply(lo, AnyTpe)
+    def wild: TypeBounds            = apply(WildcardType, WildcardType)
     def apply(lo: Type, hi: Type): TypeBounds = {
       unique(new UniqueTypeBounds(lo, hi)).asInstanceOf[TypeBounds]
     }

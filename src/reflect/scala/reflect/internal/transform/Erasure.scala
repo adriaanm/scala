@@ -142,11 +142,15 @@ trait Erasure {
         else if (sym.isRefinementClass) apply(mergeParents(tp.parents))
         else if (sym.isDerivedValueClass) eraseDerivedValueClassRef(tref)
         else if (sym.isClass) eraseNormalClassRef(tref)
-        else {
-          // special case for opaque type encoding (TODO: refine)
-          if (pre.typeSymbol.hasSelfType) apply(pre.typeOfThis.memberType(sym))
-          else apply(sym.info asSeenFrom (pre, sym.owner))
-        } // alias type or abstract type
+        else apply { // recurse on (relativized) info of alias type or abstract type
+          if (pre.typeSymbol.hasSelfType) { // special case for opaque type encoding
+            pre.typeOfThis.nonPrivateMember(sym.name) match {
+              // If the self type overrides this abstract type, use its erasure
+              case refined if (refined ne sym) => pre.typeOfThis.memberInfo(refined)
+              case _ => pre.memberInfo(sym)
+            }
+          } else pre.memberInfo(sym)
+        }
       case PolyType(tparams, restpe) =>
         apply(restpe)
       case ExistentialType(tparams, restpe) =>
@@ -401,9 +405,17 @@ trait Erasure {
     else if (sym == Object_isInstanceOf || sym == ArrayClass)
       PolyType(sym.info.typeParams, specialErasure(sym)(sym.info.resultType))
     else if (sym.isAbstractType) {
-      // special case for opaque type encoding (TODO: refine)
-      if (sym.owner.hasSelfType && sym.owner.typeOfThis.nonPrivateMember(sym.name).isAliasType) specialErasure(sym)(sym.owner.typeOfThis.memberType(sym))
-      else TypeBounds(WildcardType, WildcardType) // TODO why not use the erasure of the type's bounds, as stated in the doc?
+      // TODO why are we using `TypeBounds.wild` instead of the erasure of the type's bounds, as stated in the doc?
+      // (Speculating: generic sig generation is broken if we are more precise?)
+
+      // special case for opaque type encoding
+      if (sym.owner.hasSelfType) {
+        sym.owner.typeOfThis.nonPrivateMember(sym.name) match {
+          // If the self type overrides this abstract type, use its erasure
+          case refined if (refined ne sym) => transformInfo(refined, refined.info)
+          case _ => TypeBounds.wild
+        }
+      } else TypeBounds.wild
     } else if (sym.isTerm && sym.owner == ArrayClass) {
       if (sym.isClassConstructor) // TODO: switch on name for all branches -- this one is sym.name == nme.CONSTRUCTOR
         tp match {
