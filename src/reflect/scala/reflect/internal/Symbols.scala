@@ -3436,7 +3436,7 @@ trait Symbols extends api.Symbols { self: SymbolTable =>
       else nameString
     }
     override def toString = (
-      if (isAnonOrRefinementClass) anonOrRefinementString
+      if (isAnonOrRefinementClass) anonOrRefinementString + idString
       else super.toString
     )
 
