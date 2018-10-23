@@ -1238,7 +1238,7 @@ trait Implicits {
             else if (pre.isStable && !pre.typeSymbol.isExistentiallyBound) {
               val pre1 =
                 if (sym.isPackageClass) sym.packageObject.typeOfThis
-                else singleType(pre, companionSymbolOf(sym, context))
+                else singleType(pre, companionSymbolOf(sym, context)) // TODO: opaque type aliases have companions too
               val infos = pre1.implicitMembers.iterator.map(mem => new ImplicitInfo(mem.name, pre1, mem)).toList
               val mergedInfos =
                 if(infos1.isEmpty) infos
