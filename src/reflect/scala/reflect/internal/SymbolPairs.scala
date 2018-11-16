@@ -204,7 +204,7 @@ abstract class OverridingPairs {
     private def shareLinearisationSuffix(cls1: Symbol, cls2: Symbol): Boolean = {
       val res = (subParents(cls1) intersect subParents(cls2)).nonEmpty
       if (res) {
-        println(s"shareLinearisationSuffix $cls1 $cls2 ${(subParents(cls1) intersect subParents(cls2)).toSet.map(parentClasses)}")
+        println(s"shareLinearisationSuffix $cls1 $cls2 ${(subParents(cls1) intersect subParents(cls2)).toSet.map(parentClasses.applyOrElse(_, _ => NoSymbol))}")
       }
       res
     }
