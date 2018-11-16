@@ -106,16 +106,15 @@ abstract class OverridingPairs {
       * considered as a pair? Types always match. Term symbols
       * match if their member types relative to `self` match.
       *
-      * Overridden in DoubleDefsCursor
+      * Overridden in DoubleDefsCursor to just `!high.isPrivate`
       */
     protected def matches =
-      low.isType || (
-                    (low.owner != high.owner) // don't try to form pairs from overloaded members
-                    && !high.isPrivate // private or private[this] members never are overridden
-                    && !exclude(low) // this admits private, as one can't have a private member that matches a less-private member.
-                    && (lowMemberType matches highMemberType)
-                    ) // TODO we don't call exclude(high), should we?
-
+      low.isType ||
+      ((low.owner != high.owner) // don't try to form pairs from overloaded members
+       && !high.isPrivate // private or private[this] members never are overridden -- TODO we don't call exclude(high), should we?
+       && !exclude(low) // this admits private, as one can't have a private member that matches a less-private member.
+       && (lowMemberType matches highMemberType)
+      )
 
     /** Overridden in BridgesCursor. */
     protected def filterParents(parents: List[Type]): List[Type] = parents
@@ -204,7 +203,7 @@ abstract class OverridingPairs {
     private def shareLinearisationSuffix(cls1: Symbol, cls2: Symbol): Boolean = {
       val res = (subParents(cls1) intersect subParents(cls2)).nonEmpty
       if (res) {
-        println(s"shareLinearisationSuffix $cls1 $cls2 ${(subParents(cls1) intersect subParents(cls2)).toSet.map(parentClasses.applyOrElse(_, _ => NoSymbol))}")
+        println(s"shareLinearisationSuffix $cls1 $cls2 ${(subParents(cls1) intersect subParents(cls2)).toSet.map(parentClasses.applyOrElse[Int, Symbol](_, _ => NoSymbol))}")
       }
       res
     }
@@ -280,11 +279,8 @@ abstract class OverridingPairs {
       ( sym.isType
         || super.exclude(sym)
         // specialized members have no type history before 'specialize', causing double def errors for curried defs
-        || {
-          if (!sym.hasTypeAt(refChecksId) != sym.hasFlag(Flags.SPECIALIZED))
-            println(s"specialized ${sym.hasFlag(Flags.SPECIALIZED)} <-> !has type at member ${!sym.hasTypeAt(refChecksId)}: $sym")
-          sym.hasFlag(Flags.SPECIALIZED)
-        })
+        // don't use hasTypeAt(refChecks), since that also catches other late-synthesized members (fields/objects)
+        || !sym.hasTypeAt(refChecksId)) //sym.hasFlag(Flags.SPECIALIZED))
 
     override def matches = !high.isPrivate
   }
