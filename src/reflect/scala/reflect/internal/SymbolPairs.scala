@@ -17,6 +17,7 @@ package internal
 import scala.collection.mutable
 import util.HashSet
 import scala.annotation.tailrec
+import scala.collection.immutable.BitSet
 
 /** An abstraction for considering symbol pairs.
  *  One of the greatest sources of compiler bugs is that symbols can
@@ -33,16 +34,9 @@ import scala.annotation.tailrec
  *
  *  This is only a start, but it is a start.
  */
-abstract class SymbolPairs {
+abstract class OverridingPairs {
   val global: SymbolTable
   import global._
-
-  /** Are types tp1 and tp2 equivalent seen from the perspective
-   *  of `baseClass`? For instance List[Int] and Seq[Int] are =:=
-   *  when viewed from IterableClass.
-   */
-  def sameInBaseClass(baseClass: Symbol)(tp1: Type, tp2: Type) =
-    tp1.baseType(baseClass).typeSymbol == tp2.baseType(baseClass).typeSymbol
 
   final case class SymbolPair(base: Symbol, low: Symbol, high: Symbol) {
     private[this] val self  = base.thisType
@@ -95,51 +89,37 @@ abstract class SymbolPairs {
   /** The cursor class
    *  @param base   the base class containing the participating symbols
    */
-  abstract class Cursor(val base: Symbol) {
-    cursor =>
-
-      final val self  = base.thisType   // The type relative to which symbols are seen.
-    private[this] val decls = newScope        // all the symbols which can take part in a pair.
-    private[this] val size  = bases.length
-
+  sealed class Cursor(val base: Symbol) { cursor =>
     /** A symbol for which exclude returns true will not appear as
-     *  either end of a pair.
-     */
-    protected def exclude(sym: Symbol): Boolean
+      * either end of a pair.
+      *
+      * By default, these are constructors and private/artifact symbols, including bridges.
+      */
+    protected def exclude(sym: Symbol): Boolean =
+      ( sym.isPrivateLocal
+      || sym.isArtifact
+      || sym.isConstructor
+      || (sym.isPrivate && sym.owner != base) // Privates aren't inherited. Needed for pos/t7475a.scala
+      )
 
-    /** Does `this.low` match `high` such that (low, high) should be
-     *  considered as a pair? Types always match. Term symbols
-     *  match if their member types relative to `self` match.
-     */
-    protected def matches(high: Symbol): Boolean
+    /** Does `low` match `high` such that (low, high) should be
+      * considered as a pair? Types always match. Term symbols
+      * match if their member types relative to `self` match.
+      *
+      * Overridden in DoubleDefsCursor
+      */
+    protected def matches =
+      low.isType || (
+                    (low.owner != high.owner) // don't try to form pairs from overloaded members
+                    && !high.isPrivate // private or private[this] members never are overridden
+                    && !exclude(low) // this admits private, as one can't have a private member that matches a less-private member.
+                    && (lowMemberType matches highMemberType)
+                    ) // TODO we don't call exclude(high), should we?
 
-    /** The parents and base classes of `base`.  Can be refined in subclasses.
-     */
-    protected def parents: List[Type] = base.info.parents
-    protected def bases: List[Symbol] = base.info.baseClasses
 
-    /** An implementation of BitSets as arrays (maybe consider collection.BitSet
-     *  for that?) The main purpose of this is to implement
-     *  intersectionContainsElement efficiently.
-     */
-    private type BitSet = Array[Int]
+    /** Overridden in BridgesCursor. */
+    protected def filterParents(parents: List[Type]): List[Type] = parents
 
-    /** A mapping from all base class indices to a bitset
-     *  which indicates whether parents are subclasses.
-     *
-     *   i \in subParents(j)   iff
-     *   exists p \in parents, b \in baseClasses:
-     *     i = index(p)
-     *     j = index(b)
-     *     p isSubClass b
-     *     p.baseType(b).typeSymbol == self.baseType(b).typeSymbol
-     */
-    private[this] val subParents = new Array[BitSet](size)
-
-    /** A map from baseclasses of <base> to ints, with smaller ints meaning lower in
-     *  linearization order. Symbols that are not baseclasses map to -1.
-     */
-    private[this] val index = new mutable.HashMap[Symbol, Int] { override def default(key: Symbol) = -1 }
 
     /** The scope entries that have already been visited as highSymbol
      *  (but may have been excluded via hasCommonParentAsSubclass.)
@@ -147,112 +127,100 @@ abstract class SymbolPairs {
      */
     private[this] val visited = HashSet[ScopeEntry]("visited", 64)
 
-    /** Initialization has to run now so decls is populated before
-     *  the declaration of curEntry.
-     */
-    init()
+    /** All the symbols which can take part in a pair.
+      *
+      * Initialization has to run now so decls is populated before
+      * the declaration of curEntry.
+      */
+    private[this] val decls: Scope = computeDecls()
 
     // The current low and high symbols; the high may be null.
+    // Whenever lowSymbol is changed, lowMemberTypeCache should be nulled
     private[this] var lowSymbol: Symbol  = _
     private[this] var highSymbol: Symbol = _
+
+    private[this] var lowMemberTypeCache: Type = _
     def lowMemberType: Type = {
-      if (lowSymbol ne lowMemberTypeCacheSym) {
-        lowMemberTypeCache = self.memberType(lowSymbol)
-        lowMemberTypeCacheSym = lowSymbol
-      }
+      if (lowMemberTypeCache eq null)
+        lowMemberTypeCache = base.thisType.memberType(lowSymbol)
+
       lowMemberTypeCache
     }
 
-    private[this] var lowMemberTypeCache: Type = _
-    private[this] var lowMemberTypeCacheSym: Symbol = _
+    def highMemberType: Type = base.thisType.memberType(highSymbol)
 
     // The current entry candidates for low and high symbol.
     private[this] var curEntry  = decls.elems
     private[this] var nextEntry = curEntry
 
+    private[this] val subParentsCache: mutable.AnyRefMap[Symbol, BitSet] =
+      perRunCaches.newAnyRefMap[Symbol, BitSet]()
+
+    private[this] val parentClasses =
+      filterParents(base.info.parents).toArray.map(_.typeSymbol)//.filterNot(p => p.isTrait)
+
     // These fields are initially populated with a call to next().
     next()
 
+
     // populate the above data structures
-    private def init(): Unit = {
+    private def computeDecls(): Scope = {
+      val decls = newScope
+
       // Fill `decls` with lower symbols shadowing higher ones
-      def fillDecls(bcs: List[Symbol], deferred: Boolean): Unit = {
-        if (!bcs.isEmpty) {
-          fillDecls(bcs.tail, deferred)
-          var e = bcs.head.info.decls.elems
-          while (e ne null) {
-            if (e.sym.initialize.isDeferred == deferred && !exclude(e.sym))
-              decls enter e.sym
-            e = e.next
-          }
-        }
-      }
-      var i = 0
-      for (bc <- bases) {
-        index(bc) = i
-        subParents(i) = new BitSet(size)
-        i += 1
-      }
-      for (p <- parents) {
-        val pIndex = index(p.typeSymbol)
-        if (pIndex >= 0)
-          for (bc <- p.baseClasses ; if sameInBaseClass(bc)(p, self)) {
-            val bcIndex = index(bc)
-            if (bcIndex >= 0)
-              include(subParents(bcIndex), pIndex)
-          }
-      }
+      def fillDecls(include: Symbol => Boolean)(bc: Symbol): Unit =
+        bc.info.decls foreach { sym => if (include(sym) && !exclude(sym)) decls enter sym }
+
+      val bases = base.info.baseClasses.toArray
+
       // first, deferred (this will need to change if we change lookup rules!)
-      fillDecls(bases, deferred = true)
+      bases.reverseIterator foreach fillDecls(_.initialize.isDeferred)
+
       // then, concrete.
-      fillDecls(bases, deferred = false)
+      bases.reverseIterator foreach fillDecls(sym => !sym.isDeferred) // symbols will already initialized
+
+      decls
     }
 
-    private def include(bs: BitSet, n: Int): Unit = {
-      val nshifted = n >> 5
-      val nmask    = 1 << (n & 31)
-      bs(nshifted) |= nmask
-    }
-
-    /** Implements `bs1 * bs2 * {0..n} != 0`.
-     *  Used in hasCommonParentAsSubclass */
-    private def intersectionContainsElementLeq(bs1: BitSet, bs2: BitSet, n: Int): Boolean = {
-      val nshifted = n >> 5
-      val nmask = 1 << (n & 31)
-      var i = 0
-      while (i < nshifted) {
-        if ((bs1(i) & bs2(i)) != 0) return true
-        i += 1
-      }
-      (bs1(nshifted) & bs2(nshifted) & (nmask | nmask - 1)) != 0
-    }
-
-    /** Do `sym1` and `sym2` have a common subclass in `parents`?
-     *  In that case we do not follow their pairs.
-     */
-    private def hasCommonParentAsSubclass(sym1: Symbol, sym2: Symbol) = {
-      val index1 = index(sym1.owner)
-      (index1 >= 0) && {
-        val index2 = index(sym2.owner)
-        (index2 >= 0) && {
-          intersectionContainsElementLeq(
-            subParents(index1), subParents(index2), index1 min index2)
+    /** Map `base` to a bitset that indicates for each index in `parents`
+      * whether that parent is a non-trait subclass of `base`.
+      *
+      *   i \in subParents(b) iff
+      *   exists b \in bases:
+      *     parents(i) isNonBottomSubClass b
+      */
+    private def subParents(bc: Symbol): BitSet = {
+      def compute =
+        if (parentClasses.isEmpty) BitSet.empty
+        else {
+          val idxs = (0L until parentClasses.size.toLong).iterator
+          BitSet.fromBitMaskNoCopy(idxs.filter(i => parentClasses(i.toInt).isNonBottomSubClass(bc)).toArray)
         }
-      }
+
+      subParentsCache.getOrElseUpdate(bc, compute)
+    }
+
+    // For **non-trait** classes C and D, C isSubclass D implies linearisation(D) linearisation(C)
+    private def shareLinearisationSuffix(cls1: Symbol, cls2: Symbol): Boolean = {
+      val parentsSubClassOfCls1 = subParents(cls1)
+      val parentsSubClassOfCls2 = subParents(cls2)
+      val parents = base.info.parents
+      println(s"shareLinearisationSuffix $cls1\t $cls2")
+      parents.indices foreach { i => println(s" ${parents(i)} ${parentsSubClassOfCls1(i)} \t ${parentsSubClassOfCls2(i)} ") }
+
+      (subParents(cls1) intersect subParents(cls2)).nonEmpty
     }
 
     @tailrec private def advanceNextEntry(): Unit = {
       if (nextEntry ne null) {
         nextEntry = decls lookupNextEntry nextEntry
         if (nextEntry ne null) {
-          val high    = nextEntry.sym
-          val isMatch = matches(high) && { visited addEntry nextEntry ; true } // side-effect visited on all matches
+          highSymbol = nextEntry.sym
+          val isMatch = matches && { visited addEntry nextEntry ; true } // side-effect visited on all matches
 
           // skip nextEntry if a class in `parents` is a subclass of the
           // owners of both low and high.
-          if (isMatch && !hasCommonParentAsSubclass(lowSymbol, high))
-            highSymbol = high
-          else
+          if (!isMatch || shareLinearisationSuffix(lowSymbol.owner, highSymbol.owner))
             advanceNextEntry()
         }
       }
@@ -284,9 +252,11 @@ abstract class SymbolPairs {
 
     // Note that next is called once during object initialization to
     // populate the fields tracking the current symbol pair.
-    def next(): Unit = {
+    @tailrec final def next(): Unit = {
       if (curEntry ne null) {
         lowSymbol = curEntry.sym
+        lowMemberTypeCache = null
+
         advanceNextEntry()        // sets highSymbol
         if (nextEntry eq null) {
           advanceCurEntry()
@@ -295,4 +265,29 @@ abstract class SymbolPairs {
       }
     }
   }
+
+  // Used to compute bridges during erasure (hence, only the first parent is relevant, and we exclude everything but methods)
+  final class BridgesCursor(root: Symbol) extends Cursor(root) {
+    override protected def filterParents(parents: List[Type]) = parents.take(1)
+    // Varargs bridges may need generic bridges due to the non-repeated part of the signature of the involved methods.
+    // The vararg bridge is generated during refchecks (probably to simplify override checking),
+    // but then the resulting varargs "bridge" method may itself need an actual erasure bridge.
+    // TODO: like javac, generate just one bridge method that wraps Seq <-> varargs and does erasure-induced casts
+    override protected def exclude(sym: Symbol) = !sym.isMethod || super.exclude(sym)
+  }
+
+  // Used during erasure to check for double definitions, so matching is redefined to just hide private members on the high side
+  final class DoubleDefsCursor(root: Symbol, refChecksId: Phase#Id) extends Cursor(root) {
+    override def exclude(sym: Symbol): Boolean =
+      ( sym.isType
+        || super.exclude(sym)
+        // specialized members have no type history before 'specialize', causing double def errors for curried defs
+        || {
+          assert(!sym.hasTypeAt(refChecksId) == sym.hasFlag(Flags.SPECIALIZED), s"specialized ${sym.hasFlag(Flags.SPECIALIZED)} <-> !has type at member ${!sym.hasTypeAt(refChecksId)}: $sym")
+          sym.hasFlag(Flags.SPECIALIZED)
+        })
+
+    override def matches = !high.isPrivate
+  }
+
 }

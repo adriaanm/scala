@@ -23,7 +23,7 @@ import io.{AbstractFile, SourceReader}
 import util.{ClassPath, returning}
 import reporters.{Reporter => LegacyReporter}
 import scala.reflect.ClassTag
-import scala.reflect.internal.{Reporter => InternalReporter}
+import scala.reflect.internal.{OverridingPairs, Reporter => InternalReporter}
 import scala.reflect.internal.util.{BatchSourceFile, FreshNameCreator, NoSourceFile, ScriptSourceFile, SourceFile}
 import scala.reflect.internal.pickling.PickleBuffer
 import symtab.{Flags, SymbolTable, SymbolTrackers}

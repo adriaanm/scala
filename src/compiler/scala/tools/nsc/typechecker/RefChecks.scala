@@ -320,6 +320,8 @@ abstract class RefChecks extends Transform {
          else "")
       }
 
+      def defString(symbol: Symbol) = symbol.defString + symbol.locationString
+
       /* Check that all conditions for overriding `other` by `member`
        * of class `clazz` are met.
        */
@@ -388,15 +390,15 @@ abstract class RefChecks extends Transform {
           def subMember(s: Symbol) = s isSubClass member.owner
 
           if (subOther(member.owner) && deferredCheck) {
-            //Console.println(infoString(member) + " shadows1 " + infoString(other) " in " + clazz);//DEBUG
+            if (member.nameString == "c") println(s"${defString(member)} shadows1 ${defString(other)} in $clazz");//DEBUG
             return
           }
           if (clazz.parentSymbols exists (p => subOther(p) && subMember(p) && deferredCheck)) {
-            //Console.println(infoString(member) + " shadows2 " + infoString(other) + " in " + clazz);//DEBUG
+            if (member.nameString == "c") println(s"${defString(member)} shadows2 ${defString(other)} in $clazz");//DEBUG
             return
           }
           if (clazz.parentSymbols forall (p => subOther(p) == subMember(p))) {
-            //Console.println(infoString(member) + " shadows " + infoString(other) + " in " + clazz);//DEBUG
+            if (member.nameString == "c") println(s"${defString(member)} shadows3 ${defString(other)} in $clazz");//DEBUG
             return
           }
         }

@@ -460,21 +460,11 @@ abstract class Erasure extends InfoTransform
   override def newTyper(context: Context) = new Eraser(context)
 
   class EnterBridges(unit: CompilationUnit, root: Symbol) {
-
-    class BridgesCursor(root: Symbol) extends overridingPairs.Cursor(root) {
-      override def parents              = root.info.firstParent :: Nil
-      // Varargs bridges may need generic bridges due to the non-repeated part of the signature of the involved methods.
-      // The vararg bridge is generated during refchecks (probably to simplify override checking),
-      // but then the resulting varargs "bridge" method may itself need an actual erasure bridge.
-      // TODO: like javac, generate just one bridge method that wraps Seq <-> varargs and does erasure-induced casts
-      override def exclude(sym: Symbol) = !sym.isMethod || super.exclude(sym)
-    }
-
     val site         = root.thisType
     val bridgesScope = newScope
     val bridgeTarget = mutable.HashMap[Symbol, Symbol]()
 
-    val opc = enteringExplicitOuter { new BridgesCursor(root) }
+    val opc = enteringExplicitOuter { new overridingPairs.BridgesCursor(root) }
 
     def computeAndEnter(): Unit = {
       while (opc.hasNext) {
@@ -849,8 +839,6 @@ abstract class Erasure extends InfoTransform
 
   /** The erasure transformer */
   class ErasureTransformer(unit: CompilationUnit) extends Transformer {
-    import overridingPairs.Cursor
-
     private def doubleDefError(pair: SymbolPair): Unit = {
       import pair._
 
@@ -906,16 +894,6 @@ abstract class Erasure extends InfoTransform
       }
     }
 
-    private class DoubleDefsCursor(root: Symbol) extends Cursor(root) {
-      // specialized members have no type history before 'specialize', causing double def errors for curried defs
-      override def exclude(sym: Symbol): Boolean = (
-           sym.isType
-        || super.exclude(sym)
-        || !sym.hasTypeAt(currentRun.refchecksPhase.id)
-      )
-      override def matches(high: Symbol) = !high.isPrivate
-    }
-
     /** Emit an error if there is a double definition. This can happen if:
      *
      *  - A template defines two members with the same name and erased type.
@@ -931,7 +909,7 @@ abstract class Erasure extends InfoTransform
         log(s"Considering for erasure clash:\n$pair")
         !exitingRefchecks(lowType matches highType) && sameTypeAfterErasure(low, high)
       }
-      (new DoubleDefsCursor(root)).iterator filter isErasureDoubleDef foreach doubleDefError
+      (new overridingPairs.DoubleDefsCursor(root, currentRun.refchecksPhase.id)).iterator filter isErasureDoubleDef foreach doubleDefError
     }
 
     /**  Add bridge definitions to a template. This means:
