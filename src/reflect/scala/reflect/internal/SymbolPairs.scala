@@ -202,13 +202,12 @@ abstract class OverridingPairs {
 
     // For **non-trait** classes C and D, C isSubclass D implies linearisation(D) linearisation(C)
     private def shareLinearisationSuffix(cls1: Symbol, cls2: Symbol): Boolean = {
-      val parentsSubClassOfCls1 = subParents(cls1)
-      val parentsSubClassOfCls2 = subParents(cls2)
-      val parents = base.info.parents
-      println(s"shareLinearisationSuffix $cls1\t $cls2")
-      parents.indices foreach { i => println(s" ${parents(i)} ${parentsSubClassOfCls1(i)} \t ${parentsSubClassOfCls2(i)} ") }
-
-      (subParents(cls1) intersect subParents(cls2)).nonEmpty
+      val res = (subParents(cls1) intersect subParents(cls2)).nonEmpty
+      if (res) {
+        val parents = base.info.parents
+        println(s"shareLinearisationSuffix $cls1 $cls2 ${(subParents(cls1) intersect subParents(cls2)).map(parents)}")
+      }
+      res
     }
 
     @tailrec private def advanceNextEntry(): Unit = {
@@ -283,7 +282,8 @@ abstract class OverridingPairs {
         || super.exclude(sym)
         // specialized members have no type history before 'specialize', causing double def errors for curried defs
         || {
-          assert(!sym.hasTypeAt(refChecksId) == sym.hasFlag(Flags.SPECIALIZED), s"specialized ${sym.hasFlag(Flags.SPECIALIZED)} <-> !has type at member ${!sym.hasTypeAt(refChecksId)}: $sym")
+          if (!sym.hasTypeAt(refChecksId) != sym.hasFlag(Flags.SPECIALIZED))
+            println(s"specialized ${sym.hasFlag(Flags.SPECIALIZED)} <-> !has type at member ${!sym.hasTypeAt(refChecksId)}: $sym")
           sym.hasFlag(Flags.SPECIALIZED)
         })
 
