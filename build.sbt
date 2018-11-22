@@ -900,6 +900,7 @@ lazy val root: Project = (project in file("."))
       val dir = ((baseDirectory in ThisBuild).value / "src" / "library" / "scala").getAbsoluteFile
       genprod.run(dir)
       GenerateAnyVals.run(dir)
+      GenerateFunctionConverters.run(dir)
       state
     },
     // ../docs.scala-lang/_data/compiler-options.yml
