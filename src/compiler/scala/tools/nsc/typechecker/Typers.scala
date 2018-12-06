@@ -3105,6 +3105,18 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
         // If all vparams are constrained by the method application, see if we can derive expected types for them.
         // Note that not all method arguments need be references to a function param.
         case Apply(meth, args) =>
+          val vparamNames = vparams.map(_.name : Name).toSet
+          // TODO: this does not catch eta-expansion of an overloaded method that involves numeric widening scala/bug#9738 (and maybe similar patterns?)
+          def extractNames(args: List[Tree]) = args.map { case Ident(name) => name case _ => nme.EMPTY }
+          def loop(fun: Tree, acc: List[(Tree, List[Name])]): (Tree, List[(Tree, List[Name])]) =
+            fun match { case Apply(meth, args) =>
+              val names = extractNames(args)
+              if (!names.exists(vparamNames)) (fun, acc)
+              else loop(meth, (fun, names) :: acc)  case t => (t, acc) }
+
+          val (core, origs_Argss) = loop(meth, (fun.body, extractNames(args)) :: Nil)
+          val (origs, argss) = origs_Argss.unzip
+
           // Map param with missing param type to the argument it's passed as in the eta-expanded method application
           // This list specifies a way to compute the expected parameter type for each of our function's arguments in order.
           // Either we already know it, and then we have a Type, or we don't, and then it's an index `idx` into
@@ -3113,21 +3125,22 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
           val formalsFromApply =
             vparams.map { vd =>
               if (!vd.tpt.isEmpty) Right(vd.tpt.tpe)
-              else Left(args.indexWhere {
-                case Ident(name) => name == vd.name
-                case _           => false // TODO: this does not catch eta-expansion of an overloaded method that involves numeric widening scala/bug#9738 (and maybe similar patterns?)
-              })
+              else Left(argss.zipWithIndex
+                  .find { case (args, _) => args.contains(vd.name) }
+                  .map  { case (args, argListIdx) => (argListIdx, args.indexOf(vd.name)) })
             }
 
           // If some of the vparams without type annotation was not applied to `meth`,
           // we're not going to learn enough from typing `meth` to determine them.
-          if (formalsFromApply.contains(Left(-1))) EmptyTree
+          if (formalsFromApply.contains(Left(None))) EmptyTree
           else {
             // We're looking for a method (as indicated by FUNmode in the silent typed below),
             // so let's make sure our expected type is a MethodType (of the right arity, but we can't easily say more about the argument types)
-            val methArgs = NoSymbol.newSyntheticValueParams(args map { case _ => WildcardType })
+            val methPt = argss.foldRight(resProto)( (args, tp) => MethodType(NoSymbol.newSyntheticValueParams(args map { case _ => WildcardType }), tp))
 
-            silent(_.typed(meth, mode.forFunMode, MethodType(methArgs, resProto))).fold(EmptyTree: Tree) { methTyped =>
+//            println(s"typedFunctionUndoingEtaExpansion $fun $formalsFromApply --> $core : $methPt")
+
+            silent(_.typed(core, mode.forFunMode, methPt)).fold(EmptyTree: Tree) { methTyped =>
               // if context.undetparams is not empty, the method was polymorphic,
               // so we need the missing arguments to infer its type. See #871
               if (context.undetparams.isEmpty) {
@@ -3138,21 +3151,28 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
                 // Be careful to reuse methTyped -- it may have changed from meth (scala/bug#9745)!
                 //
                 // TODO: CBN / varargs / implicits? should we use formalTypes?
-                normalize(methTyped.tpe) match { // we don't know how many of the vparams of our function were actually applied to the method
-                  case TypeRef(_, _, argProtos :+ _) =>
+                methTyped.tpe match { // we don't know how many of the vparams of our function were actually applied to the method
+                  case mt: MethodType =>
+                    val argProtoss = mt.paramss.map(_.map(_.info))
                     val argProtosRecovered =
                       formalsFromApply.map {
-                        case Left(idx) =>
-                          val argPt = if (argProtos.isDefinedAt(idx)) argProtos(idx) else NoType // bounds check should not be needed due to expected type `MethodType(methArgs, resProto)` above
+                        case Left(Some((argssIdx, argsIdx))) =>
+                          val argProtos = if (argProtoss.isDefinedAt(argssIdx)) argProtoss(argssIdx) else Nil
+                          val argPt = if (argProtos.isDefinedAt(argsIdx)) argProtos(argsIdx) else NoType // bounds check should not be needed due to expected type `MethodType(methArgs, resProto)` above
                           if (isFullyDefined(argPt)) argPt else NoType
                         case Right(tp) => tp
+                        case _ => NoType
                       }
 
                     if (argProtosRecovered contains NoType) EmptyTree // cannot safely recurse
                     else {
                       val funPt = functionType(argProtosRecovered, resProto)
                       // recursion is safe because now all parameter types can be derived from `argProtosRecovered` in the prototype `funPt` passed to typedFunction
-                      typedFunction(treeCopy.Function(fun, vparams, treeCopy.Apply(fun.body, methTyped, args)), mode, funPt)
+                      val reapplied =
+                        (origs, argss).zipped.foldLeft(methTyped){
+                          case (applied, (orig, args)) => treeCopy.Apply(orig, applied, args.map(Ident(_)))
+                        }
+                      typedFunction(treeCopy.Function(fun, vparams, reapplied), mode, funPt)
                     }
                   case _ => EmptyTree
                 }
