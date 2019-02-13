@@ -1,0 +1,5 @@
+override-final-implicit.scala:6: error: cannot override final member:
+final implicit def FooExtender(foo: String): Test.this.FooExtender (defined in class Implicits)
+  override implicit def FooExtender(foo: String) = super.FooExtender(foo)
+                        ^
+one error found
