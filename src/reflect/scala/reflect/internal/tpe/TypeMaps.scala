@@ -873,7 +873,13 @@ private[internal] trait TypeMaps {
 
   object ApproximateDependentMap extends TypeMap {
     def apply(tp: Type): Type =
-      if (tp.isImmediatelyDependent) WildcardType
+      if (tp.isImmediatelyDependent) {
+        // Don't give up just yet -- we may be able to provide a bit more information by using the widened type.
+        // This pattern is used by Predef.implicitly to propagate the type var in the argument type to the result,
+        // while also being as precise as possible in the result type.
+        val w = tp.widen
+        if ((tp ne w) && w.typeSymbol.isTypeParameterOrSkolem) apply(w) else WildcardType
+      }
       else tp.mapOver(this)
   }
 

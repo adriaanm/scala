@@ -12,7 +12,7 @@ scala> import c.k
 import c.k
 
 scala> implicitly[K]
-res0: K = K(OK?)
+res0: c.k.type = K(OK?)
 
 scala> val k = 42
 k: Int = 42

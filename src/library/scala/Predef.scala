@@ -215,10 +215,12 @@ object Predef extends LowPriorityImplicits {
   /** Summon an implicit value of type `T`. Usually, the argument is not passed explicitly.
    *
    *  @tparam T the type of the value to be summoned
-   *  @return the implicit value of type `T`
+   *  @return the singleton type of the implicit value of type `T`
    *  @group utilities
    */
-  @inline def implicitly[T](implicit e: T): T = e // TODO: when dependent method types are on by default, give this result type `e.type`, so that inliner has better chance of knowing which method to inline in calls like `implicitly[MatchingStrategy[Option]].zero`
+  // NOTE: Aside from the user being able to specify T, type inference also relies on it;
+  // the result type `e.type` will be widened to T when comparing against the expected type.
+  @inline def implicitly[T](implicit e: T): e.type = e
 
   /** Used to mark code blocks as being expressions, instead of being taken as part of anonymous classes and the like.
    *  This is just a different name for [[identity]].
