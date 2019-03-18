@@ -132,7 +132,7 @@
     <attribute name="args" default=""/>
     <attribute name="excludes" default=""/>
     <sequential>
-      <javac debug="true" srcdir="${src.dir}/@{project}" destdir="${build-@{stage}.dir}/classes/@{destproject}" includes="**/*.java" excludes="@{excludes}" target="1.6" source="1.5">
+      <javac debug="true" srcdir="${src.dir}/@{project}" destdir="${build-@{stage}.dir}/classes/@{destproject}" includes="**/*.java" excludes="@{excludes}">
         <compilerarg line="${javac.args} @{args}"/>
         <classpath refid="@{stage}.@{destproject}.build.path"/>
       </javac>
