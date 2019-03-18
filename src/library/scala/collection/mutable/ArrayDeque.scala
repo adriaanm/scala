@@ -50,7 +50,7 @@ class ArrayDeque[A] protected (
 
   def this(initialSize: Int = ArrayDeque.DefaultInitialSize) = this(ArrayDeque.alloc(initialSize), start = 0, end = 0)
 
-  override def knownSize: Int = super[IndexedSeqOps].knownSize
+//  override def knownSize: Int = super[IndexedSeqOps].knownSize
 
   def apply(idx: Int) = {
     requireBounds(idx)

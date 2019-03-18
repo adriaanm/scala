@@ -289,9 +289,9 @@ abstract class RefChecks extends Transform {
           case MixinOverrideError(member, msg) :: others =>
             val others1 = others.map(_.member.name.decode).filter(member.name.decode != _).distinct
             reporter.error(
-              clazz.pos,
-              msg+(if (others1.isEmpty) ""
-                   else ";\n other members with override errors are: "+(others1 mkString ", ")))
+                            clazz.pos,
+                            msg+(if (others1.isEmpty) ""
+                                 else ";\n other members with override errors are: "+(others1 mkString ", ")))
         }
       }
 
@@ -373,9 +373,9 @@ abstract class RefChecks extends Transform {
         def overrideErrorConcreteMissingOverride() = {
           if (isNeitherInClass && !(otherClass isSubClass memberClass))
             emitOverrideError(clazz + " inherits conflicting members:\n"
-                               + indent + infoStringWithLocation(other) + " and\n"
-                               + indent + infoStringWithLocation(member) + "\n"
-                               + indent + s"(note: this can be resolved by declaring an `override` in $clazz.)")
+                              + indent + infoStringWithLocation(other) + " and\n"
+                              + indent + infoStringWithLocation(member) + "\n"
+                              + indent + s"(note: this can be resolved by declaring an `override` in $clazz.)")
           else
             overrideErrorWithMemberInfo("`override` modifier required to override concrete member:")
         }
@@ -487,9 +487,9 @@ abstract class RefChecks extends Transform {
             case Nil        =>
             case kindErrors =>
               reporter.error(member.pos,
-                "The kind of " + member.keyString+" " + member.varianceString + member.nameString+
-                " does not conform to the expected kind of " + other.defString + other.locationString + "." +
-                kindErrors.toList.mkString("\n", ", ", ""))
+                              "The kind of " + member.keyString+" " + member.varianceString + member.nameString+
+                              " does not conform to the expected kind of " + other.defString + other.locationString + "." +
+                              kindErrors.toList.mkString("\n", ", ", ""))
           }
           // check a type alias's RHS corresponds to its declaration
           // this overlaps somewhat with validateVariance
@@ -498,13 +498,13 @@ abstract class RefChecks extends Transform {
               case Nil        =>
               case kindErrors =>
                 reporter.error(member.pos,
-                  "The kind of the right-hand side "+lowType.normalize+" of " + member.keyString+" "+
-                  member.varianceString + member.nameString+ " does not conform to its expected kind."+
-                  kindErrors.toList.mkString("\n", ", ", ""))
+                                "The kind of the right-hand side "+lowType.normalize+" of " + member.keyString+" "+
+                                member.varianceString + member.nameString+ " does not conform to its expected kind."+
+                                kindErrors.toList.mkString("\n", ", ", ""))
             }
           }
           else if (member.isAbstractType && lowType.isVolatile && !highInfo.bounds.hi.isVolatile)
-            overrideErrorWithMemberInfo("volatile type member cannot override type member with non-volatile upper bound:")
+                 overrideErrorWithMemberInfo("volatile type member cannot override type member with non-volatile upper bound:")
         }
         def checkOverrideTerm(): Unit = {
           other.cookJavaRawInfo() // #2454
@@ -555,16 +555,16 @@ abstract class RefChecks extends Transform {
       if (clazz.isConcreteClass && !typesOnly) {
         val abstractErrors = new ListBuffer[String]
         def abstractErrorMessage =
-          // a little formatting polish
+        // a little formatting polish
           if (abstractErrors.size <= 2) abstractErrors mkString " "
           else abstractErrors.tail.mkString(abstractErrors.head + "\n", "\n", "")
 
         def abstractClassError(mustBeMixin: Boolean, msg: String): Unit = {
           def prelude = (
-            if (clazz.isAnonymousClass || clazz.isModuleClass) "object creation impossible."
-            else if (mustBeMixin) clazz + " needs to be a mixin."
-            else clazz + " needs to be abstract."
-          )
+                        if (clazz.isAnonymousClass || clazz.isModuleClass) "object creation impossible."
+                        else if (mustBeMixin) clazz + " needs to be a mixin."
+                        else clazz + " needs to be abstract."
+                        )
 
           if (abstractErrors.isEmpty) abstractErrors ++= List(prelude, msg)
           else abstractErrors += msg
@@ -583,13 +583,13 @@ abstract class RefChecks extends Transform {
             })
 
         def ignoreDeferred(member: Symbol) = (
-          (member.isAbstractType && !member.isFBounded) || (
-            // the test requires exitingErasure so shouldn't be
-            // done if the compiler has no erasure phase available
-               member.isJavaDefined
-            && (currentRun.erasurePhase == NoPhase || javaErasedOverridingSym(member) != NoSymbol)
-          )
-        )
+                                             (member.isAbstractType && !member.isFBounded) || (
+                                                                                              // the test requires exitingErasure so shouldn't be
+                                                                                              // done if the compiler has no erasure phase available
+                                                                                              member.isJavaDefined
+                                                                                              && (currentRun.erasurePhase == NoPhase || javaErasedOverridingSym(member) != NoSymbol)
+                                                                                              )
+                                             )
 
         // 2. Check that only abstract classes have deferred members
         def checkNoAbstractMembers(): Unit = {
@@ -629,8 +629,7 @@ abstract class RefChecks extends Transform {
             return
           }
 
-          for (member <- missing) {
-            def undefined(msg: String) = abstractClassError(false, infoString(member) + " is not defined" + msg)
+          def diagnose(member: Symbol): String = {
             val underlying = analyzer.underlyingSymbol(member) // TODO: don't use this method
 
             // Give a specific error message for abstract vars based on why it fails:
@@ -640,68 +639,69 @@ abstract class RefChecks extends Transform {
 
             if (groupedAccessors.exists(_.isSetter) || (member.isGetter && !isMultiple && member.setterIn(member.owner).exists)) {
               // If both getter and setter are missing, squelch the setter error.
-              if (member.isSetter && isMultiple) ()
-              else undefined(
+              if (member.isSetter && isMultiple) null
+              else {
                 if (member.isSetter) "\n(Note that an abstract var requires a setter in addition to the getter)"
                 else if (member.isGetter && !isMultiple) "\n(Note that an abstract var requires a getter in addition to the setter)"
                 else "\n(Note that variables need to be initialized to be defined)"
-              )
-            }
-            else if (underlying.isMethod) {
-              // If there is a concrete method whose name matches the unimplemented
-              // abstract method, and a cursory examination of the difference reveals
-              // something obvious to us, let's make it more obvious to them.
+              }
+            } else if (underlying.isMethod) {
+              // Highlight any member that nearly matches: same name and arity,
+              // but differs in one param or param list.
               val abstractParamLists = underlying.paramLists
               val matchingName       = clazz.tpe.nonPrivateMembersAdmitting(VBRIDGE)
-              val matchingArity      = matchingName filter { m =>
-                !m.isDeferred &&
-                (m.name == underlying.name) &&
-                (m.paramLists.length == abstractParamLists.length) &&
-                (m.paramLists.map(_.length).sum == abstractParamLists.map(_.length).sum) &&
-                (m.tpe.typeParams.size == underlying.tpe.typeParams.size)
+              val matchingArity      = matchingName.filter { m => !m.isDeferred &&
+                                                                  m.name == underlying.name &&
+                                                                  m.paramLists.length == abstractParamLists.length &&
+                                                                  m.paramLists.map(_.length).sum == abstractParamLists.map(_.length).sum &&
+                                                                  m.tpe.typeParams.size == underlying.tpe.typeParams.size
               }
 
               matchingArity match {
                 // So far so good: only one candidate method
-                case Scope(concrete)   =>
-                  val mismatches  = abstractParamLists.flatten.map(_.tpe) zip concrete.paramLists.flatten.map(_.tpe) filterNot { case (x, y) => x =:= y }
+                case Scope(concrete) =>
+                  val sideBySide = abstractParamLists.flatten.map(_.tpe) zip concrete.paramLists.flatten.map(_.tpe)
+                  val mismatches = sideBySide.filterNot {
+                    case (abs, konkret) => abs.asSeenFrom(clazz.tpe, underlying.owner) =:= konkret
+                  }
                   mismatches match {
                     // Only one mismatched parameter: say something useful.
                     case (pa, pc) :: Nil  =>
                       val abstractSym = pa.typeSymbol
                       val concreteSym = pc.typeSymbol
-                      def subclassMsg(c1: Symbol, c2: Symbol) = (
-                        ": %s is a subclass of %s, but method parameter types must match exactly.".format(
-                          c1.fullLocationString, c2.fullLocationString)
-                      )
+                      def subclassMsg(c1: Symbol, c2: Symbol) =
+                        s": ${c1.fullLocationString} is a subclass of ${c2.fullLocationString}, but method parameter types must match exactly."
                       val addendum = (
-                        if (abstractSym == concreteSym) {
-                          // TODO: what is the optimal way to test for a raw type at this point?
-                          // Compilation has already failed so we shouldn't have to worry overmuch
-                          // about forcing types.
-                          if (underlying.isJavaDefined && pa.typeArgs.isEmpty && abstractSym.typeParams.nonEmpty)
-                            s". To implement this raw type, use ${rawToExistential(pa)}"
-                          else if (pa.prefix =:= pc.prefix)
-                            ": their type parameters differ"
-                          else
-                            ": their prefixes (i.e. enclosing instances) differ"
-                        }
-                        else if (abstractSym isSubClass concreteSym)
-                          subclassMsg(abstractSym, concreteSym)
-                        else if (concreteSym isSubClass abstractSym)
-                          subclassMsg(concreteSym, abstractSym)
-                        else ""
-                      )
-
-                      undefined("\n(Note that %s does not match %s%s)".format(pa, pc, addendum))
-                    case xs =>
-                      undefined("")
+                                     if (abstractSym == concreteSym) {
+                                       // TODO: what is the optimal way to test for a raw type at this point?
+                                       // Compilation has already failed so we shouldn't have to worry overmuch
+                                       // about forcing types.
+                                       if (underlying.isJavaDefined && pa.typeArgs.isEmpty && abstractSym.typeParams.nonEmpty)
+                                         s". To implement this raw type, use ${rawToExistential(pa)}"
+                                       else if (pa.prefix =:= pc.prefix)
+                                              ": their type parameters differ"
+                                       else
+                                         ": their prefixes (i.e., enclosing instances) differ"
+                                     }
+                                     else if (abstractSym isSubClass concreteSym)
+                                            subclassMsg(abstractSym, concreteSym)
+                                     else if (concreteSym isSubClass abstractSym)
+                                            subclassMsg(concreteSym, abstractSym)
+                                     else ""
+                                     )
+                      s"\n(Note that $pa does not match $pc$addendum)"
+                    case Nil => // other overriding gotchas
+                      val missingImplicit = abstractParamLists.zip(concrete.paramLists).exists {
+                        case (abss, konkrete) => abss.headOption.exists(_.isImplicit) && !konkrete.headOption.exists(_.isImplicit)
+                      }
+                      val msg = if (missingImplicit) "\n(overriding member must declare implicit parameter list)" else ""
+                      msg
+                    case _ => ""
                   }
-                case _ =>
-                  undefined("")
+                case _ => ""
               }
             }
-            else undefined("")
+            else ""
           }
           for (member <- missing ; msg = diagnose(member) ; if msg != null) {
             val addendum = if (msg.isEmpty) msg else " " + msg
@@ -794,11 +794,11 @@ abstract class RefChecks extends Transform {
          * is restricting the set of matching signatures according to the above semantics.
          */
         def javaAccessCheck(sym: Symbol) = (
-             !inclazz.isJavaDefined                             // not a java defined member
-          || !sym.hasAccessBoundary                             // no access boundary
-          || sym.isProtected                                    // marked protected in java, thus accessible to subclasses
-          || sym.privateWithin == member.enclosingPackageClass  // exact package match
-        )
+                                           !inclazz.isJavaDefined                             // not a java defined member
+                                           || !sym.hasAccessBoundary                             // no access boundary
+                                           || sym.isProtected                                    // marked protected in java, thus accessible to subclasses
+                                           || sym.privateWithin == member.enclosingPackageClass  // exact package match
+                                           )
         def classDecls   = inclazz.info.nonPrivateDecl(member.name)
         def matchingSyms = classDecls filter (sym => isSignatureMatch(sym) && javaAccessCheck(sym))
 
