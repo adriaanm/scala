@@ -762,7 +762,7 @@ trait JavaParsers extends ast.parser.ParsersCommon with JavaScanners {
           val tparams1: List[TypeDef] = tparams map (_.duplicate)
           var rhs: Tree = Select(Ident(parentName.toTermName), name)
           if (!tparams1.isEmpty) rhs = AppliedTypeTree(rhs, tparams1 map (tp => Ident(tp.name)))
-          List(TypeDef(Modifiers(Flags.PROTECTED), name, tparams1, rhs))
+          List(TypeDef(Modifiers(Flags.PROTECTED | Flags.JAVA | Flags.SYNTHETIC), name, tparams1, rhs))
         case _ =>
           List()
       }
