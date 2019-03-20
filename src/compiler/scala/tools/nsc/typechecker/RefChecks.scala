@@ -392,7 +392,7 @@ abstract class RefChecks extends Transform {
         def intersectionIsEmpty(syms1: List[Symbol], syms2: List[Symbol]) =
           !(syms1 exists (syms2 contains _))
 
-        if (memberClass == ObjectClass && otherClass == AnyClass) {} // skip -- can we have a mode of symbolpairs where this pair doesn't even appear?
+        if (member.isSynthetic || memberClass == ObjectClass && otherClass == AnyClass) {} // skip -- can we have a mode of symbolpairs where this pair doesn't even appear?
         else if (typesOnly) checkOverrideTypes()
         else {
           // o: public | protected        | package-protected  (aka java's default access)
@@ -426,7 +426,7 @@ abstract class RefChecks extends Transform {
             // Concrete `other` requires `override` for `member`.
             // Synthetic exclusion for (at least) default getters, fixes scala/bug#5178. We cannot assign the OVERRIDE flag to
             // the default getter: one default getter might sometimes override, sometimes not. Example in comment on ticket.
-            if (!(memberOverrides || other.isDeferred) && !member.isSynthetic) {
+            if (!memberOverrides || other.isDeferred) {
               overrideErrorConcreteMissingOverride()
             } else if (other.isAbstractOverride && other.isIncompleteIn(clazz) && !member.isAbstractOverride) {
               overrideErrorWithMemberInfo("`abstract override' modifiers required to override:")

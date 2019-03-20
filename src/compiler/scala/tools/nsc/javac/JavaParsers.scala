@@ -762,6 +762,9 @@ trait JavaParsers extends ast.parser.ParsersCommon with JavaScanners {
           val tparams1: List[TypeDef] = tparams map (_.duplicate)
           var rhs: Tree = Select(Ident(parentName.toTermName), name)
           if (!tparams1.isEmpty) rhs = AppliedTypeTree(rhs, tparams1 map (tp => Ident(tp.name)))
+          // TODO: this encoding is wrong -- it tries to reflect that a static interface is accessible on the instance
+          //  by adding a type alias from the class to the companion object,
+          //  but doesn't account for the fact that they are not inherited, whereas type members are.
           List(TypeDef(Modifiers(Flags.PROTECTED | Flags.JAVA | Flags.SYNTHETIC), name, tparams1, rhs))
         case _ =>
           List()
