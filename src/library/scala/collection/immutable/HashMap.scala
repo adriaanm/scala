@@ -18,12 +18,12 @@ import java.lang.System.arraycopy
 
 import scala.annotation.unchecked.{uncheckedVariance => uV}
 import scala.collection.Hashing.improve
-import scala.collection.convert.EfficientSubstep
+import scala.collection.Stepper.EfficientSplit
 import scala.collection.generic.DefaultSerializable
-import scala.collection.mutable.{Builder, ReusableBuilder}
-import scala.collection.{Iterator, MapFactory, Stepper, StepperShape, StrictOptimizedIterableOps, mutable}
-import scala.util.hashing.MurmurHash3
+import scala.collection.mutable.ReusableBuilder
+import scala.collection.{Iterator, MapFactory, Stepper, StepperShape, mutable}
 import scala.runtime.Statics.releaseFence
+import scala.util.hashing.MurmurHash3
 
 /** This class implements immutable maps using a Compressed Hash-Array Mapped Prefix-tree.
   * See paper https://michael.steindorfer.name/publications/oopsla15.pdf for more details.
@@ -73,11 +73,11 @@ final class HashMap[K, +V] private[immutable] (private[immutable] val rootNode: 
     else new MapKeyValueTupleReverseIterator[K, V](rootNode)
   }
 
-  override def stepper[B >: (K, V), S <: Stepper[_]](implicit shape: StepperShape[B, S]): S with EfficientSubstep =
+  override def stepper[B >: (K, V), S <: Stepper[_]](implicit shape: StepperShape[B, S]): S with EfficientSplit =
     shape.
       parUnbox(collection.convert.impl.AnyChampStepper.from[B, MapNode[K, V]](size, rootNode, (node, i) => node.getPayload(i)))
 
-  override def keyStepper[S <: Stepper[_]](implicit shape: StepperShape[K, S]): S with EfficientSubstep = {
+  override def keyStepper[S <: Stepper[_]](implicit shape: StepperShape[K, S]): S with EfficientSplit = {
     import collection.convert.impl._
     val s = (shape.shape: @annotation.switch) match {
       case StepperShape.IntValue    => IntChampStepper.from[   MapNode[K, V]](size, rootNode, (node, i) => node.getKey(i).asInstanceOf[Int])
@@ -85,10 +85,10 @@ final class HashMap[K, +V] private[immutable] (private[immutable] val rootNode: 
       case StepperShape.DoubleValue => DoubleChampStepper.from[MapNode[K, V]](size, rootNode, (node, i) => node.getKey(i).asInstanceOf[Double])
       case _         => shape.parUnbox(AnyChampStepper.from[K, MapNode[K, V]](size, rootNode, (node, i) => node.getKey(i)))
     }
-    s.asInstanceOf[S with EfficientSubstep]    
+    s.asInstanceOf[S with EfficientSplit]
   }
 
-  override def valueStepper[B >: V, S <: Stepper[_]](implicit shape: StepperShape[B, S]): S with EfficientSubstep = {
+  override def valueStepper[B >: V, S <: Stepper[_]](implicit shape: StepperShape[B, S]): S with EfficientSplit = {
     import collection.convert.impl._
     val s = (shape.shape: @annotation.switch) match {
       case StepperShape.IntValue    => IntChampStepper.from[   MapNode[K, V]](size, rootNode, (node, i) => node.getValue(i).asInstanceOf[Int])
@@ -96,7 +96,7 @@ final class HashMap[K, +V] private[immutable] (private[immutable] val rootNode: 
       case StepperShape.DoubleValue => DoubleChampStepper.from[MapNode[K, V]](size, rootNode, (node, i) => node.getValue(i).asInstanceOf[Double])
       case _         => shape.parUnbox(AnyChampStepper.from[B, MapNode[K, V]](size, rootNode, (node, i) => node.getValue(i)))
     }
-    s.asInstanceOf[S with EfficientSubstep]    
+    s.asInstanceOf[S with EfficientSplit]
   }
 
   override final def contains(key: K): Boolean = {
@@ -1858,8 +1858,8 @@ object HashMap extends MapFactory[HashMap] {
   * $multipleResults
   */
 private[immutable] final class HashMapBuilder[K, V] extends ReusableBuilder[(K, V), HashMap[K, V]] {
-  import Node._
   import MapNode._
+  import Node._
 
 
   private def newEmptyRootNode = new BitmapIndexedMapNode[K, V](0, 0, Array(), Array(), 0, 0)
