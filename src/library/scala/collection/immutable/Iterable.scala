@@ -24,7 +24,7 @@ import scala.collection.IterableFactory
 trait Iterable[+A] extends collection.Iterable[A]
                       with collection.IterableOps[A, Iterable, Iterable[A]] {
 
-  override def iterableFactory: IterableFactory[IterableCC] = Iterable
+  override def iterableFactory: IterableFactory[Iterable] = Iterable
 }
 
 @SerialVersionUID(3L)

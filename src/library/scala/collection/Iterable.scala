@@ -37,13 +37,12 @@ trait Iterable[+A] extends IterableOnce[A] with IterableOps[A, Iterable, Iterabl
 
   /**
     * @note This operation '''has''' to be overridden by concrete collection classes to effectively
-    *       return an `IterableFactory[IterableCC]`. The implementation in `Iterable` only returns
-    *       an `IterableFactory[Iterable]`, but the compiler will '''not''' throw an error if the
-    *       effective `IterableCC` type constructor is more specific than `Iterable`.
+    *       return an `IterableFactory[CC]`. The implementation in `Iterable` only returns
+    *       an `IterableFactory[Iterable]`.
     *
     * @return The factory of this collection.
     */
-  def iterableFactory: IterableFactory[IterableCC] = Iterable
+  def iterableFactory: IterableFactory[Iterable] = Iterable
 
   @deprecated("Iterable.seq always returns the iterable itself", "2.13.0")
   def seq: this.type = this
@@ -148,7 +147,7 @@ trait IterableOps[+A, +CC[_], +C] extends Any with IterableOnce[A] with Iterable
     * Due to the `@uncheckedVariance` annotation, usage of this type member can be unsound and is
     * therefore not recommended.
     */
-  protected type IterableCC[X] = CC[X] @uncheckedVariance
+  //protected type IterableCC[X] = CC[X] @uncheckedVariance
 
   /**
     * Type alias to `C`. It is used to provide a default implementation of the `fromSpecific`
@@ -198,11 +197,11 @@ trait IterableOps[+A, +CC[_], +C] extends Any with IterableOnce[A] with Iterable
   /**
     * @return The companion object of this ${coll}, providing various factory methods.
     */
-  def iterableFactory: IterableFactory[IterableCC]
+  def iterableFactory: IterableFactory[CC]
 
   @deprecated("Use iterableFactory instead", "2.13.0")
   @deprecatedOverriding("Use iterableFactory instead", "2.13.0")
-  @`inline` def companion: IterableFactory[IterableCC] = iterableFactory
+  @`inline` def companion: IterableFactory[CC] = iterableFactory
 
   /**
     * @return a strict builder for the same collection type.
@@ -830,8 +829,8 @@ trait IterableOps[+A, +CC[_], +C] extends Any with IterableOnce[A] with Iterable
   }
 
   @deprecated("Use ++ instead of ++: for collections of type Iterable", "2.13.0")
-  def ++:[B >: A](that: IterableOnce[B]): IterableCC[B] =
-    (iterableFactory.from(that).asInstanceOf[Iterable[B]] ++ coll.asInstanceOf[Iterable[B]]).asInstanceOf[IterableCC[B]]
+  def ++:[B >: A](that: IterableOnce[B]): CC[B] =
+    (iterableFactory.from(that).asInstanceOf[Iterable[B]] ++ coll.asInstanceOf[Iterable[B]]).asInstanceOf[CC[B]]
     // These casts are needed because C and CC do not have the proper constraints.
     // Adding those constraints would require a lot of boilerplate in many classes.
 }

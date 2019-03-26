@@ -25,7 +25,13 @@ trait SortedMap[K, +V]
 
   override def unsorted: Map[K, V] = this
 
-  override def sortedMapFactory: SortedMapFactory[SortedMapCC] = SortedMap
+  override def sortedMapFactory: SortedMapFactory[SortedMap] = SortedMap
+  override protected def fromSpecific(coll: IterableOnce[(K, V @uncheckedVariance)]): SortedMap[K, V] = sortedMapFactory.from(coll)
+  override protected def newSpecificBuilder: Builder[(K, V @uncheckedVariance), SortedMap[K, V @uncheckedVariance]] = sortedMapFactory.newBuilder[K, V]
+  override def empty: SortedMap[K, V] = sortedMapFactory.empty
+
+  override def withFilter(p: ((K, V)) => Boolean): collection.SortedMapOps.WithFilter[K, V, Iterable, Map, SortedMap] = new collection.SortedMapOps.WithFilter(this, p)
+  override def ++:[B >: (K, V)](that: IterableOnce[B]): Iterable[B] = iterableFactory.from(that) ++ coll
 
   /** The same map with a given default function.
     *  Note: The default is only used for `apply`. Other methods like `get`, `contains`, `iterator`, `keys`, etc.
@@ -57,6 +63,8 @@ trait SortedMapOps[K, +V, +CC[X, +Y] <: Map[X, Y] with SortedMapOps[X, Y, CC, _]
 
   def unsorted: Map[K, V]
 
+  override def withFilter(p: ((K, V)) => Boolean): collection.SortedMapOps.WithFilter[K, V, Iterable, Map, CC] = new collection.SortedMapOps.WithFilter(this, p)
+
   override def keySet: SortedSet[K] = new ImmutableKeySortedSet
 
   /** The implementation class of the set returned by `keySet` */
@@ -80,6 +88,8 @@ trait StrictOptimizedSortedMapOps[K, +V, +CC[X, +Y] <: Map[X, Y] with SortedMapO
   extends SortedMapOps[K, V, CC, C]
     with collection.StrictOptimizedSortedMapOps[K, V, CC, C]
     with StrictOptimizedMapOps[K, V, Map, C] {
+
+  override def withFilter(p: ((K, V)) => Boolean): collection.SortedMapOps.WithFilter[K, V, Iterable, Map, CC] = new collection.SortedMapOps.WithFilter(this, p)
 
   override def concat[V2 >: V](xs: collection.IterableOnce[(K, V2)]): CC[K, V2] = {
     var result: CC[K, V2] = coll

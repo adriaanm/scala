@@ -20,20 +20,19 @@ import scala.language.higherKinds
 trait SortedSet[A] extends Set[A] with SortedSetOps[A, SortedSet, SortedSet[A]] {
   def unsorted: Set[A] = this
 
-  override protected def fromSpecific(coll: IterableOnce[A] @uncheckedVariance): SortedIterableCC[A] @uncheckedVariance = sortedIterableFactory.from(coll)
-  override protected def newSpecificBuilder: mutable.Builder[A, SortedIterableCC[A]] @uncheckedVariance = sortedIterableFactory.newBuilder[A]
+  override protected def fromSpecific(coll: IterableOnce[A] @uncheckedVariance): SortedSet[A] = sortedIterableFactory.from(coll)
+  override protected def newSpecificBuilder: mutable.Builder[A, SortedSet[A]] = sortedIterableFactory.newBuilder[A]
 
   /**
     * @note This operation '''has''' to be overridden by concrete collection classes to effectively
-    *       return a `SortedIterableFactory[SortedIterableCC]`. The implementation in `SortedSet` only returns
-    *       a `SortedIterableFactory[SortedSet]`, but the compiler will '''not''' throw an error if the
-    *       effective `SortedIterableCC` type constructor is more specific than `SortedSet`.
+    *       return a `SortedIterableFactory[CC]`. The implementation in `SortedSet` only returns
+    *       a `SortedIterableFactory[SortedSet]`.
     *
     * @return The factory of this collection.
     */
-  def sortedIterableFactory: SortedIterableFactory[SortedIterableCC] = SortedSet
+  def sortedIterableFactory: SortedIterableFactory[SortedSet] = SortedSet
 
-  override def empty: SortedIterableCC[A] = sortedIterableFactory.empty
+  override def empty: SortedSet[A] = sortedIterableFactory.empty
 
   @deprecatedOverriding("Compatibility override", since="2.13.0")
   override protected[this] def stringPrefix: String = "SortedSet"
@@ -50,9 +49,9 @@ trait SortedSetOps[A, +CC[X] <: SortedSet[X], +C <: SortedSetOps[A, CC, C]]
     * Due to the `@uncheckedVariance` annotation, usage of this type member can be unsound and is
     * therefore not recommended.
     */
-  protected type SortedIterableCC[X] = CC[X] @uncheckedVariance
+  //protected type SortedIterableCC[X] = CC[X] @uncheckedVariance
 
-  def sortedIterableFactory: SortedIterableFactory[SortedIterableCC]
+  def sortedIterableFactory: SortedIterableFactory[CC]
 
   def unsorted: Set[A]
 
@@ -107,7 +106,7 @@ trait SortedSetOps[A, +CC[X] <: SortedSet[X], +C <: SortedSetOps[A, CC, C]]
       rangeUntil(next)
   }
 
-  override def withFilter(p: A => Boolean): SortedSetOps.WithFilter[A, IterableCC, CC] = new SortedSetOps.WithFilter(this, p)
+  override def withFilter(p: A => Boolean): SortedSetOps.WithFilter[A, Set, CC] = new SortedSetOps.WithFilter(this, p)
 
   /** Builds a new sorted collection by applying a function to all elements of this $coll.
     *

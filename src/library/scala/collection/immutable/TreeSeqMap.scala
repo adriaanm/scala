@@ -61,6 +61,7 @@ final class TreeSeqMap[K, +V] private (
   override protected[this] def className: String = "TreeSeqMap"
 
   override def mapFactory: MapFactory[TreeSeqMap] = TreeSeqMap
+  override def empty: TreeSeqMap[K, V] = TreeSeqMap.empty
 
   override val size = mapping.size
 

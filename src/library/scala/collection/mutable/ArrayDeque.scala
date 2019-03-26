@@ -421,7 +421,7 @@ class ArrayDeque[A] protected (
     res.result()
   }
 
-  override def reverse: IterableCC[A] = {
+  override def reverse: ArrayDeque[A] = {
     val n = length
     val arr = ArrayDeque.alloc(n)
     var i = 0
@@ -463,7 +463,7 @@ class ArrayDeque[A] protected (
     this
   }
 
-  override def slice(from: Int, until: Int): IterableCC[A] = {
+  override def slice(from: Int, until: Int): ArrayDeque[A] = {
     val n = length
     val left = Math.max(0, Math.min(n, from))
     val right = Math.max(0, Math.min(n, until))
@@ -481,14 +481,14 @@ class ArrayDeque[A] protected (
   protected def ofArray(array: Array[AnyRef], end: Int): ArrayDeque[A] =
     new ArrayDeque[A](array, start = 0, end)
 
-  override def sliding(window: Int, step: Int): Iterator[IterableCC[A]] = {
+  override def sliding(window: Int, step: Int): Iterator[ArrayDeque[A]] = {
     require(window > 0 && step > 0, s"window=$window and step=$step, but both must be positive")
     val lag = if (window > step) window - step else 0
     if (length <= window) Iterator.single(slice(0, length))
     else Iterator.range(start = 0, end = length - lag, step = step).map(i => slice(i, i + window))
   }
 
-  override def grouped(n: Int): Iterator[IterableCC[A]] = sliding(n, n)
+  override def grouped(n: Int): Iterator[ArrayDeque[A]] = sliding(n, n)
 
   override def copyToArray[B >: A](dest: Array[B], destStart: Int, len: Int): Int = {
     val copied = IterableOnce.elemsToCopyToArray(length, dest.length, destStart, len)

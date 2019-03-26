@@ -22,7 +22,7 @@ trait Seq[+A] extends Iterable[A]
 
   override final def toSeq: this.type = this
 
-  override def iterableFactory: SeqFactory[IterableCC] = Seq
+  override def iterableFactory: SeqFactory[Seq] = Seq
 }
 
 /**
@@ -96,7 +96,7 @@ trait IndexedSeq[+A] extends Seq[A]
     */
   protected def applyPreferredMaxLength: Int = IndexedSeqDefaults.defaultApplyPreferredMaxLength
 
-  override def iterableFactory: SeqFactory[IterableCC] = IndexedSeq
+  override def iterableFactory: SeqFactory[IndexedSeq] = IndexedSeq
 }
 
 object IndexedSeqDefaults {
@@ -135,7 +135,7 @@ trait LinearSeq[+A]
     with collection.LinearSeq[A]
     with LinearSeqOps[A, LinearSeq, LinearSeq[A]] {
 
-  override def iterableFactory: SeqFactory[IterableCC] = LinearSeq
+  override def iterableFactory: SeqFactory[LinearSeq] = LinearSeq
 }
 
 @SerialVersionUID(3L)

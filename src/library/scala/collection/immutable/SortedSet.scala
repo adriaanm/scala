@@ -14,6 +14,7 @@ package scala
 package collection
 package immutable
 
+import scala.annotation.unchecked.uncheckedVariance
 import scala.language.higherKinds
 
 /** Base trait for sorted sets */
@@ -24,7 +25,13 @@ trait SortedSet[A]
 
   override def unsorted: Set[A] = this
 
-  override def sortedIterableFactory: SortedIterableFactory[SortedIterableCC] = SortedSet
+  override def sortedIterableFactory: SortedIterableFactory[SortedSet] = SortedSet
+
+  override protected def fromSpecific(coll: IterableOnce[A] @uncheckedVariance): SortedSet[A] = sortedIterableFactory.from(coll)
+  override protected def newSpecificBuilder: mutable.Builder[A, SortedSet[A]] = sortedIterableFactory.newBuilder[A]
+  override def empty: SortedSet[A] = sortedIterableFactory.empty
+  override def withFilter(p: A => Boolean): SortedSetOps.WithFilter[A, Set, immutable.SortedSet] = new SortedSetOps.WithFilter(this, p)
+
 }
 
 /**
@@ -36,12 +43,17 @@ trait SortedSetOps[A, +CC[X] <: SortedSet[X], +C <: SortedSetOps[A, CC, C]]
      with collection.SortedSetOps[A, CC, C] {
 
   def unsorted: Set[A]
+
+  override def withFilter(p: A => Boolean): SortedSetOps.WithFilter[A, Set, CC] = new SortedSetOps.WithFilter(this, p)
 }
 
 trait StrictOptimizedSortedSetOps[A, +CC[X] <: SortedSet[X], +C <: SortedSetOps[A, CC, C]]
   extends SortedSetOps[A, CC, C]
     with collection.StrictOptimizedSortedSetOps[A, CC, C]
-    with StrictOptimizedSetOps[A, Set, C]
+    with StrictOptimizedSetOps[A, Set, C] {
+
+  override def withFilter(p: A => Boolean): SortedSetOps.WithFilter[A, Set, CC] = new SortedSetOps.WithFilter(this, p)
+}
 
 /**
   * $factoryInfo

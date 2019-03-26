@@ -25,20 +25,19 @@ trait Map[K, +V]
     with MapOps[K, V, Map, Map[K, V]]
     with Equals {
 
-  override protected def fromSpecific(coll: IterableOnce[(K, V)] @uncheckedVariance): MapCC[K, V] @uncheckedVariance = mapFactory.from(coll)
-  override protected def newSpecificBuilder: mutable.Builder[(K, V), MapCC[K, V]] @uncheckedVariance = mapFactory.newBuilder[K, V]
+  override protected def fromSpecific(coll: IterableOnce[(K, V @uncheckedVariance)]): Map[K, V] = mapFactory.from(coll)
+  override protected def newSpecificBuilder: mutable.Builder[(K, V @uncheckedVariance), Map[K, V @uncheckedVariance]] = mapFactory.newBuilder[K, V]
 
   /**
     * @note This operation '''has''' to be overridden by concrete collection classes to effectively
-    *       return a `MapFactory[MapCC]`. The implementation in `Map` only returns
-    *       a `MapFactory[Map]`, but the compiler will '''not''' throw an error if the
-    *       effective `MapCC` type constructor is more specific than `Map`.
+    *       return a `MapFactory[CC]`. The implementation in `Map` only returns
+    *       a `MapFactory[Map]`.
     *
     * @return The factory of this collection.
     */
-  def mapFactory: scala.collection.MapFactory[MapCC] = Map
+  def mapFactory: scala.collection.MapFactory[Map] = Map
 
-  def empty: MapCC[K, V] @uncheckedVariance = mapFactory.empty
+  override def empty: Map[K, V] = mapFactory.empty
 
   def canEqual(that: Any): Boolean = true
 
@@ -119,14 +118,14 @@ trait MapOps[K, +V, +CC[_, _] <: IterableOps[_, AnyConstr, _], +C]
     * Due to the `@uncheckedVariance` annotation, usage of this type member can be unsound and is
     * therefore not recommended.
     */
-  protected type MapCC[KCC, VCC] = CC[KCC, VCC] @uncheckedVariance
+  // protected type MapCC[KCC, VCC] = CC[KCC, VCC] @uncheckedVariance
 
   /** Similar to `fromIterable`, but returns a Map collection type.
-    * Note that the return type is now `CC[K2, V2]` aka `MapCC[K2, V2]` rather than `IterableCC[(K2, V2)]`.
+    * Note that the return type is now `CC[K2, V2]`.
     */
   @`inline` protected final def mapFromIterable[K2, V2](it: Iterable[(K2, V2)]): CC[K2, V2] = mapFactory.from(it)
 
-  def mapFactory: MapFactory[MapCC]
+  def mapFactory: MapFactory[CC]
 
   /** Optionally returns the value associated with a key.
     *
@@ -279,7 +278,7 @@ trait MapOps[K, +V, +CC[_, _] <: IterableOps[_, AnyConstr, _], +C]
     */
   def empty: C
 
-  override def withFilter(p: ((K, V)) => Boolean): MapOps.WithFilter[K, V, IterableCC, CC] = new MapOps.WithFilter(this, p)
+  override def withFilter(p: ((K, V)) => Boolean): MapOps.WithFilter[K, V, Iterable, CC] = new MapOps.WithFilter(this, p)
 
   /** Builds a new map by applying a function to all elements of this $coll.
     *
@@ -355,7 +354,7 @@ trait MapOps[K, +V, +CC[_, _] <: IterableOps[_, AnyConstr, _], +C]
 
   // explicit override for correct disambiguation with the new overload above
   @deprecated("Use ++ instead of ++: for collections of type Iterable", "2.13.0")
-  override def ++:[B >: (K, V)](that: IterableOnce[B]): IterableCC[B] = super.++:[B](that)
+  override def ++:[B >: (K, V)](that: IterableOnce[B]): Iterable[B] = super.++:[B](that)
 }
 
 object MapOps {

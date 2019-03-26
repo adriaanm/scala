@@ -14,6 +14,7 @@ package scala
 package collection
 package immutable
 
+import scala.annotation.unchecked.uncheckedVariance
 import scala.collection.Stepper.EfficientSplit
 import scala.collection.generic.DefaultSerializable
 import scala.collection.immutable.{RedBlackTree => RB}
@@ -49,6 +50,11 @@ final class TreeSet[A] private[immutable] (private[immutable] val tree: RB.Tree[
   def this()(implicit ordering: Ordering[A]) = this(null)(ordering)
 
   override def sortedIterableFactory = TreeSet
+
+  override protected def fromSpecific(coll: IterableOnce[A] @uncheckedVariance): TreeSet[A] = sortedIterableFactory.from(coll)
+  override protected def newSpecificBuilder: mutable.Builder[A, TreeSet[A]] = sortedIterableFactory.newBuilder[A]
+  override def empty: TreeSet[A] = sortedIterableFactory.empty
+  override def withFilter(p: A => Boolean): SortedSetOps.WithFilter[A, Set, TreeSet] = new SortedSetOps.WithFilter(this, p)
 
   private[this] def newSetOrSelf(t: RB.Tree[A, Any]) = if(t eq tree) this else new TreeSet[A](t)
 

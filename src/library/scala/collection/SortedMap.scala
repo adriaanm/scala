@@ -25,20 +25,19 @@ trait SortedMap[K, +V]
 
   def unsorted: Map[K, V] = this
 
-  override protected def fromSpecific(coll: IterableOnce[(K, V)] @uncheckedVariance): SortedMapCC[K, V] @uncheckedVariance = sortedMapFactory.from(coll)
-  override protected def newSpecificBuilder: mutable.Builder[(K, V), SortedMapCC[K, V]] @uncheckedVariance = sortedMapFactory.newBuilder[K, V]
+  override protected def fromSpecific(coll: IterableOnce[(K, V @uncheckedVariance)]): SortedMap[K, V]    = sortedMapFactory.from(coll)
+  override protected def newSpecificBuilder: mutable.Builder[(K, V @uncheckedVariance), SortedMap[K, V]] = sortedMapFactory.newBuilder[K, V]
 
   /**
     * @note This operation '''has''' to be overridden by concrete collection classes to effectively
-    *       return a `SortedMapFactory[SortedMapCC]`. The implementation in `SortedMap` only returns
-    *       a `SortedMapFactory[SortedMap]`, but the compiler will '''not''' throw an error if the
-    *       effective `SortedMapCC` type constructor is more specific than `SortedMap`.
+    *       return a `SortedMapFactory[CC]`. The implementation in `SortedMap` only returns
+    *       a `SortedMapFactory[SortedMap]`.
     *
     * @return The factory of this collection.
     */
-  def sortedMapFactory: SortedMapFactory[SortedMapCC] = SortedMap
+  def sortedMapFactory: SortedMapFactory[SortedMap] = SortedMap
 
-  override def empty: SortedMapCC[K, V] @uncheckedVariance = sortedMapFactory.empty
+  override def empty: SortedMap[K, V] = sortedMapFactory.empty
 
   @deprecatedOverriding("Compatibility override", since="2.13.0")
   override protected[this] def stringPrefix: String = "SortedMap"
@@ -55,12 +54,12 @@ trait SortedMapOps[K, +V, +CC[X, Y] <: Map[X, Y] with SortedMapOps[X, Y, CC, _],
     * Due to the `@uncheckedVariance` annotation, usage of this type member can be unsound and is
     * therefore not recommended.
     */
-  protected type SortedMapCC[KCC, VCC] = CC[KCC, VCC] @uncheckedVariance
+  // protected type SortedMapCC[KCC, VCC] = CC[KCC, VCC] @uncheckedVariance
 
-  def sortedMapFactory: SortedMapFactory[SortedMapCC]
+  def sortedMapFactory: SortedMapFactory[CC]
 
   /** Similar to `mapFromIterable`, but returns a SortedMap collection type.
-    * Note that the return type is now `CC[K2, V2]` aka `SortedMapCC[K2, V2]` rather than `MapCC[(K2, V2)]`.
+    * Note that the return type is now `CC[K2, V2]`.
     */
   @`inline` protected final def sortedMapFromIterable[K2, V2](it: Iterable[(K2, V2)])(implicit ordering: Ordering[K2]): CC[K2, V2] = sortedMapFactory.from(it)
 
@@ -145,7 +144,7 @@ trait SortedMapOps[K, +V, +CC[X, Y] <: Map[X, Y] with SortedMapOps[X, Y, CC, _],
     def iteratorFrom(start: K): Iterator[K] = SortedMapOps.this.keysIteratorFrom(start)
   }
 
-  override def withFilter(p: ((K, V)) => Boolean): SortedMapOps.WithFilter[K, V, IterableCC, MapCC, CC] = new SortedMapOps.WithFilter(this, p)
+  override def withFilter(p: ((K, V)) => Boolean): SortedMapOps.WithFilter[K, V, Iterable, Map, CC] = new SortedMapOps.WithFilter(this, p)
 
   // And finally, we add new overloads taking an ordering
   /** Builds a new sorted map by applying a function to all elements of this $coll.

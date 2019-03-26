@@ -27,7 +27,16 @@ trait Map[K, +V]
      with collection.Map[K, V]
      with MapOps[K, V, Map, Map[K, V]] {
 
-  override def mapFactory: scala.collection.MapFactory[MapCC] = Map
+  override def mapFactory: scala.collection.MapFactory[Map] = Map
+
+  override protected def fromSpecific(coll: IterableOnce[(K, V @uncheckedVariance)]): Map[K, V] = mapFactory.from(coll)
+  override protected def newSpecificBuilder: mutable.Builder[(K, V @uncheckedVariance), Map[K, V @uncheckedVariance]] = mapFactory.newBuilder[K, V]
+
+  override def empty: Map[K, V] = mapFactory.empty
+
+  override def withFilter(p: ((K, V)) => Boolean): MapOps.WithFilter[K, V, Iterable, Map] = new MapOps.WithFilter(this, p)
+  override def ++:[B >: (K, V)](that: scala.collection.IterableOnce[B]): Iterable[B] = iterableFactory.from(that) ++ coll
+
 
   override final def toMap[K2, V2](implicit ev: (K, V) <:< (K2, V2)): Map[K2, V2] = this.asInstanceOf[Map[K2, V2]]
 
@@ -62,6 +71,9 @@ trait Map[K, +V]
 trait MapOps[K, +V, +CC[X, +Y] <: MapOps[X, Y, CC, _], +C <: MapOps[K, V, CC, C]]
   extends IterableOps[(K, V), Iterable, C]
     with collection.MapOps[K, V, CC, C] {
+
+  override def withFilter(p: ((K, V)) => Boolean): MapOps.WithFilter[K, V, Iterable, CC] = new MapOps.WithFilter(this, p)
+  override def ++:[B >: (K, V)](that: IterableOnce[B]): Iterable[B] = iterableFactory.from(that) ++ coll
 
   protected def coll: C with CC[K, V]
 
@@ -156,6 +168,9 @@ trait StrictOptimizedMapOps[K, +V, +CC[X, +Y] <: MapOps[X, Y, CC, _], +C <: MapO
   extends MapOps[K, V, CC, C]
     with collection.StrictOptimizedMapOps[K, V, CC, C]
     with StrictOptimizedIterableOps[(K, V), Iterable, C] {
+
+  override def withFilter(p: ((K, V)) => Boolean): MapOps.WithFilter[K, V, Iterable, CC] = new MapOps.WithFilter(this, p)
+  override def ++:[B >: (K, V)](that: IterableOnce[B]): Iterable[B] = iterableFactory.from(that) ++ coll
 
   override def concat [V1 >: V](that: collection.IterableOnce[(K, V1)]): CC[K, V1] = {
     var result: CC[K, V1] = coll

@@ -23,6 +23,8 @@ import scala.math.Ordering
 trait IndexedSeq[+A] extends Seq[A] with IndexedSeqOps[A, IndexedSeq, IndexedSeq[A]] {
   @deprecatedOverriding("Compatibility override", since="2.13.0")
   override protected[this] def stringPrefix: String = "IndexedSeq"
+
+  override def iterableFactory: SeqFactory[IndexedSeq] = IndexedSeq
 }
 
 @SerialVersionUID(3L)

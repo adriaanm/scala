@@ -14,6 +14,7 @@ package scala
 package collection
 package mutable
 
+import scala.annotation.unchecked.uncheckedVariance
 import scala.language.higherKinds
 
 /** Base type of mutable Maps */
@@ -24,7 +25,14 @@ trait Map[K, V]
     with Growable[(K, V)]
     with Shrinkable[K] {
 
-  override def mapFactory: scala.collection.MapFactory[MapCC] = Map
+  override def mapFactory: scala.collection.MapFactory[Map] = Map
+
+  override protected def fromSpecific(coll: IterableOnce[(K, V @uncheckedVariance)]): Map[K, V] = mapFactory.from(coll)
+  override protected def newSpecificBuilder: mutable.Builder[(K, V @uncheckedVariance), Map[K, V @uncheckedVariance]] = mapFactory.newBuilder[K, V]
+  override def empty: Map[K, V] = mapFactory.empty
+
+  override def withFilter(p: ((K, V)) => Boolean): MapOps.WithFilter[K, V, Iterable, Map] = new MapOps.WithFilter(this, p)
+  override def ++:[B >: (K, V)](that: IterableOnce[B]): Iterable[B] = iterableFactory.from(that) ++ coll
 
   /*
   //TODO consider keeping `remove` because it returns the removed entry
@@ -70,6 +78,9 @@ trait MapOps[K, V, +CC[X, Y] <: MapOps[X, Y, CC, _], +C <: MapOps[K, V, CC, C]]
     with Builder[(K, V), C]
     with Growable[(K, V)]
     with Shrinkable[K] {
+
+  override def withFilter(p: ((K, V)) => Boolean): MapOps.WithFilter[K, V, Iterable, CC] = new MapOps.WithFilter(this, p)
+  override def ++:[B >: (K, V)](that: IterableOnce[B]): Iterable[B] = iterableFactory.from(that) ++ coll
 
   def result(): C = coll
 

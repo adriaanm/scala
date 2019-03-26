@@ -160,6 +160,8 @@ final class VectorMap[K, +V] private (
 
   override def mapFactory: MapFactory[VectorMap] = VectorMap
 
+  override def empty: VectorMap[K, V] = VectorMap.empty
+
   override def contains(key: K): Boolean = underlying.contains(key)
 
   override def head: (K, V) = iterator.next()

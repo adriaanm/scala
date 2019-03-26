@@ -13,6 +13,7 @@
 package scala
 package collection.mutable
 
+import scala.annotation.unchecked.uncheckedVariance
 import scala.collection.SortedMapFactory
 import scala.language.higherKinds
 
@@ -26,7 +27,12 @@ trait SortedMap[K, V]
 
   override def unsorted: Map[K, V] = this
 
-  override def sortedMapFactory: SortedMapFactory[SortedMapCC] = SortedMap
+  override def sortedMapFactory: SortedMapFactory[SortedMap] = SortedMap
+  override def empty: SortedMap[K, V] = sortedMapFactory.empty
+
+  override protected def fromSpecific(coll: IterableOnce[(K, V @uncheckedVariance)]): SortedMap[K, V] = sortedMapFactory.from(coll)
+  override protected def newSpecificBuilder: Builder[(K, V @uncheckedVariance), SortedMap[K, V @uncheckedVariance]] = sortedMapFactory.newBuilder[K, V]
+  override def withFilter(p: ((K, V)) => Boolean): collection.SortedMapOps.WithFilter[K, V, Iterable, Map, SortedMap] = new collection.SortedMapOps.WithFilter(this, p)
 
   /** The same sorted map with a given default function.
     *  Note: The default is only used for `apply`. Other methods like `get`, `contains`, `iterator`, `keys`, etc.
@@ -56,6 +62,8 @@ trait SortedMapOps[K, V, +CC[X, Y] <: Map[X, Y] with SortedMapOps[X, Y, CC, _], 
     with MapOps[K, V, Map, C] {
 
   def unsorted: Map[K, V]
+
+  override def withFilter(p: ((K, V)) => Boolean): collection.SortedMapOps.WithFilter[K, V, Iterable, Map, CC] = new collection.SortedMapOps.WithFilter(this, p)
 
   @deprecated("Use m.clone().addOne((k,v)) instead of m.updated(k, v)", "2.13.0")
   override def updated[V1 >: V](key: K, value: V1): CC[K, V1] =

@@ -20,7 +20,7 @@ trait Seq[A]
     with collection.Seq[A]
     with SeqOps[A, Seq, Seq[A]] {
 
-  override def iterableFactory: SeqFactory[IterableCC] = Seq
+  override def iterableFactory: SeqFactory[Seq] = Seq
 }
 
 /**

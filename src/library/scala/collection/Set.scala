@@ -38,9 +38,9 @@ trait Set[A]
 
   override def hashCode(): Int = MurmurHash3.setHash(toIterable)
 
-  override def iterableFactory: IterableFactory[IterableCC] = Set
+  override def iterableFactory: IterableFactory[Set] = Set
 
-  def empty: IterableCC[A] = iterableFactory.empty
+  def empty: Set[A] = iterableFactory.empty
 
   @deprecatedOverriding("Compatibility override", since="2.13.0")
   override protected[this] def stringPrefix: String = "Set"

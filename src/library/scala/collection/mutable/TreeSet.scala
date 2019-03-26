@@ -51,6 +51,11 @@ sealed class TreeSet[A] private (private val tree: RB.Tree[A, Null])(implicit va
 
   override def sortedIterableFactory: SortedIterableFactory[TreeSet] = TreeSet
 
+  override def empty: TreeSet[A] = sortedIterableFactory.empty
+  override protected def fromSpecific(coll: IterableOnce[A]): TreeSet[A] = sortedIterableFactory.from(coll)
+  override protected def newSpecificBuilder: Builder[A, TreeSet[A]] = sortedIterableFactory.newBuilder[A]
+  override def withFilter(p: A => Boolean): collection.SortedSetOps.WithFilter[A, Set, TreeSet] = new collection.SortedSetOps.WithFilter(this, p)
+
   def iterator: collection.Iterator[A] = RB.keysIterator(tree)
 
   def iteratorFrom(start: A): collection.Iterator[A] = RB.keysIterator(tree, Some(start))
