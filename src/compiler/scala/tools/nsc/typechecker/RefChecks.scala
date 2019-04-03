@@ -281,6 +281,16 @@ abstract class RefChecks extends Transform {
 
       val mixinOverrideErrors = new ListBuffer[MixinOverrideError]()
 
+      def matchesErased(sym: Symbol, other: Symbol): Boolean = {
+        // #3622: erasure operates on uncurried types --
+        // note on passing sym in both cases: only sym.isType is relevant for uncurry.transformInfo
+        // !!! erasure.erasure(sym, uncurry.transformInfo(sym, tp)) gives erroneous or inaccessible type - check whether that's still the case!
+        def uncurryAndErase(tp: Type) = erasure.erasure(sym)(uncurry.transformInfo(sym, tp))
+        val tp1 = uncurryAndErase(clazz.thisType.memberType(sym))
+        val tp2 = uncurryAndErase(clazz.thisType.memberType(other))
+        exitingErasure(tp1 matches tp2)
+      }
+
       def printMixinOverrideErrors(): Unit = {
         mixinOverrideErrors.toList match {
           case List() =>
@@ -508,7 +518,8 @@ abstract class RefChecks extends Transform {
         }
         def checkOverrideTerm(): Unit = {
           other.cookJavaRawInfo() // #2454
-          if (!overridesTypeInPrefix(lowType, highType, rootType, member.isModuleOrModuleClass && other.isModuleOrModuleClass)) { // 8
+          if (!overridesTypeInPrefix(lowType, highType, rootType, member.isModuleOrModuleClass && other.isModuleOrModuleClass)
+            && !(member.isJavaDefined && other.isJavaDefined && matchesErased(member, other))) { // 8
             overrideTypeError()
             explainTypes(lowType, highType)
           }
@@ -571,16 +582,10 @@ abstract class RefChecks extends Transform {
         }
 
         def javaErasedOverridingSym(sym: Symbol): Symbol =
-          clazz.tpe.nonPrivateMemberAdmitting(sym.name, BRIDGE).filter(other =>
-            !other.isDeferred && other.isJavaDefined && !sym.enclClass.isSubClass(other.enclClass) && {
-              // #3622: erasure operates on uncurried types --
-              // note on passing sym in both cases: only sym.isType is relevant for uncurry.transformInfo
-              // !!! erasure.erasure(sym, uncurry.transformInfo(sym, tp)) gives erroneous or inaccessible type - check whether that's still the case!
-              def uncurryAndErase(tp: Type) = erasure.erasure(sym)(uncurry.transformInfo(sym, tp))
-              val tp1 = uncurryAndErase(clazz.thisType.memberType(sym))
-              val tp2 = uncurryAndErase(clazz.thisType.memberType(other))
-              exitingErasure(tp1 matches tp2)
-            })
+          clazz.tpe.nonPrivateMemberAdmitting(sym.name, BRIDGE).filter { other =>
+            !other.isDeferred && other.isJavaDefined && !sym.enclClass.isSubClass(other.enclClass) &&
+            matchesErased(sym, other)
+          }
 
         def ignoreDeferred(member: Symbol) = (
           (member.isAbstractType && !member.isFBounded) || (
