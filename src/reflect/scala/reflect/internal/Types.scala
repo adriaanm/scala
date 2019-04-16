@@ -3636,9 +3636,9 @@ trait Types
         )
 
         case skolems =>
-          registerBound(existentialTransform(skolems, tp) {
-            existentialAbstraction(_, _, flipVariance = !isLowerBound)
-          }, isLowerBound = isLowerBound, isNumericBound = isNumericBound)
+          // The existential abstraction might be F-bounded. We can't introduce depth here, so try only once and give up.
+          val existential = existentialTransform(skolems, tp)(existentialAbstraction(_, _, flipVariance = !isLowerBound))
+          isRelatable(existential) && registerBound(existential, isLowerBound = isLowerBound, isNumericBound = isNumericBound)
       }
     }
 
