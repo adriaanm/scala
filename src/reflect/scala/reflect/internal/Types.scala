@@ -3670,8 +3670,9 @@ trait Types
       registerBound(HasTypeMember(sym.name.toTypeName, tp), isLowerBound = false)
     }
 
-    private def unrelatable(tp: Type): List[TypeSkolem] = tp.collect {
-      case TypeRef(_, ts: TypeSkolem, _) if ts.level > level => ts
+    private def unrelatable(tp: Type): List[TypeSkolem] = {
+      UnrelatableCollector.barLevel = level
+      UnrelatableCollector.collect(tp)
     }
 
 
@@ -3679,7 +3680,10 @@ trait Types
       *  This is not the case if `tp` contains type skolems whose
       *  skolemization level is higher than the level of this variable.
       */
-    def isRelatable(tp: Type) = unrelatable(tp).isEmpty
+    def isRelatable(tp: Type): Boolean = {
+      IsRelatableCollector.barLevel = level
+      IsRelatableCollector.collect(tp)
+    }
 
     override def normalize: Type = (
       if (instValid) inst
