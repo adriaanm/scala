@@ -70,33 +70,43 @@ abstract class RefChecks extends Transform {
     if (sym.hasAccessBoundary) "" + sym.privateWithin.name else ""
   )
 
-  def overridesTypeInPrefix(tp1: Type, tp2: Type, prefix: Type, isModuleOverride: Boolean): Boolean = (tp1.dealiasWiden, tp2.dealiasWiden) match {
-    case (MethodType(List(), rtp1), NullaryMethodType(rtp2)) =>
-      rtp1 <:< rtp2
-    case (NullaryMethodType(rtp1), MethodType(List(), rtp2)) =>
-      rtp1 <:< rtp2
+  private def matchesJavaErased(member: Symbol, memberInfo: Type, otherInfo: Type) = {
+    // #3622: erasure operates on uncurried types --
+    // note on passing sym in both cases: only sym.isType is relevant for uncurry.transformInfo
+    // !!! erasure.erasure(sym, uncurry.transformInfo(sym, tp)) gives erroneous or inaccessible type - check whether that's still the case!
+    def uncurryAndErase(tp: Type) = erasure.erasure(member)(uncurry.transformInfo(member, tp))
 
-    // all this module business would be so much simpler if we moduled^w modelled a module as a class and an accessor, like we do for fields
-    case (TypeRef(_, sym, _), _) if sym.isModuleClass =>
-      overridesTypeInPrefix(NullaryMethodType(tp1), tp2, prefix, isModuleOverride)
-    case (_, TypeRef(_, sym, _)) if sym.isModuleClass =>
-      overridesTypeInPrefix(tp1, NullaryMethodType(tp2), prefix, isModuleOverride)
+    exitingErasure(uncurryAndErase(memberInfo) matches uncurryAndErase(otherInfo))
+  }
 
-    case _ =>
-      def classBoundAsSeen(tp: Type) = tp.typeSymbol.classBound.asSeenFrom(prefix, tp.typeSymbol.owner)
-      (tp1 <:< tp2) || isModuleOverride && (
-        // Object override check. This requires that both the overridden and the overriding member are object
-        // definitions. The overriding module type is allowed to replace the original one with the same name
-        // as long as it conform to the original non-singleton type.
-        tp1.typeSymbol.isModuleClass && tp2.typeSymbol.isModuleClass && {
-          val cb1 = classBoundAsSeen(tp1)
-          val cb2 = classBoundAsSeen(tp2)
-          (cb1 <:< cb2) && {
-            log("Allowing %s to override %s because %s <:< %s".format(tp1, tp2, cb1, cb2))
-            true
-          }
-        }
-      )
+  // subtyping does not relate MethodType and NullaryMethodType, but overriding should;
+  // we should consider references to modules as accessors for said moules
+  private object ModuleAccessorLike {
+    def unapply(tp: Type): Option[Type] = tp match {
+      case MethodType(List(), rtp)                      => Some(rtp)
+      case NullaryMethodType(rtp)                       => Some(rtp)
+      case rtp: TypeRef if rtp.typeSymbol.isModuleClass => Some(rtp)
+      case _ => None
+    }
+  }
+
+  private def subsumesModuloModuleAccessors(memberInfo: Type, otherInfo: Type): Boolean =
+    (memberInfo, otherInfo) match {
+      case (ModuleAccessorLike(rtp1), ModuleAccessorLike(rtp2)) => rtp1 <:< rtp2
+      case _ => memberInfo <:< otherInfo
+    }
+
+  // Object override check. This requires that both the overridden and the overriding member are object
+  // definitions. The overriding module type is allowed to replace the original one with the same name
+  // as long as it conform to the original non-singleton type.
+  private def overridingModules(member: Symbol, memberInfo: Type, other: Symbol, otherInfo: Type, prefix: Type) = {
+    member.isModuleOrModuleClass && other.isModuleOrModuleClass && {
+      val memberSym = memberInfo.typeSymbol
+      val otherSym  = otherInfo.typeSymbol
+
+      memberSym.isModuleClass && otherSym.isModuleClass &&
+        memberSym.classBound.asSeenFrom(prefix, memberSym.owner) <:< otherSym.classBound.asSeenFrom(prefix, otherSym.owner)
+    }
   }
 
   private val separatelyCompiledScalaSuperclass = perRunCaches.newAnyRefMap[Symbol, Unit]()
@@ -508,15 +518,23 @@ abstract class RefChecks extends Transform {
         }
         def checkOverrideTerm(): Unit = {
           other.cookJavaRawInfo() // #2454
-          if (!overridesTypeInPrefix(lowType, highType, rootType, member.isModuleOrModuleClass && other.isModuleOrModuleClass)) { // 8
+          // compute these once
+          val memberTp = lowType
+          val otherTp = highType
+
+          val subsumes =
+            subsumesModuloModuleAccessors(memberTp, otherTp) ||
+            overridingModules(member, memberTp, other, otherTp, rootType)
+
+          if (!subsumes) { // 8
             overrideTypeError()
-            explainTypes(lowType, highType)
+            explainTypes(memberTp, otherTp)
           }
-          if (member.isStable && !highType.isVolatile) {
-            if (lowType.isVolatile)
+          if (member.isStable && !otherTp.isVolatile) {
+            if (memberTp.isVolatile)
               overrideErrorWithMemberInfo("member with volatile type cannot override member with non-volatile type:")
-            else lowType.normalize.resultType match {
-              case rt: RefinedType if !(rt =:= highType) && notYetCheckedOrAdd(rt, pair.base) =>
+            else memberTp.normalize.resultType match {
+              case rt: RefinedType if !(rt =:= otherTp) && notYetCheckedOrAdd(rt, pair.base) =>
                 // might mask some inconsistencies -- check overrides
                 val tsym = rt.typeSymbol
                 if (tsym.pos == NoPosition) tsym setPos member.pos
@@ -570,17 +588,11 @@ abstract class RefChecks extends Transform {
           else abstractErrors += msg
         }
 
-        def javaErasedOverridingSym(sym: Symbol): Symbol =
-          clazz.tpe.nonPrivateMemberAdmitting(sym.name, BRIDGE).filter(other =>
-            !other.isDeferred && other.isJavaDefined && !sym.enclClass.isSubClass(other.enclClass) && {
-              // #3622: erasure operates on uncurried types --
-              // note on passing sym in both cases: only sym.isType is relevant for uncurry.transformInfo
-              // !!! erasure.erasure(sym, uncurry.transformInfo(sym, tp)) gives erroneous or inaccessible type - check whether that's still the case!
-              def uncurryAndErase(tp: Type) = erasure.erasure(sym)(uncurry.transformInfo(sym, tp))
-              val tp1 = uncurryAndErase(clazz.thisType.memberType(sym))
-              val tp2 = uncurryAndErase(clazz.thisType.memberType(other))
-              exitingErasure(tp1 matches tp2)
-            })
+        def javaErasedOverridingSym(member: Symbol): Symbol =
+          clazz.tpe.nonPrivateMemberAdmitting(member.name, BRIDGE).filter { other =>
+            !other.isDeferred && other.isJavaDefined && !member.enclClass.isSubClass(other.enclClass) &&
+            matchesJavaErased(member, clazz.thisType.memberType(member), clazz.thisType.memberType(other))
+          }
 
         def ignoreDeferred(member: Symbol) = (
           (member.isAbstractType && !member.isFBounded) || (
