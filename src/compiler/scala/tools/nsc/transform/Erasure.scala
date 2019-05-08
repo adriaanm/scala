@@ -925,6 +925,13 @@ abstract class Erasure extends InfoTransform
         || !sym.hasTypeAt(currentRun.refchecksPhase.id)
       )
       override def matches(high: Symbol) = !high.isPrivate
+
+      override def skipOwnerPair(lowClass: Symbol, highClass: Symbol): Boolean =
+        // don't check two java-defined classes -- that's javac's job (we'll still deal with Scala - Java)
+        (lowClass.isJava && highClass.isJava) ||
+        // prune down on pairs -- this is not refchecks,
+         // we just need to see any duplicate pair at least once, regardless of linearisation
+        lowClass != nonTraitParent && nonTraitParent.isNonBottomSubClass(lowClass) && nonTraitParent.isNonBottomSubClass(highClass)
     }
 
     /** Emit an error if there is a double definition. This can happen if:
