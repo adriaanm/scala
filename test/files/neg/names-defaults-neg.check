@@ -145,6 +145,11 @@ names-defaults-neg.scala:143: warning: a pure expression does nothing in stateme
 names-defaults-neg.scala:146: error: missing parameter type for expanded function ((<x$1: error>) => a = x$1)
   val taf2: Int => Unit = testAnnFun(a = _, b = get("+"))
                                          ^
+names-defaults-neg.scala:146: error: type mismatch;
+ found   : ? => ?
+ required: Int
+  val taf2: Int => Unit = testAnnFun(a = _, b = get("+"))
+                                       ^
 names-defaults-neg.scala:146: error: not found: value get
   val taf2: Int => Unit = testAnnFun(a = _, b = get("+"))
                                                 ^
@@ -154,5 +159,10 @@ names-defaults-neg.scala:147: error: parameter 'a' is already specified at param
 names-defaults-neg.scala:148: error: missing parameter type for expanded function ((<x$4: error>) => b = x$4)
   val taf4: (Int, String) => Unit = testAnnFun(_, b = _)
                                                       ^
+names-defaults-neg.scala:148: error: type mismatch;
+ found   : ? => ?
+ required: String
+  val taf4: (Int, String) => Unit = testAnnFun(_, b = _)
+                                                    ^
 9 warnings found
-33 errors found
+35 errors found

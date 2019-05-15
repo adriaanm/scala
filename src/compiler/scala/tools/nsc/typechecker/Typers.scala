@@ -3057,7 +3057,9 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
                 issuedMissingParameterTypeError = true
               }
 
-              setError(fun)
+              // Improve error reporting: propagate what we know about the function's type -- we'll fail -- TODO: use something other than WildcardType for the unknown type?
+              val paramTypesForErrorMessage = vparams.map(param => if (param.tpt.isEmpty) WildcardType else silent(_.typedType(param.tpt).tpe).fold(WildcardType: Type) { case ErrorType => NoType case tp => tp })
+              fun setType appliedType(FunctionClass(numVparams), paramTypesForErrorMessage :+ WildcardType)
             }
           } else {
             fun.body match {
