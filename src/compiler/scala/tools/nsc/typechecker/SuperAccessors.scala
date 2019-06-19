@@ -110,6 +110,8 @@ abstract class SuperAccessors extends transform.Transform with transform.TypingT
         if (!accDefs.contains(clazz))
           reporter.error(sel.pos, s"Internal error: unable to store accessor definition in ${clazz}. clazz.hasPackageFlag=${clazz.hasPackageFlag}. Accessor required for ${sel} (${showRaw(sel)})")
         else storeAccessorDefinition(clazz, DefDef(acc, EmptyTree))
+
+        clazz.resetFlag(INTERFACE) // if clazz was a trait, it can't be a pure interface (since subclasses must implement the super accessor)
         acc
       }
 

@@ -100,7 +100,8 @@ class ModifierFlags {
                                           // Note difference to DEFERRED!
   final val DEFERRED      = 1L << 4        // was `abstract` for members | trait is virtual
   final val INTERFACE     = 1L << 7        // symbol is an interface. the flag is set for:
-                                          //  - scala-defined traits with only abstract methods or fields
+                                          //  - a scala-defined trait that compiles 1:1 to a Java interface
+                                          //    (potentially defining default methods, but without any need for compiler magic in subclasses)
                                           //  - any java-defined interface (even if it has default methods)
   final val MUTABLE       = 1L << 12       // symbol is a mutable variable.
   final val PARAM         = 1L << 13       // symbol is a (value or type) parameter to a method

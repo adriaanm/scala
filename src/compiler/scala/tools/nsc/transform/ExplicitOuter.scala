@@ -88,9 +88,12 @@ abstract class ExplicitOuter extends InfoTransform
     else findOrElse(clazz.info.decls)(_.outerSource == clazz)(NoSymbol)
   }
   def newOuterAccessor(clazz: Symbol) = {
-    val accFlags = SYNTHETIC | ARTIFACT | STABLE | ( if (clazz.isTrait) DEFERRED else 0 )
+    val isTrait  = clazz.isTrait
+    val accFlags = SYNTHETIC | ARTIFACT | STABLE | (if (isTrait) DEFERRED else 0)
     val sym      = clazz.newMethod(nme.OUTER, clazz.pos, accFlags)
-    val restpe   = if (clazz.isTrait) clazz.outerClass.tpe_* else clazz.outerClass.thisType
+    val restpe   = if (isTrait) clazz.outerClass.tpe_* else clazz.outerClass.thisType
+
+    if (isTrait) clazz.resetFlag(INTERFACE) // the outer accessor has to be implemented in a subclass
 
     sym expandName clazz
     sym.referenced = clazz
@@ -126,41 +129,33 @@ abstract class ExplicitOuter extends InfoTransform
     clazz.fullName == mixin.fullName
   }
 
-  /** <p>
-   *    The type transformation method:
-   *  </p>
-   *  <ol>
-   *    <li>
-   *      Add an outer parameter to the formal parameters of a constructor
-   *      in an inner non-trait class;
-   *    </li>
-   *    <li>
-   *      Add a protected $outer field to an inner class which is
-   *      not a trait.
-   *    </li>
-   *    <li>
-   *      <p>
-   *        Add an outer accessor $outer$$C to every inner class
-   *        with fully qualified name C that is not an interface.
-   *        The outer accessor is abstract for traits, concrete for other
-   *        classes.
-   *      </p>
-   *      <p>
-   *        3a. Also add overriding accessor defs to every class that inherits
-   *        mixin classes with outer accessor defs (unless the superclass
-   *        already inherits the same mixin).
-   *      </p>
-   *    </li>
-   *    <li>
-   *      Make all super accessors and modules in traits non-private, mangling
-   *      their names.
-   *    </li>
-   *    <li>
-   *      Remove protected flag from all members of traits.
-   *    </li>
-   *  </ol>
-   *  Note: this transformInfo need not be reflected as the JVM reflection already
-   *  elides outer pointers.
+  // This is a bit weird. We used to add outer accessors to any inner class without the INTERFACE flag,
+  // but the meaning of that flag has evolved to include traits with concrete methods, which may need outer accessors.
+  // For backwards compat, any non-trait inner class gets an outer accessor. An inner trait only gets one if it has a concrete method.
+  // Generally, the idea in avoiding to add an outer accessor is to not needlessly add abstract methods to traits and completely extending them in Java.
+  private def needsOuter(clazz: Symbol, decls: List[Symbol]) =
+    !clazz.isTrait || decls.exists(d => d.isMethod && !d.isDeferred)
+
+  /**
+   * The type transformation method:
+   *
+   * 1. Add an outer parameter to the formal parameters of a constructor in an inner non-trait class;
+   *
+   * 2. Add a protected $outer field to an inner class which is not a trait.
+   *
+   * 3. Add an outer accessor $outer$$C to every inner class with fully qualified name C.
+   *    The outer accessor is abstract for traits, concrete for other classes.
+   *
+   * 3a. Also add overriding accessor defs to every class that inherits mixin
+   *     classes with outer accessor defs (unless the superclass already inherits the
+   *     same mixin).
+   *
+   * 4. Make all super accessors and modules in traits non-private, mangling their names.
+   *
+   * 5. Remove protected flag from all members of traits.
+   *
+   * Note: this transformInfo need not be reflected as the JVM reflection already
+   * elides outer pointers.
    */
   def transformInfo(sym: Symbol, tp: Type): Type = tp match {
     case MethodType(params, resTp) =>
@@ -176,7 +171,7 @@ abstract class ExplicitOuter extends InfoTransform
 
     case ClassInfoType(parents, decls, clazz) if !clazz.isJava =>
       var decls1 = decls
-      if (isInner(clazz) && !clazz.isInterface) {
+      if (isInner(clazz) && needsOuter(clazz, decls.toList) ) {
         decls1 = decls.cloneScope
         decls1 enter newOuterAccessor(clazz) // 3
         if (hasOuterField(clazz)) //2
@@ -313,7 +308,7 @@ abstract class ExplicitOuter extends InfoTransform
 
   /** The phase performs the following transformations (more or less...):
     *
-    * (1) An class which is not an interface and is not static gets an outer accessor (@see outerDefs).
+    * (1) A non-static class gets an outer accessor (@see outerDefs).
     * (1a) A class which is not a trait gets an outer field.
     *
     * (4) A constructor of a non-trait inner class gets an outer parameter.
@@ -394,7 +389,7 @@ abstract class ExplicitOuter extends InfoTransform
         case Template(parents, self, decls) =>
           val newDefs = new ListBuffer[Tree]
           atOwner(tree, currentOwner) {
-            if (!currentClass.isInterface) {
+            if (needsOuter(currentClass, decls.map(_.symbol))) {
               if (isInner(currentClass)) {
                 if (hasOuterField(currentClass))
                   newDefs += outerFieldDef // (1a)

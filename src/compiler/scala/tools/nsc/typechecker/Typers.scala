@@ -1879,8 +1879,11 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
         val tparams1 = cdef.tparams mapConserve (typedTypeDef)
         val impl1 = newTyper(context.make(cdef.impl, clazz, newScope)).typedTemplate(cdef.impl, typedParentTypes(cdef.impl))
         val impl2 = finishMethodSynthesis(impl1, clazz, context)
-        if (clazz.isTrait && clazz.info.parents.nonEmpty && clazz.info.firstParent.typeSymbol == AnyClass)
-          checkEphemeral(clazz, impl2.body)
+        if (clazz.isTrait && clazz.info.parents.nonEmpty) {
+          val firstParentSym = clazz.info.firstParent.typeSymbol
+          if (firstParentSym == AnyClass) checkEphemeral(clazz, impl2.body)
+          else if (!(firstParentSym == ObjectClass || firstParentSym.isTraitOrInterface)) clazz.resetFlag(INTERFACE)
+        }
 
         warnTypeParameterShadow(tparams1, clazz)
 

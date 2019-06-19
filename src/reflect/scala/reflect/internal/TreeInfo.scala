@@ -48,13 +48,21 @@ abstract class TreeInfo {
   }
 
   /** Is tree legal as a member definition of an interface?
+   *
+   * In other words, a trait for which all members satisfy this predicate will
+   * compile to a pure Java interface, with no further obligations on classes that implement it.
    */
   def isInterfaceMember(tree: Tree): Boolean = tree match {
-    case EmptyTree                     => true
-    case Import(_, _)                  => true
-    case TypeDef(_, _, _, _)           => true
-    case DefDef(mods, _, _, _, _, __)  => mods.isDeferred
-    case ValDef(mods, _, _, _)         => mods.isDeferred
+    case EmptyTree | Import(_, _) | TypeDef(_, _, _, _) => true
+    case DefDef(_, name, _, vparamss, _, rhs)                  =>
+      // A trait constructor is a special method that must be called explicitly in a subclass.
+      name != nme.CONSTRUCTOR
+      // Unqualified super calls give rise to super accessors, which must be implemented in a subclass.
+      // We don't test that here, since `ensureAccessor` in super accessors is more precise.
+      // && !rhs.exists { case Super(_, tpnme.EMPTY) => true case _ => false }
+    // A concrete val gives rise to a field + initialization logic in a subclass (TODO: except if it has a constant type?)
+    case ValDef(mods, _, _, _) => mods.isDeferred
+    // any statements in the template will need to be moved to the constructor, which then must be invoked in a subclass
     case _ => false
   }
 

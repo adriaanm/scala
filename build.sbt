@@ -89,6 +89,8 @@ import com.typesafe.tools.mima.core._
 val mimaFilterSettings = Seq(
   mimaBinaryIssueFilters ++= Seq(
     ProblemFilters.exclude[Problem]("scala.reflect.internal.*"),
+    // changes to INTERFACE flag for trait (see needsOuter in ExplicitOuter)
+    ProblemFilters.exclude[ReversedMissingMethodProblem]("scala.reflect.api.Quasiquotes#Quasiquote#api.scala$reflect$api$Quasiquotes$Quasiquote$api$$$outer"),
   ),
 )
 

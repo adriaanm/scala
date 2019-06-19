@@ -1467,7 +1467,6 @@ trait Namers extends MethodSynthesis {
           val name = nme.defaultGetterName(meth.name, posCounter)
 
           search.createAndEnter { owner: Symbol =>
-            methOwner.resetFlag(INTERFACE) // there's a concrete member now
             val default = owner.newMethodSymbol(name, vparam.pos, paramFlagsToDefaultGetter(meth.flags))
             default.setPrivateWithin(meth.privateWithin)
             default.referenced = meth
