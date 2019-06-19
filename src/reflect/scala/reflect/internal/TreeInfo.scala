@@ -71,6 +71,11 @@ abstract class TreeInfo {
     case _                                              => false
   }
 
+  def isEmptyConstructor(t: Tree) = t match {
+    case DefDef(_, nme.MIXIN_CONSTRUCTOR, _, Nil, _, Block(Nil, Literal(Constant(())))) => true
+    case _                                           => showRaw(t); false
+  }
+
   /** Is tree a pure (i.e. non-side-effecting) definition?
    */
   def isPureDef(tree: Tree): Boolean = tree match {

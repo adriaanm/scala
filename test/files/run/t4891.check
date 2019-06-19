@@ -1,5 +1,4 @@
 test.generic.T1
-  (m) public static void test.generic.T1.$init$(test.generic.T1)
   (m) public default A test.generic.T1.t1(A)
   (m) public static java.lang.Object test.generic.T1.t1$(test.generic.T1,java.lang.Object)
 test.generic.C1

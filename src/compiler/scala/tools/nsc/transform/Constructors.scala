@@ -769,7 +769,9 @@ abstract class Constructors extends Statics with Transform with TypingTransforme
       if ((exitingPickler(clazz.isAnonymousClass) || clazz.originalOwner.isTerm) && omittableAccessor.exists(_.isOuterField) && !constructorStats.exists(_.exists { case i: Ident if i.symbol.isOuterParam => true; case _ => false}))
         primaryConstructor.symbol.updateAttachment(OuterArgCanBeElided)
 
-      val constructors = primaryConstructor :: auxConstructors
+      val constructors =
+        if (clazz.isTrait && treeInfo.isEmptyConstructor(primaryConstructor)) auxConstructors // TODO
+        else primaryConstructor :: auxConstructors
 
       // Unlink all fields that can be dropped from class scope
       // Iterating on toList is cheaper (decls.filter does a toList anyway)

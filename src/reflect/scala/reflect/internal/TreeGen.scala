@@ -410,8 +410,19 @@ abstract class TreeGen {
 
     val constr = {
       if (constrMods.isTrait) {
-        if (body forall treeInfo.isInterfaceMember) None
-        else Some(
+        // this is really not that simple -- we may need a constructor for lambda lift if a local trait captures a method arg
+        // OTOH we want to avoid constructors unless really needed so that we can emit real java interfaces (e.g. for SAMs)
+        /*
+          def m(x: String): String = {
+            trait T {
+              def f: String = x // T will need a constructor for lambdalift to pass in the value of x in method m
+            }
+            (new T{}).f
+          }
+         */
+        //if (body forall treeInfo.isInterfaceMember) None
+        //else
+        Some(
           atPos(wrappingPos(superPos, lvdefs)) (
             DefDef(NoMods, nme.MIXIN_CONSTRUCTOR, Nil, ListOfNil, TypeTree(), Block(lvdefs, mkLiteralUnit))))
       }
