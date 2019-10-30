@@ -2065,7 +2065,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
             // When typechecking default parameter, replace all type parameters in the expected type by Wildcard.
             // This allows defining "def foo[T](a: T = 1)"
             val tparams = sym.owner.skipConstructor.info.typeParams
-            val subst = new SubstTypeMap(tparams, tparams map (_ => WildcardType)) {
+            val subst = new SubstTypeMap(tparams, WildcardType.fillList(tparams.length)) {
               override def matches(sym: Symbol, sym1: Symbol) =
                 if (sym.isSkolem) matches(sym.deSkolemize, sym1)
                 else if (sym1.isSkolem) matches(sym, sym1.deSkolemize)
@@ -3058,7 +3058,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
           else {
             // We're looking for a method (as indicated by FUNmode in the silent typed below),
             // so let's make sure our expected type is a MethodType (of the right arity, but we can't easily say more about the argument types)
-            val methArgs = NoSymbol.newSyntheticValueParams(args map { case _ => WildcardType })
+            val methArgs = NoSymbol.newSyntheticValueParams(WildcardType.fillList(args.length))
 
             silent(_.typed(meth, mode.forFunMode, MethodType(methArgs, resProto))).fold(EmptyTree: Tree) { methTyped =>
               // if context.undetparams is not empty, the method was polymorphic,
@@ -3272,14 +3272,15 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
 
             (!sym.isModule || shouldAddAsModule) && (inBlock || !context.isInPackageObject(sym, context.owner))
           }
-          for (sym <- scope)
+          for (sym <- scope)  context.unit.synthetics.get(sym) match {
             // OPT: shouldAdd is usually true. Call it here, rather than in the outer loop
-            for (tree <- context.unit.synthetics.get(sym) if shouldAdd(sym)) {
+            case Some(tree) if shouldAdd(sym) =>
               // if the completer set the IS_ERROR flag, retract the stat (currently only used by applyUnapplyMethodCompleter)
               if (!sym.initialize.hasFlag(IS_ERROR))
                 newStats += typedStat(tree) // might add even more synthetics to the scope
               context.unit.synthetics -= sym
-            }
+            case _ => ()
+          }
           // the type completer of a synthetic might add more synthetics. example: if the
           // factory method of a case class (i.e. the constructor) has a default.
           moreToAdd = scope.elems ne initElems
@@ -3597,7 +3598,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
               val fun1 = transformNamedApplication(Typer.this, mode, pt)(fun, x => x)
               if (fun1.isErroneous) duplErrTree
               else {
-                val NamedApplyBlock(NamedApplyInfo(qual, targs, previousArgss, _)) = fun1
+                val NamedApplyBlock(NamedApplyInfo(staticQual, qual, targs, previousArgss, _)) = fun1
                 val blockIsEmpty = fun1 match {
                   case Block(Nil, _) =>
                     // if the block does not have any ValDef we can remove it. Note that the call to
@@ -3606,7 +3607,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
                     true
                   case _ => false
                 }
-                val (allArgs, missing) = addDefaults(args, qual, targs, previousArgss, params, fun.pos.focus, context)
+                val (allArgs, missing) = addDefaults(args, staticQual, qual, targs, previousArgss, params, fun.pos.focus, context)
                 val funSym = fun1 match { case Block(_, expr) => expr.symbol }
                 val lencmp2 = compareLengths(allArgs, formals)
 
@@ -4676,7 +4677,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
             val etaPt =
               pt match {
                 case pt: ProtoType =>
-                  pt.asFunctionType orElse functionType(tp.params.map(_ => WildcardType), WildcardType) orElse WildcardType // arity overflow --> NoType
+                  pt.asFunctionType orElse functionType(WildcardType.fillList(tp.params.length), WildcardType) orElse WildcardType // arity overflow --> NoType
                 case _             => pt
               }
 
@@ -5427,7 +5428,7 @@ trait Typers extends Adaptations with Tags with TypersTracking with PatternTyper
        * a constructor default, the resulting typer has a constructor context (fixes scala/bug#5543).
        */
       def defDefTyper(ddef: DefDef) = {
-        val isConstrDefaultGetter = ddef.mods.hasDefault && sym.owner.isModuleClass &&
+        val isConstrDefaultGetter = ddef.mods.hasDefault &&
             nme.defaultGetterToMethod(sym.name) == nme.CONSTRUCTOR
         newTyper(context.makeNewScope(ddef, sym)).constrTyperIf(isConstrDefaultGetter)
       }

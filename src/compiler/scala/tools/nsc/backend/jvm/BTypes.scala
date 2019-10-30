@@ -14,6 +14,7 @@ package scala.tools.nsc
 package backend.jvm
 
 import java.{util => ju}
+import java.lang.{StringBuilder, ThreadLocal}
 import scala.annotation.tailrec
 import scala.tools.asm
 import scala.tools.asm.Opcodes
@@ -52,23 +53,12 @@ abstract class BTypes {
   // Note usage should be private to this file, except for tests
   val classBTypeCache: ju.concurrent.ConcurrentHashMap[InternalName, ClassBType] =
     recordPerRunJavaMapCache(new ju.concurrent.ConcurrentHashMap[InternalName, ClassBType])
-
+  object BType {
+    val emptyArray = Array[BType]()
+    def newArray(n: Int): Array[BType] = if (n == 0) emptyArray else new Array[BType](n)
+  }
   sealed abstract class BType {
-    override def toString: String = {
-      val builder = new java.lang.StringBuilder(64)
-      buildString(builder)
-      builder.toString
-    }
-    final def buildString(builder: java.lang.StringBuilder): Unit = this match {
-      case p: PrimitiveBType        => builder.append(p.desc)
-      case ClassBType(internalName) => builder.append('L').append(internalName).append(';')
-      case ArrayBType(component)    => builder.append('['); component.buildString(builder)
-      case MethodBType(args, res)   =>
-        builder.append('(')
-        args.foreach(_.buildString(builder))
-        builder.append(')')
-        res.buildString(builder)
-    }
+    override def toString: String = BTypeExporter.btypeToString(this)
 
     /**
      * @return The Java descriptor of this type. Examples:
@@ -806,7 +796,21 @@ abstract class BTypes {
     )
     def unapply(cr:ClassBType) = Some(cr.internalName)
 
-    def apply(internalName: InternalName, fromSymbol: Boolean)(init: (ClassBType) => Either[NoClassBTypeInfo, ClassInfo]): ClassBType = {
+    /**
+     * Retrieve the `ClassBType` for the class with the given internal name, creating the entry if it doesn't
+     * already exist
+     *
+     * @param internalName The name of the class
+     * @param t            A value that will be passed to the `init` function. For efficiency, callers should use this
+     *                     value rather than capturing it in the `init` lambda, allowing that lambda to be hoisted.
+     * @param fromSymbol   Is this type being initialized from a `Symbol`, rather than from byte code?
+     * @param init         Function to initialize the info of this `BType`. During execution of this function,
+     *                     code _may_ reenter into `apply(internalName, ...)` and retrieve the initializing
+     *                     `ClassBType`.
+     * @tparam T           The type of the state that will be threaded into the `init` function.
+     * @return             The `ClassBType`
+     */
+    final def apply[T](internalName: InternalName, t: T, fromSymbol: Boolean)(init: (ClassBType, T) => Either[NoClassBTypeInfo, ClassInfo]): ClassBType = {
       val cached = classBTypeCache.get(internalName)
       if (cached ne null) cached
       else {
@@ -818,7 +822,7 @@ abstract class BTypes {
         newRes.synchronized {
           classBTypeCache.putIfAbsent(internalName, newRes) match {
             case null =>
-              newRes._info = init(newRes)
+              newRes._info = init(newRes, t)
               newRes.checkInfoConsistency()
               newRes
           case old =>
@@ -898,7 +902,37 @@ abstract class BTypes {
     }
   }
 
-  final case class MethodBType(argumentTypes: List[BType], returnType: BType) extends BType
+  final case class MethodBType(argumentTypes: Array[BType], returnType: BType) extends BType
+
+  object BTypeExporter {
+    private[this] val builderTL: ThreadLocal[StringBuilder] = new ThreadLocal[StringBuilder](){
+      override protected def initialValue: StringBuilder = new StringBuilder(64)
+    }
+
+    final def btypeToString(btype: BType): String = {
+      val builder = builderTL.get()
+      builder.setLength(0)
+      appendBType(builder, btype)
+      builder.toString
+    }
+
+    final def appendBType(builder: StringBuilder, btype: BType): Unit = btype match {
+      case p: PrimitiveBType        => builder.append(p.desc)
+      case ClassBType(internalName) => builder.append('L').append(internalName).append(';')
+      case ArrayBType(component)    => builder.append('['); appendBType(builder, component)
+      case MethodBType(args, res)   =>
+        builder.append('(')
+        args.foreach(appendBType(builder, _))
+        builder.append(')')
+        appendBType(builder, res)
+    }
+    def close(): Unit = {
+      // This will eagerly remove the thread local from the calling thread's ThreadLocalMap. It won't
+      // do the same for other threads used by `-Ybackend-parallelism=N`, but in practice this doesn't
+      // matter as that thread pool is shutdown at the end of compilation.
+      builderTL.remove()
+    }
+  }
 
   /* Some definitions that are required for the implementation of BTypes. They are abstract because
    * initializing them requires information from types / symbols, which is not accessible here in
