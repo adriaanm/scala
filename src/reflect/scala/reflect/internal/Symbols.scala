@@ -2706,9 +2706,9 @@ trait Symbols extends api.Symbols { self: SymbolTable =>
      */
     def hasMeaninglessName = (
          isSetterParameter        // x$1
-      || isClassConstructor       // this
+      || name == nme.CONSTRUCTOR  // this
       || isRefinementClass        // <refinement>
-      || (name == nme.PACKAGE)    // package
+      || name == nme.PACKAGE      // package
     )
 
     /** String representation of symbol's simple name.

@@ -248,7 +248,7 @@ trait Erasure {
   def specialErasure(sym: Symbol)(tp: Type): Type =
     if (sym != NoSymbol && sym.enclClass.isJavaDefined)
       erasure(sym)(tp)
-    else if (sym.isClassConstructor) // TODO: trait constructors should have been renamed to $init$ by now
+    else if (sym.isClassConstructor)
       specialConstructorErasure(sym.owner, tp)
     else
       specialScalaErasure(tp)
@@ -401,20 +401,21 @@ trait Erasure {
     else if (sym.isAbstractType)
       TypeBounds(WildcardType, WildcardType) // TODO why not use the erasure of the type's bounds, as stated in the doc?
     else if (sym.isTerm && sym.owner == ArrayClass) {
-      if (sym.isClassConstructor) // TODO: switch on name for all branches -- this one is sym.name == nme.CONSTRUCTOR
-        tp match {
-          case MethodType(params, TypeRef(pre, sym1, args)) =>
-            MethodType(cloneSymbolsAndModify(params, specialErasure(sym)),
-                       typeRef(specialErasure(sym)(pre), sym1, args))
-        }
-      else if (sym.name == nme.apply)
-        tp
-      else if (sym.name == nme.update)
-        (tp: @unchecked) match {
-          case MethodType(List(index, tvar), restpe) =>
-            MethodType(List(index.cloneSymbol.setInfo(specialErasure(sym)(index.tpe)), tvar), UnitTpe)
-        }
-      else specialErasure(sym)(tp)
+      sym.name match {
+        case nme.CONSTRUCTOR =>
+          tp match {
+            case MethodType(params, TypeRef(pre, sym1, args)) =>
+              MethodType(cloneSymbolsAndModify(params, specialErasure(sym)),
+                typeRef(specialErasure(sym)(pre), sym1, args))
+          }
+        case nme.apply       => tp
+        case nme.update      =>
+          (tp: @unchecked) match {
+            case MethodType(List(index, tvar), restpe) =>
+              MethodType(List(index.cloneSymbol.setInfo(specialErasure(sym)(index.tpe)), tvar), UnitTpe)
+          }
+        case _               => specialErasure(sym)(tp)
+      }
     } else if (
       sym.owner != NoSymbol &&
       sym.owner.owner == ArrayClass &&

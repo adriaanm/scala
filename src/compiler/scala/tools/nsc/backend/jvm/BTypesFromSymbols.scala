@@ -119,7 +119,7 @@ abstract class BTypesFromSymbols[G <: Global](val global: G) extends BTypes {
    */
   final def methodBTypeFromSymbol(methodSymbol: Symbol): MethodBType = {
     assert(methodSymbol.isMethod, s"not a method-symbol: $methodSymbol")
-    methodBTypeFromMethodType(methodSymbol.info, methodSymbol.isClassConstructor || methodSymbol.isConstructor)
+    methodBTypeFromMethodType(methodSymbol.info, methodSymbol.isConstructor)
   }
 
   /**

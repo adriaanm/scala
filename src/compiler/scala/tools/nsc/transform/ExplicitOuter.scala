@@ -166,7 +166,7 @@ abstract class ExplicitOuter extends InfoTransform
       val resTpTransformed = transformInfo(sym, resTp)
 
       val paramsWithOuter =
-        if ((sym.isClassConstructor && !sym.owner.isTrait || sym.isStaticMember) && isInner(sym.owner)) // 1
+        if ((sym.isClassConstructor || sym.isStaticMember) && isInner(sym.owner)) // 1
           sym.newValueParameter(nme.OUTER_ARG, sym.pos, ARTIFACT).setInfo(sym.owner.outerClass.thisType) :: params
         else params
 
@@ -175,7 +175,7 @@ abstract class ExplicitOuter extends InfoTransform
 
     case ClassInfoType(parents, decls, clazz) if !clazz.isJava =>
       var decls1 = decls
-      if (isInner(clazz) && !clazz.isInterface) {
+      if (isInner(clazz) && !clazz.isInterface) { // a trait without any concrete members cannot need an outer accessor
         decls1 = decls.cloneScope
         decls1 enter newOuterAccessor(clazz) // 3
         if (hasOuterField(clazz)) //2
@@ -293,7 +293,7 @@ abstract class ExplicitOuter extends InfoTransform
         tree match {
           case Template(_, _, _)                                                                                             =>
             outerParam = NoSymbol
-          case DefDef(_, _, _, (param :: _) :: _, _, _) if (sym.isClassConstructor && !sym.owner.isTrait || sym.isStaticMember) && isInner(sym.owner) =>
+          case DefDef(_, _, _, (param :: _) :: _, _, _) if (sym.isClassConstructor || sym.isStaticMember) && isInner(sym.owner) =>
             outerParam = param.symbol
             assert(outerParam.name startsWith nme.OUTER, outerParam.name)
           case _                                                                                                             =>
@@ -412,7 +412,7 @@ abstract class ExplicitOuter extends InfoTransform
             )
           )
         case DefDef(_, _, _, vparamss, _, rhs) =>
-          if (sym.isClassConstructor && !sym.owner.isTrait || sym.isStaticMember) {
+          if (sym.isClassConstructor || sym.isStaticMember) {
             val clazz = sym.owner
             val vparamss1 =
               if (isInner(clazz) && !clazz.isTrait) { // (4)
