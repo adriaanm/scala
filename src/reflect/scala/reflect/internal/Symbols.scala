@@ -18,9 +18,9 @@ package scala
 package reflect
 package internal
 
-import scala.collection.immutable
+import scala.collection.{immutable, mutable}
 import scala.collection.mutable.ListBuffer
-import util.{ Statistics, shortClassOfInstance, StatisticsStatics }
+import util.{Statistics, StatisticsStatics, shortClassOfInstance}
 import Flags._
 import scala.annotation.tailrec
 import scala.reflect.io.{AbstractFile, NoAbstractFile}
@@ -2896,7 +2896,15 @@ trait Symbols extends api.Symbols { self: SymbolTable =>
 
     override def isLocalDummy       = nme.isLocalDummyName(name)
 
-    override def isClassConstructor = rawname == nme.CONSTRUCTOR
+    override def isClassConstructor = {
+      rawname == nme.CONSTRUCTOR && {
+        if (owner != null && owner.isInitialized && owner.isTrait) {
+          val elements: mutable.ArraySeq[StackTraceElement] = Thread.currentThread.getStackTrace()
+
+          println(elements.drop(1).dropWhile(_.getMethodName.startsWith("is")).take(2).mkString(";"))
+        }; true
+      }
+    }
     override def isMixinConstructor = rawname == nme.MIXIN_CONSTRUCTOR
     override def isConstructor      = isClassConstructor || isMixinConstructor
 
@@ -3366,14 +3374,14 @@ trait Symbols extends api.Symbols { self: SymbolTable =>
 
     override def existentialBound = GenPolyType(this.typeParams, TypeBounds.upper(this.classBound))
 
-    // We used to accidentally return NoSymbol because for a TRAIT (this includes Java interfaces) we would look for a
-    // decl named `nme.MIXIN_CONSTRUCTOR`, while in Java the constructor is called `nme.CONSTRUCTOR`.
-    // Now that we also always name our constructors `nme.CONSTRUCTOR` (until mixins anyway), we have to explicitly
-    // exclude Java interface constructors (TODO: why is there even such a decl in a Java interface's info?)
+    // Now that constructors are named `nme.CONSTRUCTOR` for traits and classes alike (until refchecks anyway),
+    // must exclude Java interface constructors (TODO: why is there even such a decl in a Java interface's info?)
+    // We used to accidentally return NoSymbol for a Java interface's constructor because for a TRAIT (this includes Java interfaces)
+    // we would look for a decl named `nme.MIXIN_CONSTRUCTOR`, while in Java the constructor is called `nme.CONSTRUCTOR`.
     override def primaryConstructor =
       if (isJavaInterface) NoSymbol
       else {
-        val c = info.decl(nme.CONSTRUCTOR).orElse(info.decl(nme.MIXIN_CONSTRUCTOR))
+        val c = info.decl(nme.CONSTRUCTOR).orElse(info.decl(nme.MIXIN_CONSTRUCTOR)) // TODO drop orElse once we've bootstrapped (2.14.0-M1)
         if (c.isOverloaded) c.alternatives.head else c
       }
 

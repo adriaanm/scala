@@ -253,13 +253,6 @@ abstract class Pickler extends SubComponent {
       val sym = deskolemize(sym0)
 
       if (putEntry(sym)) {
-        // rename trait constructor to JVM name ($init$ instead of <init>) -- we use CONSTRUCTOR for all
-        // trait constructors during typer so that we can uniformly turn parent types into constructor calls
-        // (we are typing parent types, so we can't determine whether the type references a trait/class without
-        //  potentially running into cycles)
-        // There's a second chance in refchecks because we won't see local symbols here (?)
-        if (sym.name == nme.CONSTRUCTOR && sym.owner.isTrait) sym.name = nme.MIXIN_CONSTRUCTOR
-
         if (isLocalToPickle(sym)) {
           putEntry(sym.name)
           putSymbol(sym.owner)

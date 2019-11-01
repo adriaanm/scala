@@ -574,7 +574,7 @@ abstract class BCodeBodyBuilder extends BCodeSkelBuilder {
         // instance (on JVM, <init> methods return VOID).
         case Apply(fun @ Select(New(tpt), nme.CONSTRUCTOR), args) =>
           val ctor = fun.symbol
-          assert(ctor.isClassConstructor, s"'new' call to non-constructor: ${ctor.name}")
+          assert(ctor.isClassConstructor && !ctor.owner.isTrait, s"'new' call to non-constructor: ${ctor.name}")
 
           generatedType = tpeTK(tpt)
           assert(generatedType.isRef, s"Non reference type cannot be instantiated: $generatedType")

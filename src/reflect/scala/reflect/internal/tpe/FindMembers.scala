@@ -169,7 +169,7 @@ trait FindMembers {
           refinementClasses.exists(_.info.parents.exists(_.typeSymbol == owner))
         )
 
-      (!sym.isClassConstructor || owner == initBaseClasses.head) &&
+      (!(!sym.owner.isTrait && sym.isClassConstructor) || owner == initBaseClasses.head) &&
         (!isPrivate || owner == selectorClass || admitPrivate)
     }
 

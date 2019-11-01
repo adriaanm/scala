@@ -355,7 +355,7 @@ abstract class SymbolTable extends macros.Universe
     }
     // enter decls of parent classes
     for (p <- container.parentSymbolsIterator) {
-      if (p != definitions.ObjectClass) {
+      if (p != definitions.ObjectClass) { // don't inherit members defined in Object
         openPackageModule(p, dest)
       }
     }
