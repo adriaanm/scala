@@ -28,15 +28,6 @@ trait NamesDefaults { self: Analyzer =>
   import NamesDefaultsErrorsGen._
   import treeInfo.WildcardStarArg
 
-  // Default getters of constructors are added to the companion object in the
-  // typeCompleter of the constructor (methodSig). To compute the signature,
-  // we need the ClassDef. To create and enter the symbols into the companion
-  // object, we need the templateNamer of that module class. These two are stored
-  // as an attachment in the companion module symbol
-  class ConstructorDefaultsAttachment(val classWithDefault: ClassDef, var companionModuleClassNamer: Namer) {
-    val defaults = mutable.ListBuffer[Symbol]()
-  }
-
   // Attached to the synthetic companion `apply` method symbol generated for case classes, holds
   // the set contains all default getters for that method. If the synthetic `apply` is unlinked in
   // its completer because there's a user-defined matching method (PR #5730), we have to unlink the
@@ -219,12 +210,7 @@ trait NamesDefaults { self: Analyzer =>
       def moduleQual(pos: Position, classType: Type): (Option[Tree], Option[Tree]) = {
         ({
           // prefix does 'normalize', which fixes #3384
-          val pre = gen.mkAttributedQualifier(classType.prefix)
-          val clazz = baseFun.symbol.owner
-          // This is a funny tree shape: it selects the class that's the owner of the constructor
-          // that's of course not a correct term, but since we're building a selection of a static member,
-          // we get back to sanity :-)
-          Some(atPos(pos.focus)(Select(pre, clazz) setType classType))
+          Some(atPos(pos.focus)(gen.mkAttributedRef(classType.prefix, baseFun.symbol.owner)))
         }, { // support using defaults compiled by old reference compiler until restarr
           // prefix does 'normalize', which fixes #3384
           val pre = classType.prefix
@@ -498,7 +484,7 @@ trait NamesDefaults { self: Analyzer =>
       res.orElse(if (param.owner.isConstructor) {
         // support calling defaults in companions for old classfiles, until restarr
         val mod = companionSymbolOf(param.owner.owner, context)
-        mod.info.member(defGetterName)
+        mod.info.member(newTermName("$lessinit$greater" + defGetterName.toString.substring(3)))
       } else NoSymbol)
     } else NoSymbol
   }
