@@ -48,7 +48,7 @@ abstract class ExplicitOuter extends InfoTransform
     !clazz.isPackageClass && !clazz.outerClass.isStaticOwner
 
   private def needsOuterParam(sym: Symbol) =
-    (sym.isClassConstructor || sym.isDefaultGetter && sym.isStaticMember) && isInner(sym.owner)
+    (sym.isClassConstructor || sym.isDefaultGetter && sym.isStaticMember) && isInner(sym.owner) // TODO: what should we do for trait constructor (renamed to mixin_constructor by now)
 
   private def haveSameOuter(parent: Type, clazz: Symbol) = {
     val owner = clazz.owner
